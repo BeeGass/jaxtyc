@@ -17,11 +17,24 @@ from jaxtyc.types import TraceResult
 def analyze_file(file_path: str) -> FileResult:
     """Analyze all jaxtyping-annotated functions in a Python file.
 
-    1. Parse the file's AST to extract jaxtyping annotations
-    2. Import the module to get live function objects
-    3. Trace each function with jax.eval_shape
-    4. Compare actual vs expected shapes
-    5. Return diagnostics for any mismatches
+    Pipeline steps:
+        1. Parse the file's AST to extract jaxtyping annotations
+        2. Import the module to get live function objects
+        3. Trace each function with jax.eval_shape
+        4. Compare actual vs expected shapes
+        5. Return diagnostics for any mismatches
+
+    Args:
+        file_path: Absolute path to the Python source file to analyze.
+
+    Returns:
+        FileResult containing per-function trace results and any diagnostics
+        (shape mismatches, rank errors, import/read failures).
+
+    Example:
+        >>> result = analyze_file("/path/to/model.py")
+        >>> for d in result.diagnostics:
+        ...     print(f"{d.severity}: {d.message}")
     """
     path = Path(file_path)
     diagnostics: list[Diagnostic] = []

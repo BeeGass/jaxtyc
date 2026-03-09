@@ -44,7 +44,14 @@ class DimEnv:
         return prime
 
     def get_size(self, name: str) -> int:
-        """Get the prime size for a dimension name. Assigns one if new."""
+        """Get the prime size for a dimension name. Assigns one if new.
+
+        Args:
+            name: Symbolic dimension name (e.g. "batch", "seq").
+
+        Returns:
+            Prime integer uniquely assigned to this dimension name.
+        """
         if name not in self._name_to_size:
             size = self._next_prime()
             self._name_to_size[name] = size
@@ -52,15 +59,39 @@ class DimEnv:
         return self._name_to_size[name]
 
     def resolve_name(self, size: int) -> str | None:
-        """Reverse-map a size back to its dimension name, if known."""
+        """Reverse-map a size back to its dimension name, if known.
+
+        Args:
+            size: Integer size to look up.
+
+        Returns:
+            Dimension name if ``size`` was assigned by this env, else None.
+        """
         return self._size_to_name.get(size)
 
     def shape_to_names(self, shape: tuple[int, ...]) -> tuple[str | None, ...]:
-        """Map a full shape tuple back to dimension names."""
+        """Map a full shape tuple back to dimension names.
+
+        Args:
+            shape: Concrete shape tuple from JAX tracing.
+
+        Returns:
+            Tuple of dimension names (or None for unrecognised sizes),
+            same length as ``shape``.
+        """
         return tuple(self.resolve_name(s) for s in shape)
 
     def make_shape(self, spec: ShapeSpec) -> tuple[int, ...]:
-        """Build a concrete shape tuple from a ShapeSpec using prime sizes."""
+        """Build a concrete shape tuple from a ShapeSpec using prime sizes.
+
+        Args:
+            spec: Parsed shape specification to materialise.
+
+        Returns:
+            Concrete shape tuple where each named dimension is replaced by its
+            unique prime, fixed dimensions keep their literal value, and
+            variadic/ellipsis dimensions expand to two primes each.
+        """
         shape: list[int] = []
         for dim in spec.dims:
             match dim.kind:
@@ -90,7 +121,7 @@ class DimEnv:
         return tuple(shape)
 
     def reset(self) -> None:
-        """Clear all mappings and start fresh."""
+        """Clear all name-to-size mappings and reset the prime counter."""
         self._name_to_size.clear()
         self._size_to_name.clear()
         self._next_idx = 0

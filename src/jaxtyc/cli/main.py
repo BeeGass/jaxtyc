@@ -10,7 +10,20 @@ from pathlib import Path
 import jaxtyc
 from jaxtyc.analyzer.pipeline import analyze_file
 from jaxtyc.cli.formatters import FORMATTERS
+from jaxtyc.config import filter_diagnostics
+from jaxtyc.config import load_config
 from jaxtyc.types import FileResult
+
+
+def _apply_exclude(files: list[str], patterns: list[str]) -> list[str]:
+    """Filter out files matching any of the exclude glob patterns."""
+    import fnmatch
+
+    result = []
+    for f in files:
+        if not any(fnmatch.fnmatch(f, pat) for pat in patterns):
+            result.append(f)
+    return result
 
 
 def _collect_python_files(paths: list[str]) -> list[str]:
@@ -29,7 +42,11 @@ def _collect_python_files(paths: list[str]) -> list[str]:
 
 def cmd_check(args: argparse.Namespace) -> int:
     """Run shape checks on files/directories."""
+    config = load_config(Path.cwd())
+
     files = _collect_python_files(args.paths)
+    if config.exclude:
+        files = _apply_exclude(files, config.exclude)
     if not files:
         print("No Python files found.", file=sys.stderr)
         return 0
@@ -39,7 +56,16 @@ def cmd_check(args: argparse.Namespace) -> int:
 
     results: list[FileResult] = []
     for f in files:
-        results.append(analyze_file(f))
+        result = analyze_file(f)
+        filtered = filter_diagnostics(result.diagnostics, config)
+        results.append(
+            FileResult(
+                file_path=result.file_path,
+                functions_checked=result.functions_checked,
+                diagnostics=filtered,
+                trace_results=result.trace_results,
+            )
+        )
 
     elapsed = time.monotonic() - start
     output = formatter(results, elapsed)

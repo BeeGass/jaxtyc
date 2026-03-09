@@ -53,13 +53,17 @@ test = [
     "pytest>=8.0",
     "pytest-cov>=4.0",
 ]
+docs = [
+    "mkdocs-material>=9.5",
+    "mkdocstrings[python]>=0.24",
+]
 
 [project.scripts]
 jaxtyc = "jaxtyc.cli.main:main"
 
 [project.urls]
 Homepage = "https://github.com/BeeGass/jaxtyc"
-Documentation = "https://github.com/BeeGass/jaxtyc#readme"
+Documentation = "https://beegass.github.io/jaxtyc/"
 Repository = "https://github.com/BeeGass/jaxtyc"
 "Bug Tracker" = "https://github.com/BeeGass/jaxtyc/issues"
 

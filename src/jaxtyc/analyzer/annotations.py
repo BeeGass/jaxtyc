@@ -39,14 +39,20 @@ _DTYPE_MAP: dict[str, str] = {
 def parse_shape_string(shape_str: str, dtype: str) -> ShapeSpec:
     """Parse a jaxtyping shape string into a ShapeSpec.
 
-    Examples:
-        "batch seq d_model"  -> 3 named dims
-        "batch 4 d_model"    -> named, fixed, named
-        "*batch seq"         -> variadic, named
-        "... d_model"        -> ellipsis, named
-        "_"                  -> anonymous
-        ""                   -> scalar
-        "..."                -> any shape (skip checking)
+    Args:
+        shape_str: Raw shape string from the annotation (e.g. "batch seq d_model").
+        dtype: Resolved dtype string (e.g. "float32").
+
+    Returns:
+        ShapeSpec with parsed dimension specs, dtype, and scalar/any-shape flags.
+
+    Example:
+        >>> parse_shape_string("batch seq d_model", "float32")
+        ShapeSpec(dims=(DimSpec(kind='named', name='batch', size=None), ...), ...)
+        >>> parse_shape_string("", "float32").is_scalar
+        True
+        >>> parse_shape_string("...", "float32").is_any_shape
+        True
     """
     stripped = shape_str.strip()
 
@@ -114,8 +120,19 @@ def _get_dtype_name(node: ast.expr) -> str | None:
 def extract_function_specs(source: str, file_path: str) -> list[FunctionShapeSpec]:
     """Extract FunctionShapeSpecs from Python source code.
 
-    Parses the source with ast and finds functions whose parameters or return
-    types use jaxtyping annotations.
+    Parses the source with ``ast`` and finds functions whose parameters or
+    return types use jaxtyping annotations. Class methods are detected
+    automatically (``self``/``cls`` parameters are skipped).
+
+    Args:
+        source: Python source code as a string.
+        file_path: File path used for error reporting and stored in each
+            FunctionShapeSpec.
+
+    Returns:
+        List of FunctionShapeSpecs for every function with at least one
+        jaxtyping annotation. Empty list if the source has syntax errors or
+        contains no annotated functions.
     """
     try:
         tree = ast.parse(source, filename=file_path)

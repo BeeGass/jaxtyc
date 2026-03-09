@@ -12,10 +12,19 @@ from types import ModuleType
 def import_module_from_path(file_path: str) -> ModuleType:
     """Import a Python module from a file path.
 
-    Adds the file's parent directory to sys.path so relative imports work,
-    then loads the module via importlib.
+    Adds the file's parent directory to ``sys.path`` so relative imports work,
+    then loads the module via ``importlib``. Each import uses a unique module
+    name to avoid collisions with previously imported modules.
 
-    Raises ImportError if the module cannot be loaded.
+    Args:
+        file_path: Absolute or relative path to the ``.py`` file to import.
+
+    Returns:
+        The imported module object, ready for attribute access.
+
+    Raises:
+        ImportError: If the file does not exist, is not a ``.py`` file, or
+            cannot be loaded by importlib.
     """
     path = Path(file_path).resolve()
     if not path.exists():

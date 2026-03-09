@@ -25,7 +25,18 @@ def check_function(
 ) -> list[Diagnostic]:
     """Check a function's trace result against its annotated shape spec.
 
-    Returns a list of diagnostics (empty if everything matches).
+    Compares the traced output shape against the expected return annotation.
+    Reports rank mismatches, dimension mismatches, and trace errors.
+
+    Args:
+        func_spec: Parsed shape annotations for the function.
+        trace: TraceResult from ``trace_function``.
+        env: DimEnv used during tracing (for resolving dimension names in
+            diagnostic messages).
+
+    Returns:
+        List of Diagnostic objects. Empty if the shapes match or if
+        no return annotation exists.
     """
     diagnostics: list[Diagnostic] = []
 
