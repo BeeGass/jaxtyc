@@ -126,6 +126,13 @@ def trace_function(
 
     Returns:
         TraceResult with output shape, intermediates, and any errors.
+
+    Example:
+        >>> env = DimEnv()
+        >>> spec = parse_shape_string("batch seq d_model", "float32")
+        >>> result = trace_function(my_fn, {"x": spec}, env)
+        >>> result.output_shape
+        (2, 3, 5)
     """
     # Build abstract inputs
     abstract_inputs: dict[str, jax.ShapeDtypeStruct] = {}

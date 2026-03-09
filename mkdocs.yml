@@ -1,0 +1,116 @@
+site_name: jaxtyc
+site_url: https://beegass.github.io/jaxtyc/
+site_description: Static array shape checking for JAX powered by eval_shape
+site_author: Bryan Gass
+repo_url: https://github.com/BeeGass/jaxtyc
+repo_name: BeeGass/jaxtyc
+edit_uri: edit/main/docs/
+copyright: Copyright &copy; 2025 Bryan Gass
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: deep purple
+      accent: amber
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: deep purple
+      accent: amber
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  font:
+    text: Inter
+    code: JetBrains Mono
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.sections
+    - navigation.top
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - content.code.copy
+    - content.code.annotate
+    - content.tabs.link
+    - search.highlight
+    - search.suggest
+    - toc.follow
+  icon:
+    repo: fontawesome/brands/github
+
+extra_css:
+  - stylesheets/extra.css
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.snippets
+  - toc:
+      permalink: true
+  - attr_list
+  - md_in_html
+  - def_list
+  - tables
+  - footnotes
+
+plugins:
+  - search
+  - mkdocstrings:
+      default_handler: python
+      handlers:
+        python:
+          paths: [src]
+          options:
+            docstring_style: google
+            docstring_section_style: spacy
+            show_source: true
+            show_root_heading: true
+            show_root_full_path: false
+            show_symbol_type_heading: true
+            show_symbol_type_toc: true
+            members_order: source
+            merge_init_into_class: true
+            separate_signature: true
+            signature_crossrefs: true
+            show_signature_annotations: true
+            heading_level: 2
+
+nav:
+  - Home: index.md
+  - Tutorial: tutorial.md
+  - Guide:
+      - Annotations: guide/annotations.md
+      - CLI: guide/cli.md
+      - Configuration: guide/configuration.md
+      - CI Integration: guide/ci.md
+  - Reference:
+      - Python API: reference/api.md
+      - Diagnostic Rules: reference/diagnostics.md
+  - Editors: editors/editors.md
+  - Architecture:
+      - Overview: architecture/overview.md
+      - Internals: architecture/internals.md
+  - Contributing: contributing.md
+  - Changelog: changelog.md
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/BeeGass/jaxtyc
