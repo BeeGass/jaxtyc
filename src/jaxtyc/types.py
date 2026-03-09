@@ -140,6 +140,50 @@ class TraceResult:
 
 
 @dataclass(frozen=True)
+class DimLocation:
+    """Source location of a dimension name token within a jaxtyping annotation.
+
+    Attributes:
+        dim_name: The dimension name as written (e.g. "batch", "seq").
+        param_name: Parameter name this dim belongs to, or "__return__" for return.
+        function_name: Name of the enclosing function.
+        file_path: Absolute path to the source file.
+        lineno: 1-based line number of the shape string constant.
+        col_start: 0-based column of the first character of this dim token.
+        col_end: 0-based column one past the last character of this dim token.
+    """
+
+    dim_name: str
+    param_name: str
+    function_name: str
+    file_path: str
+    lineno: int
+    col_start: int
+    col_end: int
+
+
+@dataclass(frozen=True)
+class CallSite:
+    """A call from one function to another within a source file.
+
+    Attributes:
+        caller_name: Fully qualified name of the calling function.
+        callee_name: Name of the called function (may be unqualified).
+        file_path: File containing the call.
+        lineno: 1-based line of the call expression.
+        col_offset: 0-based column of the call expression start.
+        end_col_offset: 0-based column one past the end of the callee name.
+    """
+
+    caller_name: str
+    callee_name: str
+    file_path: str
+    lineno: int
+    col_offset: int
+    end_col_offset: int
+
+
+@dataclass(frozen=True)
 class FileResult:
     """Result of analyzing all functions in a file.
 
