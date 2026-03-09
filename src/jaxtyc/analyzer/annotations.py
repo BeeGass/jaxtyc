@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import ast
+import re
 
+from jaxtyc.types import CallSite
+from jaxtyc.types import DimLocation
 from jaxtyc.types import DimSpec
 from jaxtyc.types import FunctionShapeSpec
 from jaxtyc.types import ShapeSpec
@@ -197,3 +200,176 @@ def _extract_from_function(
             class_name=class_name,
         )
     )
+
+
+def extract_call_sites(
+    source: str,
+    file_path: str,
+    known_functions: set[str],
+) -> list[CallSite]:
+    """Extract call sites between shape-annotated functions.
+
+    Walks function bodies for ast.Call nodes and matches callee names
+    against the set of known shape-annotated function names.
+    """
+    try:
+        tree = ast.parse(source, filename=file_path)
+    except SyntaxError:
+        return []
+
+    results: list[CallSite] = []
+    _visit_body_for_calls(tree.body, file_path, known_functions, results, class_name=None)
+    return results
+
+
+def _visit_body_for_calls(
+    body: list[ast.stmt],
+    file_path: str,
+    known_functions: set[str],
+    results: list,
+    class_name: str | None,
+) -> None:
+    """Walk statements extracting call sites from function bodies."""
+    for node in body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            caller = f"{class_name}.{node.name}" if class_name else node.name
+            _extract_calls_from_body(node.body, caller, file_path, known_functions, results)
+        elif isinstance(node, ast.ClassDef):
+            _visit_body_for_calls(
+                node.body, file_path, known_functions, results, class_name=node.name
+            )
+
+
+def _extract_calls_from_body(
+    body: list[ast.stmt],
+    caller_name: str,
+    file_path: str,
+    known_functions: set[str],
+    results: list,
+) -> None:
+    """Walk a function body extracting calls to known functions."""
+    for node in ast.walk(ast.Module(body=body, type_ignores=[])):
+        if not isinstance(node, ast.Call):
+            continue
+        callee_name: str | None = None
+        col_start = 0
+        col_end = 0
+        if isinstance(node.func, ast.Name):
+            callee_name = node.func.id
+            col_start = node.func.col_offset
+            col_end = node.func.end_col_offset or (col_start + len(callee_name))
+        elif isinstance(node.func, ast.Attribute):
+            callee_name = node.func.attr
+            col_start = node.func.col_offset
+            col_end = node.func.end_col_offset or (col_start + len(callee_name))
+        if callee_name and callee_name in known_functions:
+            results.append(
+                CallSite(
+                    caller_name=caller_name,
+                    callee_name=callee_name,
+                    file_path=file_path,
+                    lineno=node.lineno,
+                    col_offset=col_start,
+                    end_col_offset=col_end,
+                )
+            )
+
+
+def extract_dim_locations(source: str, file_path: str) -> list[DimLocation]:
+    """Extract source locations for every dimension name in jaxtyping annotations."""
+    try:
+        tree = ast.parse(source, filename=file_path)
+    except SyntaxError:
+        return []
+
+    results: list[DimLocation] = []
+    _visit_body_for_dims(tree.body, file_path, results, class_name=None)
+    return results
+
+
+def _visit_body_for_dims(
+    body: list[ast.stmt],
+    file_path: str,
+    results: list[DimLocation],
+    class_name: str | None,
+) -> None:
+    """Walk statements extracting dim locations from function annotations."""
+    for node in body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            _extract_dims_from_function(node, file_path, results, class_name=class_name)
+        elif isinstance(node, ast.ClassDef):
+            _visit_body_for_dims(node.body, file_path, results, class_name=node.name)
+
+
+def _extract_dims_from_function(
+    node: ast.FunctionDef | ast.AsyncFunctionDef,
+    file_path: str,
+    results: list[DimLocation],
+    class_name: str | None,
+) -> None:
+    """Extract DimLocation entries from a single function's annotations."""
+    is_method = class_name is not None
+    func_name = node.name
+
+    for arg in node.args.args:
+        if is_method and arg.arg in ("self", "cls"):
+            continue
+        if arg.annotation is not None:
+            _extract_dims_from_annotation(arg.annotation, arg.arg, func_name, file_path, results)
+
+    if node.returns is not None:
+        _extract_dims_from_annotation(node.returns, "__return__", func_name, file_path, results)
+
+
+def _extract_dims_from_annotation(
+    node: ast.expr,
+    param_name: str,
+    function_name: str,
+    file_path: str,
+    results: list[DimLocation],
+) -> None:
+    """Extract dim locations from a single annotation AST node."""
+    if not isinstance(node, ast.Subscript):
+        return
+
+    dtype_name = _get_dtype_name(node.value)
+    if dtype_name is None or dtype_name not in _DTYPE_MAP:
+        return
+
+    slc = node.slice
+    if not (isinstance(slc, ast.Tuple) and len(slc.elts) == 2):
+        return
+
+    shape_node = slc.elts[1]
+    if not (isinstance(shape_node, ast.Constant) and isinstance(shape_node.value, str)):
+        return
+
+    shape_str = shape_node.value
+    # col_offset points to the opening quote char; content starts at +1
+    string_col = shape_node.col_offset + 1
+    string_line = shape_node.lineno
+
+    for match in re.finditer(r"\S+", shape_str):
+        token = match.group()
+        # Skip non-named tokens
+        if token == "..." or token == "_" or token.isdigit():
+            continue
+        # Strip leading * for variadic dims
+        dim_name = token.lstrip("*")
+        if not dim_name:
+            continue
+        # Compute column offset of the dim name (after any *)
+        prefix_len = len(token) - len(dim_name)
+        col_start = string_col + match.start() + prefix_len
+        col_end = string_col + match.end()
+        results.append(
+            DimLocation(
+                dim_name=dim_name,
+                param_name=param_name,
+                function_name=function_name,
+                file_path=file_path,
+                lineno=string_line,
+                col_start=col_start,
+                col_end=col_end,
+            )
+        )

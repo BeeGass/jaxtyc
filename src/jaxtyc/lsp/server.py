@@ -18,6 +18,10 @@ from jaxtyc.analyzer.annotations import extract_function_specs
 from jaxtyc.analyzer.pipeline import analyze_file
 from jaxtyc.config import JaxtycConfig
 from jaxtyc.config import load_config
+from jaxtyc.lsp.index import WorkspaceIndex
+from jaxtyc.lsp.index import build_file_index
+from jaxtyc.types import DimLocation
+from jaxtyc.types import FunctionShapeSpec
 from jaxtyc.types import IntermediateShape
 
 logger = logging.getLogger(__name__)
@@ -36,6 +40,9 @@ _debounce_lock = threading.Lock()
 
 # Server config — loaded from workspace root on initialize
 _config: JaxtycConfig = JaxtycConfig()
+
+# Workspace-level index for navigation features
+_workspace_index = WorkspaceIndex()
 
 
 def _debounce_seconds() -> float:
@@ -147,10 +154,23 @@ def _analyze_and_publish(ls: LanguageServer, uri: str, source: str | None = None
         all_intermediates.extend(trace.intermediates)
     _analysis_cache[uri] = all_intermediates
 
-    # Build CodeLens cache from function specs + trace results
+    # Extract function specs once — reused for CodeLens and navigation index
     try:
         source_text = Path(file_path).read_text(encoding="utf-8") if source is None else source
         func_specs = extract_function_specs(source_text, file_path)
+    except Exception:
+        func_specs = []
+        source_text = ""
+
+    # Build navigation index
+    try:
+        file_index = build_file_index(source_text, file_path, uri, func_specs=func_specs)
+        _workspace_index.update_file(file_index)
+    except Exception:
+        logger.debug("Failed to build navigation index for %s", file_path, exc_info=True)
+
+    # Build CodeLens cache from function specs + trace results
+    try:
         lenses: list[tuple[int, str]] = []
         trace_by_name = {t.function_name: t for t in result.trace_results}
         from jaxtyc.analyzer.dim_env import DimEnv
@@ -298,6 +318,405 @@ def code_lens(ls: LanguageServer, params: types.CodeLensParams) -> list[types.Co
         )
         for line, title in lenses
     ]
+
+
+def _shape_summary(spec: FunctionShapeSpec) -> str:
+    """Build a shape summary string like '(batch, seq) -> (batch, hidden)'."""
+    parts = []
+    for pname, pspec in spec.params.items():
+        dim_names = ", ".join(d.name or str(d.size) or d.kind for d in pspec.dims)
+        parts.append(f"{pname}: ({dim_names})")
+    ret = ""
+    if spec.return_spec is not None:
+        ret_dims = ", ".join(d.name or str(d.size) or d.kind for d in spec.return_spec.dims)
+        ret = f" -> ({ret_dims})"
+    return f"{', '.join(parts)}{ret}"
+
+
+def _spec_range(spec: FunctionShapeSpec) -> types.Range:
+    """Build an LSP Range for a FunctionShapeSpec definition line."""
+    line = max(0, spec.lineno - 1)
+    return types.Range(
+        start=types.Position(line=line, character=spec.col_offset),
+        end=types.Position(
+            line=line, character=spec.col_offset + len(spec.name) + 4
+        ),  # "def " + name
+    )
+
+
+def _spec_selection_range(spec: FunctionShapeSpec) -> types.Range:
+    """Build an LSP selection Range for the function name only."""
+    line = max(0, spec.lineno - 1)
+    # "def " is 4 chars before the name
+    name_start = spec.col_offset + 4
+    return types.Range(
+        start=types.Position(line=line, character=name_start),
+        end=types.Position(line=line, character=name_start + len(spec.name)),
+    )
+
+
+def _dim_range(dim: DimLocation) -> types.Range:
+    """Build an LSP Range for a DimLocation."""
+    line = max(0, dim.lineno - 1)
+    return types.Range(
+        start=types.Position(line=line, character=dim.col_start),
+        end=types.Position(line=line, character=dim.col_end),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Navigation handlers
+# ---------------------------------------------------------------------------
+
+
+@server.feature(types.TEXT_DOCUMENT_DOCUMENT_SYMBOL)
+def document_symbol(
+    ls: LanguageServer, params: types.DocumentSymbolParams
+) -> list[types.DocumentSymbol] | None:
+    """Return shape-annotated functions as document symbols."""
+    uri = params.text_document.uri
+    file_index = _workspace_index.get_file(uri)
+    if file_index is None:
+        return None
+
+    # Group methods by class
+    class_methods: dict[str, list[types.DocumentSymbol]] = {}
+    top_level: list[types.DocumentSymbol] = []
+
+    for spec in file_index.function_specs:
+        kind = types.SymbolKind.Method if spec.is_method else types.SymbolKind.Function
+        sym = types.DocumentSymbol(
+            name=spec.name,
+            kind=kind,
+            range=_spec_range(spec),
+            selection_range=_spec_selection_range(spec),
+            detail=_shape_summary(spec),
+        )
+        if spec.is_method and spec.class_name is not None:
+            class_methods.setdefault(spec.class_name, []).append(sym)
+        else:
+            top_level.append(sym)
+
+    # Wrap class methods in class symbols
+    for class_name, methods in class_methods.items():
+        # Use the first method's line as approximate class range
+        first_line = max(0, methods[0].range.start.line - 1) if methods else 0
+        class_sym = types.DocumentSymbol(
+            name=class_name,
+            kind=types.SymbolKind.Class,
+            range=types.Range(
+                start=types.Position(line=first_line, character=0),
+                end=methods[-1].range.end
+                if methods
+                else types.Position(line=first_line, character=0),
+            ),
+            selection_range=types.Range(
+                start=types.Position(line=first_line, character=0),
+                end=types.Position(line=first_line, character=len(class_name)),
+            ),
+            children=methods,
+        )
+        top_level.append(class_sym)
+
+    return top_level or None
+
+
+@server.feature(types.TEXT_DOCUMENT_DEFINITION)
+def go_to_definition(
+    ls: LanguageServer, params: types.DefinitionParams
+) -> types.Location | list[types.Location] | None:
+    """Navigate to dimension name definition or function definition."""
+    uri = params.text_document.uri
+    line = params.position.line + 1  # Convert to 1-based
+    col = params.position.character
+
+    # Try dimension name first
+    dim = _workspace_index.find_dim_at(uri, line, col)
+    if dim is not None:
+        defn = _workspace_index.find_dim_definition(dim.dim_name, dim.function_name, uri)
+        if defn is not None and (defn.lineno != dim.lineno or defn.col_start != dim.col_start):
+            return types.Location(uri=uri, range=_dim_range(defn))
+        return None  # Already at definition
+
+    # Try function name
+    spec = _workspace_index.find_function_at(uri, line, col)
+    if spec is not None:
+        return types.Location(uri=uri, range=_spec_selection_range(spec))
+
+    return None
+
+
+@server.feature(types.TEXT_DOCUMENT_REFERENCES)
+def find_references(
+    ls: LanguageServer, params: types.ReferenceParams
+) -> list[types.Location] | None:
+    """Find all references to a dimension name or function."""
+    uri = params.text_document.uri
+    line = params.position.line + 1
+    col = params.position.character
+
+    # Try dimension name
+    dim = _workspace_index.find_dim_at(uri, line, col)
+    if dim is not None:
+        refs = _workspace_index.find_all_dim_references(dim.dim_name, uri=uri)
+        return [types.Location(uri=uri, range=_dim_range(r)) for r in refs] or None
+
+    # Try function name
+    spec = _workspace_index.find_function_at(uri, line, col)
+    if spec is not None:
+        locations: list[types.Location] = []
+        if params.context.include_declaration:
+            locations.append(types.Location(uri=uri, range=_spec_selection_range(spec)))
+        # Find call sites across workspace
+        callers = _workspace_index.get_callers_of(spec.name, uri)
+        for call in callers:
+            call_uri = uri  # TODO: cross-file URIs
+            call_line = max(0, call.lineno - 1)
+            locations.append(
+                types.Location(
+                    uri=call_uri,
+                    range=types.Range(
+                        start=types.Position(line=call_line, character=call.col_offset),
+                        end=types.Position(line=call_line, character=call.end_col_offset),
+                    ),
+                )
+            )
+        return locations or None
+
+    return None
+
+
+@server.feature(types.TEXT_DOCUMENT_DOCUMENT_HIGHLIGHT)
+def document_highlight(
+    ls: LanguageServer, params: types.DocumentHighlightParams
+) -> list[types.DocumentHighlight] | None:
+    """Highlight all occurrences of a dimension name in the file."""
+    uri = params.text_document.uri
+    line = params.position.line + 1
+    col = params.position.character
+
+    dim = _workspace_index.find_dim_at(uri, line, col)
+    if dim is None:
+        return None
+
+    refs = _workspace_index.find_all_dim_references(dim.dim_name, uri=uri)
+    return [
+        types.DocumentHighlight(
+            range=_dim_range(r),
+            kind=types.DocumentHighlightKind.Read,
+        )
+        for r in refs
+    ] or None
+
+
+@server.feature(types.TEXT_DOCUMENT_PREPARE_RENAME)
+def prepare_rename(
+    ls: LanguageServer, params: types.PrepareRenameParams
+) -> types.PrepareRenamePlaceholder | None:
+    """Check if rename is valid at cursor position (dim names only)."""
+    uri = params.text_document.uri
+    line = params.position.line + 1
+    col = params.position.character
+
+    dim = _workspace_index.find_dim_at(uri, line, col)
+    if dim is None:
+        return None
+
+    return types.PrepareRenamePlaceholder(
+        range=_dim_range(dim),
+        placeholder=dim.dim_name,
+    )
+
+
+@server.feature(types.TEXT_DOCUMENT_RENAME)
+def rename(ls: LanguageServer, params: types.RenameParams) -> types.WorkspaceEdit | None:
+    """Rename a dimension name across all annotations in the file."""
+    uri = params.text_document.uri
+    line = params.position.line + 1
+    col = params.position.character
+
+    dim = _workspace_index.find_dim_at(uri, line, col)
+    if dim is None:
+        return None
+
+    refs = _workspace_index.find_all_dim_references(dim.dim_name, uri=uri)
+    if not refs:
+        return None
+
+    edits = [types.TextEdit(range=_dim_range(r), new_text=params.new_name) for r in refs]
+    return types.WorkspaceEdit(changes={uri: edits})
+
+
+@server.feature(types.WORKSPACE_SYMBOL)
+def workspace_symbol(
+    ls: LanguageServer, params: types.WorkspaceSymbolParams
+) -> list[types.SymbolInformation] | None:
+    """Search shape-annotated functions across the workspace."""
+    results = _workspace_index.search_symbols(params.query)
+    if not results:
+        return None
+
+    symbols: list[types.SymbolInformation] = []
+    for spec in results:
+        kind = types.SymbolKind.Method if spec.is_method else types.SymbolKind.Function
+        # Convert file path to URI
+        spec_uri = f"file://{spec.file_path}"
+        symbols.append(
+            types.SymbolInformation(
+                name=spec.name,
+                kind=kind,
+                location=types.Location(uri=spec_uri, range=_spec_selection_range(spec)),
+                container_name=spec.class_name,
+            )
+        )
+    return symbols or None
+
+
+@server.feature(types.TEXT_DOCUMENT_IMPLEMENTATION)
+def go_to_implementation(
+    ls: LanguageServer, params: types.ImplementationParams
+) -> types.Location | list[types.Location] | None:
+    """Navigate to function implementation (delegates to definition logic)."""
+    uri = params.text_document.uri
+    line = params.position.line + 1
+    col = params.position.character
+
+    dim = _workspace_index.find_dim_at(uri, line, col)
+    if dim is not None:
+        defn = _workspace_index.find_dim_definition(dim.dim_name, dim.function_name, uri)
+        if defn is not None and (defn.lineno != dim.lineno or defn.col_start != dim.col_start):
+            return types.Location(uri=uri, range=_dim_range(defn))
+        return None
+
+    spec = _workspace_index.find_function_at(uri, line, col)
+    if spec is not None:
+        return types.Location(uri=uri, range=_spec_selection_range(spec))
+
+    return None
+
+
+@server.feature(types.TEXT_DOCUMENT_PREPARE_CALL_HIERARCHY)
+def prepare_call_hierarchy(
+    ls: LanguageServer, params: types.CallHierarchyPrepareParams
+) -> list[types.CallHierarchyItem] | None:
+    """Prepare call hierarchy for a shape-annotated function."""
+    uri = params.text_document.uri
+    line = params.position.line + 1
+    col = params.position.character
+
+    spec = _workspace_index.find_function_at(uri, line, col)
+    if spec is None:
+        return None
+
+    return [
+        types.CallHierarchyItem(
+            name=spec.name,
+            kind=types.SymbolKind.Method if spec.is_method else types.SymbolKind.Function,
+            uri=uri,
+            range=_spec_range(spec),
+            selection_range=_spec_selection_range(spec),
+            detail=_shape_summary(spec),
+            data={"function_name": spec.name, "class_name": spec.class_name, "uri": uri},
+        )
+    ]
+
+
+@server.feature(types.CALL_HIERARCHY_INCOMING_CALLS)
+def incoming_calls(
+    ls: LanguageServer, params: types.CallHierarchyIncomingCallsParams
+) -> list[types.CallHierarchyIncomingCall] | None:
+    """Find functions that call the target function."""
+    data = params.item.data or {}
+    function_name = data.get("function_name", params.item.name)
+    item_uri = data.get("uri", params.item.uri)
+
+    callers = _workspace_index.get_callers_of(function_name, item_uri)
+    if not callers:
+        return None
+
+    results: list[types.CallHierarchyIncomingCall] = []
+    for call in callers:
+        caller_specs = _workspace_index.find_function_by_name(call.caller_name)
+        if not caller_specs:
+            continue
+        caller_spec = caller_specs[0]
+        caller_uri = f"file://{caller_spec.file_path}"
+        call_line = max(0, call.lineno - 1)
+        results.append(
+            types.CallHierarchyIncomingCall(
+                from_=types.CallHierarchyItem(
+                    name=caller_spec.name,
+                    kind=types.SymbolKind.Method
+                    if caller_spec.is_method
+                    else types.SymbolKind.Function,
+                    uri=caller_uri,
+                    range=_spec_range(caller_spec),
+                    selection_range=_spec_selection_range(caller_spec),
+                    detail=_shape_summary(caller_spec),
+                    data={
+                        "function_name": caller_spec.name,
+                        "class_name": caller_spec.class_name,
+                        "uri": caller_uri,
+                    },
+                ),
+                from_ranges=[
+                    types.Range(
+                        start=types.Position(line=call_line, character=call.col_offset),
+                        end=types.Position(line=call_line, character=call.end_col_offset),
+                    )
+                ],
+            )
+        )
+    return results or None
+
+
+@server.feature(types.CALL_HIERARCHY_OUTGOING_CALLS)
+def outgoing_calls(
+    ls: LanguageServer, params: types.CallHierarchyOutgoingCallsParams
+) -> list[types.CallHierarchyOutgoingCall] | None:
+    """Find functions called by the target function."""
+    data = params.item.data or {}
+    function_name = data.get("function_name", params.item.name)
+    item_uri = data.get("uri", params.item.uri)
+
+    callees = _workspace_index.get_callees_of(function_name, item_uri)
+    if not callees:
+        return None
+
+    results: list[types.CallHierarchyOutgoingCall] = []
+    for call in callees:
+        callee_specs = _workspace_index.find_function_by_name(call.callee_name)
+        if not callee_specs:
+            continue
+        callee_spec = callee_specs[0]
+        callee_uri = f"file://{callee_spec.file_path}"
+        call_line = max(0, call.lineno - 1)
+        results.append(
+            types.CallHierarchyOutgoingCall(
+                to=types.CallHierarchyItem(
+                    name=callee_spec.name,
+                    kind=types.SymbolKind.Method
+                    if callee_spec.is_method
+                    else types.SymbolKind.Function,
+                    uri=callee_uri,
+                    range=_spec_range(callee_spec),
+                    selection_range=_spec_selection_range(callee_spec),
+                    detail=_shape_summary(callee_spec),
+                    data={
+                        "function_name": callee_spec.name,
+                        "class_name": callee_spec.class_name,
+                        "uri": callee_uri,
+                    },
+                ),
+                from_ranges=[
+                    types.Range(
+                        start=types.Position(line=call_line, character=call.col_offset),
+                        end=types.Position(line=call_line, character=call.end_col_offset),
+                    )
+                ],
+            )
+        )
+    return results or None
 
 
 def start_lsp() -> None:

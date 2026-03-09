@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import textwrap
 
+from jaxtyc.analyzer.annotations import extract_call_sites
+from jaxtyc.analyzer.annotations import extract_dim_locations
 from jaxtyc.analyzer.annotations import extract_function_specs
 from jaxtyc.analyzer.annotations import parse_shape_string
 from jaxtyc.types import DimSpec
@@ -220,3 +222,203 @@ class TestExtractFunctionSpecs:
         assert len(specs) == 1
         assert specs[0].lineno == 5
         assert specs[0].file_path == "test.py"
+
+
+# ---------------------------------------------------------------------------
+# extract_dim_locations
+# ---------------------------------------------------------------------------
+
+
+class TestExtractDimLocations:
+    def test_basic_shape_string(self):
+        source = 'def f(x: Float[Array, "batch seq d_model"]): pass\n'
+        locs = extract_dim_locations(source, "test.py")
+        names = [loc.dim_name for loc in locs]
+        assert names == ["batch", "seq", "d_model"]
+        # All on line 1, param "x", function "f"
+        for loc in locs:
+            assert loc.lineno == 1
+            assert loc.param_name == "x"
+            assert loc.function_name == "f"
+
+    def test_column_offsets(self):
+        # "batch seq" starts after the opening quote
+        # def f(x: Float[Array, "batch seq"]): pass
+        # 0123456789...
+        source = 'def f(x: Float[Array, "batch seq"]): pass\n'
+        locs = extract_dim_locations(source, "test.py")
+        assert len(locs) == 2
+        # "batch" starts at col 23 (col 22 is the quote, content starts at 23)
+        assert locs[0].dim_name == "batch"
+        assert locs[0].col_start == 23
+        assert locs[0].col_end == 28
+        # "seq" starts at 29
+        assert locs[1].dim_name == "seq"
+        assert locs[1].col_start == 29
+        assert locs[1].col_end == 32
+
+    def test_multiline_function(self):
+        source = textwrap.dedent("""\
+            def attention(
+                q: Float[Array, "batch seq"],
+                k: Float[Array, "batch seq"],
+            ) -> Float[Array, "batch seq"]:
+                pass
+        """)
+        locs = extract_dim_locations(source, "test.py")
+        # 2 dims per param (q, k) + 2 dims in return = 6 total
+        assert len(locs) == 6
+        names = [loc.dim_name for loc in locs]
+        assert names == ["batch", "seq", "batch", "seq", "batch", "seq"]
+        # Check param names
+        assert locs[0].param_name == "q"
+        assert locs[1].param_name == "q"
+        assert locs[2].param_name == "k"
+        assert locs[3].param_name == "k"
+        assert locs[4].param_name == "__return__"
+        assert locs[5].param_name == "__return__"
+
+    def test_variadic_dim(self):
+        source = 'def f(x: Float[Array, "*batch seq"]): pass\n'
+        locs = extract_dim_locations(source, "test.py")
+        assert len(locs) == 2
+        # The dim name should be "batch" (without *), but col_start points after the *
+        assert locs[0].dim_name == "batch"
+        # *batch starts at col 23, the 'b' of batch is at col 24
+        assert locs[0].col_start == 24
+        assert locs[0].col_end == 29  # end of "batch" token in "*batch"
+        assert locs[1].dim_name == "seq"
+
+    def test_fixed_dims_skipped(self):
+        source = 'def f(x: Float[Array, "batch 4 seq"]): pass\n'
+        locs = extract_dim_locations(source, "test.py")
+        names = [loc.dim_name for loc in locs]
+        assert names == ["batch", "seq"]
+
+    def test_anonymous_and_ellipsis_skipped(self):
+        source = 'def f(x: Float[Array, "... _ batch"]): pass\n'
+        locs = extract_dim_locations(source, "test.py")
+        assert len(locs) == 1
+        assert locs[0].dim_name == "batch"
+
+    def test_return_annotation(self):
+        source = 'def f(x: Float[Array, "a"]) -> Float[Array, "b c"]: pass\n'
+        locs = extract_dim_locations(source, "test.py")
+        assert len(locs) == 3
+        assert locs[0].param_name == "x"
+        assert locs[0].dim_name == "a"
+        assert locs[1].param_name == "__return__"
+        assert locs[1].dim_name == "b"
+        assert locs[2].param_name == "__return__"
+        assert locs[2].dim_name == "c"
+
+    def test_class_method(self):
+        source = textwrap.dedent("""\
+            class Model:
+                def __call__(self, x: Float[Array, "batch dim"]) -> Float[Array, "batch dim"]:
+                    pass
+        """)
+        locs = extract_dim_locations(source, "test.py")
+        assert len(locs) == 4
+        # self should be skipped
+        for loc in locs:
+            assert loc.function_name == "__call__"
+            assert loc.param_name in ("x", "__return__")
+
+    def test_no_jaxtyping_returns_empty(self):
+        source = "def f(x: int) -> int: pass\n"
+        locs = extract_dim_locations(source, "test.py")
+        assert locs == []
+
+    def test_syntax_error_returns_empty(self):
+        source = "def f(x: Float[Array, :"
+        locs = extract_dim_locations(source, "test.py")
+        assert locs == []
+
+
+# ---------------------------------------------------------------------------
+# extract_call_sites
+# ---------------------------------------------------------------------------
+
+
+class TestExtractCallSites:
+    def test_basic_call(self):
+        source = textwrap.dedent("""\
+            def encode(x: Float[Array, "batch dim"]): pass
+            def pipeline(x: Float[Array, "batch dim"]):
+                return encode(x)
+        """)
+        sites = extract_call_sites(source, "test.py", {"encode"})
+        assert len(sites) == 1
+        assert sites[0].caller_name == "pipeline"
+        assert sites[0].callee_name == "encode"
+        assert sites[0].lineno == 3
+
+    def test_multiple_calls(self):
+        source = textwrap.dedent("""\
+            def encode(x): pass
+            def decode(x): pass
+            def autoencoder(x):
+                h = encode(x)
+                return decode(h)
+        """)
+        sites = extract_call_sites(source, "test.py", {"encode", "decode"})
+        assert len(sites) == 2
+        callees = {s.callee_name for s in sites}
+        assert callees == {"encode", "decode"}
+        for s in sites:
+            assert s.caller_name == "autoencoder"
+
+    def test_unknown_function_ignored(self):
+        source = textwrap.dedent("""\
+            def f(x):
+                return unknown(x)
+        """)
+        sites = extract_call_sites(source, "test.py", {"encode"})
+        assert len(sites) == 0
+
+    def test_attribute_call(self):
+        source = textwrap.dedent("""\
+            def f(x):
+                return self.encode(x)
+        """)
+        # ast.Attribute callee: attr is "encode"
+        sites = extract_call_sites(source, "test.py", {"encode"})
+        assert len(sites) == 1
+        assert sites[0].callee_name == "encode"
+
+    def test_class_method_caller(self):
+        source = textwrap.dedent("""\
+            class Model:
+                def forward(self, x):
+                    return encode(x)
+        """)
+        sites = extract_call_sites(source, "test.py", {"encode"})
+        assert len(sites) == 1
+        assert sites[0].caller_name == "Model.forward"
+
+    def test_col_offsets(self):
+        source = "def f(x):\n    return encode(x)\n"
+        sites = extract_call_sites(source, "test.py", {"encode"})
+        assert len(sites) == 1
+        assert sites[0].col_offset == 11
+        assert sites[0].end_col_offset == 17  # "encode" is 6 chars
+
+    def test_syntax_error_returns_empty(self):
+        sites = extract_call_sites("def f(:", "test.py", {"encode"})
+        assert sites == []
+
+    def test_empty_known_functions(self):
+        source = "def f(x): return encode(x)\n"
+        sites = extract_call_sites(source, "test.py", set())
+        assert sites == []
+
+    def test_nested_call_in_expression(self):
+        source = textwrap.dedent("""\
+            def f(x):
+                y = 1 + encode(x) * 2
+                return y
+        """)
+        sites = extract_call_sites(source, "test.py", {"encode"})
+        assert len(sites) == 1
+        assert sites[0].callee_name == "encode"
