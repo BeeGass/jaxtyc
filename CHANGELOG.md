@@ -5,7 +5,7 @@ All notable changes to jaxtyc are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## v0.2.0 — 2026-03-09
+## [v0.2.0] — 2026-03-09
 
 ### Added
 
@@ -18,6 +18,7 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `FileIndex` / `WorkspaceIndex` thread-safe cross-file navigation index
 - `extract_dim_locations()` and `extract_call_sites()` AST parsers in `annotations.py`
 - `build_file_index()` orchestrator for per-file index construction
+- `tests/fixtures/multi_function.py` fixture for call hierarchy testing
 - 21 new tests (9 unit, 12 LSP integration)
 
 ### Fixed
@@ -29,7 +30,9 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `_analyze_and_publish` now extracts function specs once and reuses them for both CodeLens and navigation index (avoids double AST parse)
 - Navigation index is built alongside diagnostics on every didOpen/didSave/didChange cycle
 
-## v0.1.0 — 2026-02-23
+## [v0.1.0] — 2026-02-23
+
+### Added
 
 - AST-based jaxtyping annotation parser supporting all dtype classes and shape patterns (named, fixed, variadic, anonymous, ellipsis, scalar)
 - `jax.eval_shape` tracing with prime-based symbolic dimension sizing via `DimEnv`
@@ -41,3 +44,6 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Configuration via `[tool.jaxtyc]` in `pyproject.toml`: severity, ignore_rules, exclude, debounce_ms
 - Flax NNX and Equinox module support (auto-skips `self`/`cls` parameters)
 - CI workflow and mkdocs documentation site
+
+[v0.2.0]: https://github.com/BeeGass/jaxtyc/compare/v0.1.0...v0.2.0
+[v0.1.0]: https://github.com/BeeGass/jaxtyc/releases/tag/v0.1.0
