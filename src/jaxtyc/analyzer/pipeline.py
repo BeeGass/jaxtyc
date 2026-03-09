@@ -11,6 +11,7 @@ from jaxtyc.analyzer.importer import import_module_from_path
 from jaxtyc.analyzer.tracer import trace_function
 from jaxtyc.types import Diagnostic
 from jaxtyc.types import FileResult
+from jaxtyc.types import FunctionShapeSpec
 from jaxtyc.types import TraceResult
 
 
@@ -137,6 +138,25 @@ def analyze_file(file_path: str) -> FileResult:
             continue
 
         env = DimEnv()
+
+        # Detect NNX/equinox module methods and use specialized tracing
+        if func_spec.is_method and func_spec.class_name is not None:
+            cls = getattr(module, func_spec.class_name, None)
+            if cls is not None and _is_nnx_module(cls):
+                trace = _trace_nnx_method(cls, func_spec, env)
+                trace_results.append(trace)
+                functions_checked += 1
+                diags = check_function(func_spec, trace, env)
+                diagnostics.extend(diags)
+                continue
+            if cls is not None and _is_eqx_module(cls):
+                trace = _trace_eqx_method(cls, func_spec, env)
+                trace_results.append(trace)
+                functions_checked += 1
+                diags = check_function(func_spec, trace, env)
+                diagnostics.extend(diags)
+                continue
+
         trace = trace_function(fn, func_spec.params, env)
         trace_results.append(trace)
         functions_checked += 1
@@ -161,3 +181,172 @@ def _resolve_function(module: object, name: str, class_name: str | None) -> obje
             return None
         return getattr(cls, name, None)
     return getattr(module, name, None)
+
+
+def _is_nnx_module(cls: type) -> bool:
+    """Check if a class is a Flax NNX module."""
+    try:
+        from flax import nnx
+
+        return isinstance(cls, type) and issubclass(cls, nnx.Module)
+    except ImportError:
+        return False
+
+
+def _is_eqx_module(cls: type) -> bool:
+    """Check if a class is an equinox module."""
+    try:
+        import equinox as eqx
+
+        return isinstance(cls, type) and issubclass(cls, eqx.Module)
+    except ImportError:
+        return False
+
+
+def _trace_nnx_method(
+    cls: type,
+    func_spec: FunctionShapeSpec,
+    env: DimEnv,
+) -> TraceResult:
+    """Trace a Flax NNX module method using nnx.eval_shape."""
+    from flax import nnx
+
+    abstract_inputs: dict[str, object] = {}
+    for pname, pspec in func_spec.params.items():
+        if pspec.is_any_shape:
+            continue
+        import jax
+
+        shape = env.make_shape(pspec)
+        dtype = _resolve_jax_dtype(pspec.dtype)
+        abstract_inputs[pname] = jax.ShapeDtypeStruct(shape, dtype)
+
+    try:
+        # Create abstract module instance via nnx.eval_shape
+        abstract_model = nnx.eval_shape(lambda: cls(d_in=2, d_out=3, rngs=nnx.Rngs(0)))
+    except Exception:
+        # Fallback: try common constructor patterns
+        try:
+            abstract_model = nnx.eval_shape(lambda: cls(rngs=nnx.Rngs(0)))
+        except Exception as e:
+            return TraceResult(
+                function_name=func_spec.name,
+                output_shape=None,
+                output_dtype=None,
+                intermediates=[],
+                error=f"Could not instantiate NNX module {cls.__name__}: {e}",
+            )
+
+    # Trace the method with nnx.eval_shape
+    try:
+        method = getattr(abstract_model, func_spec.name)
+        output_struct = nnx.eval_shape(lambda: method(**abstract_inputs))
+    except Exception as e:
+        return TraceResult(
+            function_name=func_spec.name,
+            output_shape=None,
+            output_dtype=None,
+            intermediates=[],
+            error=str(e),
+        )
+
+    # Extract output shape
+    if hasattr(output_struct, "shape"):
+        output_shape = output_struct.shape
+        output_dtype = str(output_struct.dtype)
+    else:
+        import jax
+
+        leaves = jax.tree.leaves(output_struct)
+        if leaves and hasattr(leaves[0], "shape"):
+            output_shape = leaves[0].shape
+            output_dtype = str(leaves[0].dtype)
+        else:
+            output_shape = None
+            output_dtype = None
+
+    return TraceResult(
+        function_name=func_spec.name,
+        output_shape=output_shape,
+        output_dtype=output_dtype,
+        intermediates=[],
+        error=None,
+    )
+
+
+def _resolve_jax_dtype(dtype_str: str) -> object:
+    """Resolve a jaxtyc dtype string to a JAX dtype."""
+    from jaxtyc.analyzer.tracer import _resolve_jax_dtype as _resolve
+
+    return _resolve(dtype_str)
+
+
+def _trace_eqx_method(
+    cls: type,
+    func_spec: FunctionShapeSpec,
+    env: DimEnv,
+) -> TraceResult:
+    """Trace an equinox module method using jax.eval_shape with a bound method."""
+    import jax
+
+    abstract_inputs: dict[str, jax.ShapeDtypeStruct] = {}
+    for pname, pspec in func_spec.params.items():
+        if pspec.is_any_shape:
+            continue
+        shape = env.make_shape(pspec)
+        dtype = _resolve_jax_dtype(pspec.dtype)
+        abstract_inputs[pname] = jax.ShapeDtypeStruct(shape, dtype)
+
+    # Equinox modules are pytrees — instantiate one with concrete params,
+    # then trace __call__ with jax.eval_shape passing the model as a static arg
+    try:
+        key = jax.random.key(0)
+        # Try common constructor patterns
+        try:
+            model = cls(d_in=2, d_out=3, key=key)
+        except Exception:
+            try:
+                model = cls(key=key)
+            except Exception as e:
+                return TraceResult(
+                    function_name=func_spec.name,
+                    output_shape=None,
+                    output_dtype=None,
+                    intermediates=[],
+                    error=f"Could not instantiate equinox module {cls.__name__}: {e}",
+                )
+
+        method = getattr(model, func_spec.name)
+
+        def wrapper(**kwargs: object) -> object:
+            return method(**kwargs)
+
+        output_struct = jax.eval_shape(wrapper, **abstract_inputs)
+    except Exception as e:
+        return TraceResult(
+            function_name=func_spec.name,
+            output_shape=None,
+            output_dtype=None,
+            intermediates=[],
+            error=str(e),
+        )
+
+    if hasattr(output_struct, "shape"):
+        output_shape = output_struct.shape
+        output_dtype = str(output_struct.dtype)
+    else:
+        leaves = jax.tree.leaves(output_struct)
+        if leaves and hasattr(leaves[0], "shape"):
+            output_shape = leaves[0].shape
+            output_dtype = str(leaves[0].dtype)
+        else:
+            output_shape = None
+            output_dtype = None
+
+    return TraceResult(
+        function_name=func_spec.name,
+        output_shape=output_shape,
+        output_dtype=output_dtype,
+        intermediates=[],
+        error=None,
+    )

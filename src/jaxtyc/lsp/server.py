@@ -16,6 +16,8 @@ from pygls.lsp.server import LanguageServer
 
 from jaxtyc.analyzer.annotations import extract_function_specs
 from jaxtyc.analyzer.pipeline import analyze_file
+from jaxtyc.config import JaxtycConfig
+from jaxtyc.config import load_config
 from jaxtyc.types import IntermediateShape
 
 logger = logging.getLogger(__name__)
@@ -32,7 +34,13 @@ _codelens_cache: dict[str, list[tuple[int, str]]] = {}
 _debounce_timers: dict[str, threading.Timer] = {}
 _debounce_lock = threading.Lock()
 
-DEBOUNCE_SECONDS = 0.5
+# Server config — loaded from workspace root on initialize
+_config: JaxtycConfig = JaxtycConfig()
+
+
+def _debounce_seconds() -> float:
+    """Get the debounce delay in seconds from config."""
+    return _config.debounce_ms / 1000.0
 
 
 def _uri_to_path(uri: str) -> str:
@@ -189,13 +197,24 @@ def _schedule_debounced_analysis(ls: LanguageServer, uri: str, source: str) -> N
             existing.cancel()
 
         timer = threading.Timer(
-            DEBOUNCE_SECONDS,
+            _debounce_seconds(),
             _analyze_and_publish,
             args=(ls, uri, source),
         )
         timer.daemon = True
         _debounce_timers[uri] = timer
         timer.start()
+
+
+@server.feature(types.INITIALIZED)
+def on_initialized(ls: LanguageServer, params: types.InitializedParams) -> None:
+    """Load config from workspace root on initialization."""
+    global _config  # noqa: PLW0603
+    root_uri = ls.workspace.root_uri
+    if root_uri:
+        root_path = _uri_to_path(root_uri)
+        _config = load_config(root_path)
+        logger.info("Loaded config from %s: debounce_ms=%d", root_path, _config.debounce_ms)
 
 
 @server.thread()

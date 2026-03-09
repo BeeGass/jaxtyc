@@ -37,7 +37,8 @@ dependencies = [
 [project.optional-dependencies]
 watch = ["watchfiles>=1.0"]
 flax = ["flax>=0.10.0"]
-all = ["jaxtyc[watch,flax]"]
+equinox = ["equinox>=0.11"]
+all = ["jaxtyc[watch,flax,equinox]"]
 
 [dependency-groups]
 dev = [
@@ -94,7 +95,7 @@ force-single-line = true
 
 [tool.ruff.lint.extend-per-file-ignores]
 "test_*.py" = ["E731", "F841", "SIM105"]
-"tests/fixtures/*.py" = ["F722"]
+"tests/fixtures/*.py" = ["F722", "F821"]
 
 # -----------------------------------------------------------------------------
 # ty - Static Type Checker
@@ -114,6 +115,7 @@ replace-imports-with-any = ["jaxtyping.*"]
 allowed-unresolved-imports = [
     "jaxtyping.*",
     "flax.*",
+    "equinox.*",
     "watchfiles.*",
 ]
 
