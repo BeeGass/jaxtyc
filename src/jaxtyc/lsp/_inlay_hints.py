@@ -13,7 +13,8 @@ from jaxtyc.lsp.server import server
 def inlay_hint(ls: LanguageServer, params: types.InlayHintParams) -> list[types.InlayHint] | None:
     """Show resolved shapes as inline hints next to operations."""
     uri = params.text_document.uri
-    intermediates = _state.analysis_cache.get(uri, [])
+    with _state.cache_lock:
+        intermediates = _state.analysis_cache.get(uri, [])
     if not intermediates:
         return None
 

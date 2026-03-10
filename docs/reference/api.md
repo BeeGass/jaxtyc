@@ -20,6 +20,14 @@
 
 ::: jaxtyc.types.IntermediateShape
 
+::: jaxtyc.types.DimLocation
+
+::: jaxtyc.types.CallSite
+
+::: jaxtyc.types.DiagnosticData
+
+::: jaxtyc.types.SuppressionComment
+
 ## Configuration
 
 ::: jaxtyc.config.JaxtycConfig

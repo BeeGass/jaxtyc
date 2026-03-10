@@ -14,6 +14,8 @@ If no `pyproject.toml` exists or the `[tool.jaxtyc]` section is absent, all defa
 | `ignore_rules` | `list[str]` | `[]` | Rule codes to suppress regardless of severity. |
 | `exclude` | `list[str]` | `[]` | Glob patterns for files to skip during analysis. Matched with `fnmatch`. |
 | `debounce_ms` | `int` | `500` | Delay in milliseconds before the LSP server re-analyzes after an edit. |
+| `prefer_einops` | `bool` | `false` | When `true`, einops-style suggestions appear first in code actions. Overridable with `JAXTYC_PREFER_EINOPS=1`. Requires the `einops` extra. |
+| `hover_compact` | `bool` | `true` | When `true`, compacts hover text in multiplexer mode (strips escape sequences, collapses blank lines, truncates at 1500 chars). |
 
 ---
 
@@ -25,6 +27,7 @@ severity = "warning"
 ignore_rules = ["trace-error"]
 exclude = ["tests/**", "examples/**", "benchmarks/**"]
 debounce_ms = 300
+prefer_einops = true
 ```
 
 ---
@@ -52,6 +55,9 @@ These are the rule codes emitted by jaxtyc, usable in `ignore_rules`:
 | `shape-mismatch` | error | Traced output shape does not match the annotated return shape. |
 | `rank-mismatch` | error | Traced output rank (number of dims) differs from annotation. |
 | `trace-error` | error | `jax.eval_shape` raised an exception during tracing. |
+| `param-inconsistency` | error | Parameter annotation conflicts with the resolved input shape. |
+| `cross-function-mismatch` | error | Callee output shape contradicts its annotation at a call site. |
+| `return-count-mismatch` | error | Tuple return element count differs from annotation. |
 | `file-not-found` | info | The specified file path does not exist. |
 | `read-error` | info | The file could not be read (permissions, encoding). |
 | `import-error` | info | The module could not be imported for tracing. |

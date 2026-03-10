@@ -12,7 +12,10 @@ from jaxtyc.lsp.suggestions import suggest_fixes
 
 @server.feature(
     types.TEXT_DOCUMENT_CODE_ACTION,
-    types.CodeActionOptions(code_action_kinds=[types.CodeActionKind.QuickFix]),
+    types.CodeActionOptions(
+        code_action_kinds=[types.CodeActionKind.QuickFix],
+        resolve_provider=True,
+    ),
 )
 def code_action(
     ls: LanguageServer, params: types.CodeActionParams
@@ -53,6 +56,17 @@ def code_action(
                         data={
                             "code": fix.code,
                             "kind": fix.kind,
+                            "uri": uri,
+                            "range": {
+                                "start": {
+                                    "line": diag.range.start.line,
+                                    "character": diag.range.start.character,
+                                },
+                                "end": {
+                                    "line": diag.range.end.line,
+                                    "character": diag.range.end.character,
+                                },
+                            },
                         },
                     )
                 )
@@ -88,3 +102,30 @@ def code_action(
         )
 
     return actions or None
+
+
+@server.feature(types.CODE_ACTION_RESOLVE)
+def code_action_resolve(ls: LanguageServer, params: types.CodeAction) -> types.CodeAction:
+    """Resolve a shape-fix code action by attaching a WorkspaceEdit."""
+    data = params.data
+    if not isinstance(data, dict) or "code" not in data:
+        return params
+    uri = data.get("uri", "")
+    diag_range = data.get("range")
+    if not uri or diag_range is None:
+        return params
+    line = diag_range["start"]["line"]
+    params.edit = types.WorkspaceEdit(
+        changes={
+            uri: [
+                types.TextEdit(
+                    range=types.Range(
+                        start=types.Position(line=line + 1, character=0),
+                        end=types.Position(line=line + 1, character=0),
+                    ),
+                    new_text=f"# Suggested fix: {data['code']}\n",
+                )
+            ]
+        }
+    )
+    return params

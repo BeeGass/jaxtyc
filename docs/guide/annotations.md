@@ -207,9 +207,12 @@ def cross_entropy(
 
 ## Limitations
 
-- **No tuple/pytree returns.** If a function returns a tuple or nested pytree of arrays, jaxtyc only checks the first leaf. Multi-output annotations are not yet supported.
 - **No runtime-dependent shapes.** Shapes that depend on array *values* (e.g., `jnp.where` producing variable-length output) cannot be statically determined. jaxtyc reports the shape that `jax.eval_shape` computes, which may differ from the actual runtime shape in pathological cases.
-- **No cross-function inference.** Each function is traced independently. If function `A` calls function `B`, the shapes inside `B` are not checked when analyzing `A` -- you need annotations on `B` as well.
 - **Variadic and ellipsis expand to fixed rank.** `*batch` always expands to exactly 2 dimensions and `...` prefix also expands to 2. If your actual batch rank differs, the rank check may produce a false positive. This is a deliberate simplification for static analysis.
 - **Import side effects.** jaxtyc imports your module to get live function objects for `jax.eval_shape`. If your module has import-time side effects (GPU initialization, file I/O), those will execute during analysis.
 - **Abstract dtype resolution.** `Num`, `Shaped`, `Key`, and `Scalar` are mapped to a single representative dtype. If your function's behavior depends on the specific dtype within an abstract class, jaxtyc may not catch dtype-related shape differences.
+
+!!! tip "What IS supported"
+    - **Tuple/PyTree returns**: `tuple[Float[Array, "..."], Float[Array, "..."]]` return annotations are checked element-by-element. Element count mismatches trigger `return-count-mismatch`.
+    - **Cross-function shape propagation**: When function `A` calls annotated function `B`, jaxtyc verifies that `B`'s traced output matches its annotation at the call site (`cross-function-mismatch`). Parameter consistency is also checked (`param-inconsistency`).
+    - **Inline suppressions**: Add `# jaxtyc: ignore` or `# jaxtyc: ignore[rule-name]` to suppress diagnostics per-line.

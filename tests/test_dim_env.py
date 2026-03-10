@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from jaxtyc.analyzer.dim_env import MIN_PRIME
 from jaxtyc.analyzer.dim_env import DimEnv
 from jaxtyc.analyzer.dim_env import _prime_sieve
 from jaxtyc.types import DimSpec
@@ -39,9 +40,9 @@ class TestDimEnv:
         seq = env.get_size("seq")
         d_model = env.get_size("d_model")
         assert batch != seq != d_model
-        # All should be prime
+        # All should be primes >= MIN_PRIME
         for size in (batch, seq, d_model):
-            assert size >= 2
+            assert size >= MIN_PRIME
 
     def test_same_name_same_size(self) -> None:
         env = DimEnv()
@@ -155,6 +156,36 @@ class TestDimEnv:
         names = [f"dim_{i}" for i in range(10)]
         sizes = [env.get_size(n) for n in names]
         assert len(set(sizes)) == 10  # All unique
+
+    def test_no_collision_with_literal_dims(self) -> None:
+        env = DimEnv(reserved=frozenset({2, 7}))
+        spec = ShapeSpec(
+            dims=(DimSpec(kind="named", name="batch"), DimSpec(kind="fixed", size=2)),
+            dtype="float32",
+        )
+        shape = env.make_shape(spec)
+        assert shape[1] == 2  # literal preserved
+        assert shape[0] != 2  # named dim skipped prime 2
+        assert shape[0] >= MIN_PRIME
+        assert env.resolve_name(2) is None
+        assert env.resolve_name(shape[0]) == "batch"
+
+    def test_anonymous_dims_unique_across_functions(self) -> None:
+        env = DimEnv()
+        spec_a = ShapeSpec(
+            dims=(DimSpec(kind="anonymous"), DimSpec(kind="named", name="dim")),
+            dtype="float32",
+        )
+        spec_b = ShapeSpec(
+            dims=(DimSpec(kind="anonymous"), DimSpec(kind="named", name="dim")),
+            dtype="float32",
+        )
+        shape_a = env.make_shape(spec_a)
+        shape_b = env.make_shape(spec_b)
+        # Anonymous dims at same position in different specs should be different primes
+        assert shape_a[0] != shape_b[0]
+        # Named dim "dim" should be the same
+        assert shape_a[1] == shape_b[1]
 
     def test_consistent_across_make_shape_calls(self) -> None:
         env = DimEnv()

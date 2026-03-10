@@ -1,6 +1,6 @@
 [project]
 name = "jaxtyc"
-version = "0.3.0"
+version = "0.3.1"
 description = "Static array shape checking for JAX powered by eval_shape"
 readme = "README.md"
 requires-python = ">=3.11,!=3.12,<3.15"
@@ -23,6 +23,7 @@ classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "Topic :: Software Development :: Quality Assurance",
     "Typing :: Typed",
@@ -67,7 +68,12 @@ jaxtyc = "jaxtyc.cli.main:main"
 Homepage = "https://github.com/BeeGass/jaxtyc"
 Documentation = "https://beegass.github.io/jaxtyc/"
 Repository = "https://github.com/BeeGass/jaxtyc"
+Changelog = "https://github.com/BeeGass/jaxtyc/blob/main/CHANGELOG.md"
 "Bug Tracker" = "https://github.com/BeeGass/jaxtyc/issues"
+
+# =============================================================================
+# Build System
+# =============================================================================
 
 [build-system]
 requires = ["hatchling"]
@@ -76,20 +82,30 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/jaxtyc"]
 
+# =============================================================================
+# uv
+# =============================================================================
+
 [tool.uv]
 package = true
 default-groups = ["dev"]
+required-version = ">=0.10"
+environments = ["implementation_name == 'cpython'"]
 
-# -----------------------------------------------------------------------------
-# Ruff - Linter / Formatter
-# -----------------------------------------------------------------------------
+# =============================================================================
+# Ruff — Linter / Formatter
+# =============================================================================
+
 [tool.ruff]
-target-version = "py313"
+target-version = "py311"
 line-length = 100
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM"]
-ignore = ["E501", "UP040"]
+select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM", "N", "A", "DTZ", "T10", "RET"]
+ignore = [
+    "E501",   # line too long — formatter handles this
+    "UP040",  # TypeAlias required for Python 3.11 compat (no `type` statement)
+]
 
 [tool.ruff.lint.isort]
 force-single-line = true
@@ -98,9 +114,10 @@ force-single-line = true
 "test_*.py" = ["E731", "F841", "SIM105"]
 "tests/fixtures/*.py" = ["F722", "F821"]
 
-# -----------------------------------------------------------------------------
-# ty - Static Type Checker
-# -----------------------------------------------------------------------------
+# =============================================================================
+# ty — Static Type Checker
+# =============================================================================
+
 [tool.ty.environment]
 python-version = "3.13"
 
@@ -127,11 +144,49 @@ include = ["tests/**"]
 [tool.ty.overrides.rules]
 possibly-unresolved-reference = "ignore"
 
-# -----------------------------------------------------------------------------
+# =============================================================================
 # Pytest
-# -----------------------------------------------------------------------------
+# =============================================================================
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_functions = ["test_*"]
 addopts = "-v --tb=short"
+filterwarnings = [
+    "ignore::DeprecationWarning:jax.*",
+    "ignore::FutureWarning:jax.*",
+]
+
+# =============================================================================
+# Coverage
+# =============================================================================
+
+[tool.coverage.run]
+source = ["jaxtyc"]
+branch = true
+omit = [
+    "src/jaxtyc/cli/*",
+    "src/jaxtyc/lsp/mux.py",
+]
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "if __name__ == .__main__.",
+    "@overload",
+    "raise NotImplementedError",
+    "\\.\\.\\.",
+]
+
+# =============================================================================
+# jaxtyc — Self-analysis config
+# =============================================================================
+
+[tool.jaxtyc]
+severity = "warning"
+ignore_rules = []
+debounce_ms = 300

@@ -96,10 +96,13 @@ def import_module_from_path(file_path: str) -> ModuleType:
     if not path.suffix == ".py":
         raise ImportError(f"Not a Python file: {file_path}")
 
-    # Discover and activate the project's venv
+    # Venv activation is permanent (shared state for session)
     venv = _find_venv(path.parent)
     if venv is not None:
         _activate_venv(venv)
+
+    # Save sys.path before adding temporary entries
+    saved_path = sys.path[:]
 
     # Add project root and src/ directory to sys.path for package imports
     project_root = _find_project_root(path.parent)
@@ -122,9 +125,17 @@ def import_module_from_path(file_path: str) -> ModuleType:
 
     spec = importlib.util.spec_from_file_location(unique_name, str(path))
     if spec is None or spec.loader is None:
+        sys.path[:] = saved_path
         raise ImportError(f"Cannot create module spec for: {file_path}")
 
     module = importlib.util.module_from_spec(spec)
     sys.modules[unique_name] = module
-    spec.loader.exec_module(module)
+    try:
+        spec.loader.exec_module(module)
+    except Exception:
+        sys.path[:] = saved_path
+        del sys.modules[unique_name]
+        raise
+
+    sys.path[:] = saved_path
     return module

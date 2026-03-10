@@ -5,6 +5,39 @@ All notable changes to jaxtyc are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.3.1] — 2026-03-10
+
+### Fixed
+
+- **Prime collision with literal dimensions**: `DimEnv` now skips primes below `MIN_PRIME` (101) and reserves literal dimension values, preventing ambiguous `resolve_name()` results for annotations like `Float[Array, "batch 2"]`
+- **Anonymous dimension collision**: Each anonymous dim (`_`) now gets a globally unique counter instead of position-based naming, preventing cross-function prime sharing
+- **Pipeline zip misalignment**: Traced results are now indexed by function name instead of zipped with specs, preventing wrong spec/trace pairing when functions are skipped during tracing
+- **sys.path pollution**: `import_module_from_path()` now saves and restores `sys.path` after module loading, preventing monotonic growth in long-running LSP sessions
+- **read_message crash on IncompleteReadError**: Mux `read_message()` now catches `asyncio.IncompleteReadError` and `ConnectionResetError`, returning `None` instead of crashing the output handler
+- **TextDocumentSyncKind defaulting to Incremental**: LSP server now explicitly sets `TextDocumentSyncKind.Full`, fixing `didChange` content extraction when running `jaxtyc lsp` directly (without mux)
+- **Mux URI percent-decoding**: `_uri_to_path()` now uses `urllib.parse.unquote` + `urlparse` instead of naive string slicing, correctly handling paths with spaces and special characters
+- **Mux hardcoded version**: Synthetic initialize response now uses `importlib.metadata.version()` instead of a hardcoded string
+- **Unsynchronized cache access**: Added `cache_lock` to `_state.py` for atomic multi-cache reads and writes across threads
+- **`typing.Tuple` not recognized**: Annotation parser now handles both `tuple` and `Tuple` (case-insensitive) for return type extraction
+- **Missing posonly/kwonly arg parsing**: Annotation extractor now iterates `posonlyargs + args + kwonlyargs`, catching all jaxtyping-annotated parameters
+- **`async def` name column offset**: `FunctionShapeSpec.name_col_offset` now accounts for 10-char `async def` prefix instead of hardcoded 4-char `def` offset
+- **Dual-request timeout tasks linger**: `finalize_dual()` now cancels pending timeout tasks when both servers respond before the 3-second window
+- **`$/cancelRequest` ID remapping**: Cancel requests now forward the remapped jaxtyc ID to the jaxtyc server instead of the client's original ID
+
+### Added
+
+- **Code action resolve handler**: Shape-fix quick actions now attach `WorkspaceEdit` via `codeAction/resolve` instead of being no-ops
+- **Config-based diagnostic filtering in LSP**: `filter_diagnostics()` now applied in `_analyze_and_publish`, respecting `severity` threshold and `ignore_rules` from `[tool.jaxtyc]`
+- **Mux synthetic capabilities**: Added `signatureHelpProvider`, `semanticTokensProvider`, `linkedEditingRangeProvider`, `documentHighlightProvider`, `prepareRenameProvider` to the mux initialize response
+- **CLI integration tests**: 43 new tests covering config-based filtering (`severity`, `ignore_rules`, `exclude`), all output formats, `main()` direct invocation, helper functions, env var overrides, and end-to-end fixture checks
+- **Mux integration tests**: 54 new tests covering all helper functions (`_detect_project_root`, `_patch_root_uri`, `_extract_file_path_from_msg`, `_find_primary_server`, `_hover_compact_enabled`, `_clean_hover_text`), merge strategies, and full subprocess lifecycle (synthetic init, server startup, diagnostics, clean exit)
+- **Expanded unit tests**: `test_checker.py` (call-site checks, reserved dims), `test_dim_env.py` (literal collision, anonymous uniqueness), `test_annotations.py` (posonly/kwonly args, async def offset, `Tuple` return), `test_integration.py` (tuple return, cross-function mismatch), `test_self_analysis.py` (orphaned fixtures wired in)
+
+### Changed
+
+- **pyproject.toml**: Fixed `target-version` from `py313` to `py311`; added ruff rules N, A, DTZ, T10, RET; added `[tool.coverage.run]` and `[tool.coverage.report]` sections; added Python 3.14 classifier; added `[tool.jaxtyc]` self-config section; added `required-version` and `environments` to `[tool.uv]`; added Changelog URL to `[project.urls]`; added `filterwarnings` to pytest config
+- Test count: 273 -> 368
+
 ## [v0.3.0] — 2026-03-09
 
 ### Added
@@ -91,6 +124,7 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Flax NNX and Equinox module support (auto-skips `self`/`cls` parameters)
 - CI workflow and mkdocs documentation site
 
+[v0.3.1]: https://github.com/BeeGass/jaxtyc/compare/v0.3.0...v0.3.1
 [v0.3.0]: https://github.com/BeeGass/jaxtyc/compare/v0.2.0...v0.3.0
 [v0.2.0]: https://github.com/BeeGass/jaxtyc/compare/v0.1.0...v0.2.0
 [v0.1.0]: https://github.com/BeeGass/jaxtyc/releases/tag/v0.1.0

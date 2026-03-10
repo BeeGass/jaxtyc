@@ -21,7 +21,8 @@ def text_document_diagnostic(
 ) -> types.RelatedFullDocumentDiagnosticReport:
     """Pull model: return cached diagnostics for a file."""
     uri = params.text_document.uri
-    cached = _state.diagnostics_cache.get(uri, [])
+    with _state.cache_lock:
+        cached = _state.diagnostics_cache.get(uri, [])
     return types.RelatedFullDocumentDiagnosticReport(
         kind=types.DocumentDiagnosticReportKind.Full,
         items=cached,
@@ -67,10 +68,11 @@ def did_change(ls: LanguageServer, params: types.DidChangeTextDocumentParams) ->
 def did_close(ls: LanguageServer, params: types.DidCloseTextDocumentParams) -> None:
     """Clear cached data when a document is closed."""
     uri = params.text_document.uri
-    _state.analysis_cache.pop(uri, None)
-    _state.codelens_cache.pop(uri, None)
-    _state.diagnostics_cache.pop(uri, None)
-    _state.dim_env_cache.pop(uri, None)
+    with _state.cache_lock:
+        _state.analysis_cache.pop(uri, None)
+        _state.codelens_cache.pop(uri, None)
+        _state.diagnostics_cache.pop(uri, None)
+        _state.dim_env_cache.pop(uri, None)
     # Cancel any pending debounce timer
     with _state.debounce_lock:
         existing = _state.debounce_timers.pop(uri, None)

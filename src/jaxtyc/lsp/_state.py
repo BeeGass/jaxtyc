@@ -21,6 +21,9 @@ diagnostics_cache: dict[str, list[Any]] = {}
 # DimEnv cache per URI for hover enhancement
 dim_env_cache: dict[str, object] = {}
 
+# Lock protecting multi-cache updates
+cache_lock: threading.Lock = threading.Lock()
+
 # Debounce state
 debounce_timers: dict[str, threading.Timer] = {}
 debounce_lock: threading.Lock = threading.Lock()

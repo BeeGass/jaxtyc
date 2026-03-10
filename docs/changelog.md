@@ -5,6 +5,39 @@ All notable changes to jaxtyc are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## v0.3.1 — 2026-03-10
+
+### Fixed
+
+- **Prime collision with literal dimensions**: `DimEnv` now skips primes below `MIN_PRIME` (101) and reserves literal dimension values, preventing ambiguous `resolve_name()` for annotations like `Float[Array, "batch 2"]`
+- **Anonymous dimension collision**: Each anonymous dim (`_`) gets a globally unique counter instead of position-based naming
+- **Pipeline zip misalignment**: Traced results indexed by function name instead of zipped with specs
+- **sys.path pollution**: `import_module_from_path()` saves and restores `sys.path` after module loading
+- **read_message crash on IncompleteReadError**: Mux catches incomplete reads gracefully
+- **TextDocumentSyncKind defaulting to Incremental**: LSP server explicitly sets `Full` sync
+- **Mux URI percent-decoding**: Uses `urllib.parse.unquote` for correct path handling
+- **Mux hardcoded version**: Uses `importlib.metadata.version()` dynamically
+- **Unsynchronized cache access**: Added `cache_lock` for atomic multi-cache operations
+- **`typing.Tuple` not recognized**: Case-insensitive tuple return type detection
+- **Missing posonly/kwonly arg parsing**: Iterates all arg types in annotation extraction
+- **`async def` name column offset**: Correct 10-char offset for async functions
+- **Dual-request timeout cleanup**: Cancels pending timeout tasks on early completion
+- **`$/cancelRequest` ID remapping**: Forwards remapped jaxtyc ID correctly
+
+### Added
+
+- **Code action resolve handler**: Shape-fix quick actions now attach `WorkspaceEdit` via `codeAction/resolve`
+- **Config-based diagnostic filtering in LSP**: `filter_diagnostics()` applied in `_analyze_and_publish`
+- **Mux synthetic capabilities**: 5 missing capability providers added to initialize response
+- **CLI integration tests**: 43 new tests covering config filtering, formats, helpers, env overrides
+- **Mux integration tests**: 54 new tests covering helpers, merge strategies, subprocess lifecycle
+- **Expanded unit tests**: Call-site checks, reserved dims, posonly/kwonly args, async def, Tuple returns
+
+### Changed
+
+- **pyproject.toml**: Fixed `target-version` to `py311`; added ruff rules N/A/DTZ/T10/RET; added coverage config; Python 3.14 classifier; `[tool.jaxtyc]` self-config; uv `required-version` and `environments`
+- Test count: 273 -> 368
+
 ## v0.3.0 — 2026-03-10
 
 ### Added
