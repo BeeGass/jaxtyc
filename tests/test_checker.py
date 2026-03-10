@@ -18,7 +18,7 @@ def _named(*names: str, dtype: str = "float32") -> ShapeSpec:
 
 
 class TestCheckFunction:
-    def test_matching_shapes_no_diagnostics(self):
+    def test_matching_shapes_no_diagnostics(self) -> None:
         env = DimEnv()
         func_spec = FunctionShapeSpec(
             name="attention",
@@ -40,7 +40,7 @@ class TestCheckFunction:
         diagnostics = check_function(func_spec, trace, env)
         assert len(diagnostics) == 0
 
-    def test_shape_mismatch_detected(self):
+    def test_shape_mismatch_detected(self) -> None:
         env = DimEnv()
         func_spec = FunctionShapeSpec(
             name="attention",
@@ -67,7 +67,7 @@ class TestCheckFunction:
         assert "batch" in diag.message
         assert "seq" in diag.message or "head_dim" in diag.message
 
-    def test_rank_mismatch_detected(self):
+    def test_rank_mismatch_detected(self) -> None:
         env = DimEnv()
         func_spec = FunctionShapeSpec(
             name="project",
@@ -90,7 +90,7 @@ class TestCheckFunction:
         assert len(diagnostics) == 1
         assert diagnostics[0].rule == "rank-mismatch"
 
-    def test_no_return_spec_skips_check(self):
+    def test_no_return_spec_skips_check(self) -> None:
         env = DimEnv()
         func_spec = FunctionShapeSpec(
             name="process",
@@ -110,7 +110,7 @@ class TestCheckFunction:
         diagnostics = check_function(func_spec, trace, env)
         assert len(diagnostics) == 0
 
-    def test_trace_error_produces_diagnostic(self):
+    def test_trace_error_produces_diagnostic(self) -> None:
         env = DimEnv()
         func_spec = FunctionShapeSpec(
             name="broken",
@@ -132,7 +132,7 @@ class TestCheckFunction:
         assert diagnostics[0].severity == "error"
         assert diagnostics[0].rule == "trace-error"
 
-    def test_any_shape_skips_check(self):
+    def test_any_shape_skips_check(self) -> None:
         env = DimEnv()
         func_spec = FunctionShapeSpec(
             name="flexible",
@@ -152,7 +152,7 @@ class TestCheckFunction:
         diagnostics = check_function(func_spec, trace, env)
         assert len(diagnostics) == 0
 
-    def test_scalar_return_match(self):
+    def test_scalar_return_match(self) -> None:
         env = DimEnv()
         func_spec = FunctionShapeSpec(
             name="loss",
@@ -172,7 +172,7 @@ class TestCheckFunction:
         diagnostics = check_function(func_spec, trace, env)
         assert len(diagnostics) == 0
 
-    def test_scalar_return_mismatch(self):
+    def test_scalar_return_mismatch(self) -> None:
         env = DimEnv()
         func_spec = FunctionShapeSpec(
             name="loss",
@@ -194,7 +194,7 @@ class TestCheckFunction:
         assert len(diagnostics) == 1
         assert diagnostics[0].rule == "rank-mismatch"
 
-    def test_fixed_dim_mismatch(self):
+    def test_fixed_dim_mismatch(self) -> None:
         env = DimEnv()
         ret_spec = ShapeSpec(
             dims=(
@@ -224,7 +224,7 @@ class TestCheckFunction:
         assert len(diagnostics) == 1
         assert diagnostics[0].rule == "shape-mismatch"
 
-    def test_message_includes_named_shapes(self):
+    def test_message_includes_named_shapes(self) -> None:
         env = DimEnv()
         func_spec = FunctionShapeSpec(
             name="attention",

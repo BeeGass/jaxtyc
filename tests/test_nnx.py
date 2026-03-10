@@ -10,7 +10,7 @@ FIXTURES = Path(__file__).parent / "fixtures"
 
 
 class TestNNXModuleTracing:
-    def test_correct_nnx_module_no_errors(self):
+    def test_correct_nnx_module_no_errors(self) -> None:
         """SimpleMLP.__call__ should produce zero shape errors."""
         result = analyze_file(str(FIXTURES / "nnx_module.py"))
         # Should trace at least the SimpleMLP.__call__
@@ -21,7 +21,7 @@ class TestNNXModuleTracing:
         simple_errors = [d for d in errors if "SimpleMLP" in d.message or "SimpleMLP" in str(d)]
         assert len(simple_errors) == 0
 
-    def test_buggy_nnx_module_shape_mismatch(self):
+    def test_buggy_nnx_module_shape_mismatch(self) -> None:
         """BuggyMLP.__call__ annotates d_in as return but linear produces d_out."""
         result = analyze_file(str(FIXTURES / "nnx_module.py"))
         errors = [d for d in result.diagnostics if d.severity == "error"]
@@ -30,7 +30,7 @@ class TestNNXModuleTracing:
 
 
 class TestEquinoxModuleTracing:
-    def test_correct_eqx_module_no_errors(self):
+    def test_correct_eqx_module_no_errors(self) -> None:
         """SimpleLinear.__call__ should produce zero shape errors."""
         result = analyze_file(str(FIXTURES / "eqx_module.py"))
         assert result.functions_checked >= 1
@@ -41,7 +41,7 @@ class TestEquinoxModuleTracing:
         ]
         assert len(simple_errors) == 0
 
-    def test_buggy_eqx_module_shape_mismatch(self):
+    def test_buggy_eqx_module_shape_mismatch(self) -> None:
         """BuggyLinear.__call__ annotates d_in as return but matmul produces d_out."""
         result = analyze_file(str(FIXTURES / "eqx_module.py"))
         errors = [d for d in result.diagnostics if d.severity == "error"]

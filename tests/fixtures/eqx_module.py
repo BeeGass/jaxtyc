@@ -1,16 +1,18 @@
 """Equinox module fixture for testing equinox-aware tracing."""
 
 import equinox as eqx
+import jax
 import jax.numpy as jnp
 from jaxtyping import Array
 from jaxtyping import Float
+from jaxtyping import PRNGKeyArray
 
 
 class SimpleLinear(eqx.Module):
     weight: Float[Array, "d_in d_out"]
     bias: Float[Array, "d_out"]
 
-    def __init__(self, d_in: int, d_out: int, *, key):
+    def __init__(self, d_in: int, d_out: int, *, key: PRNGKeyArray) -> None:
         self.weight = jax.random.normal(key, (d_in, d_out))
         self.bias = jnp.zeros(d_out)
 
@@ -24,7 +26,7 @@ class SimpleLinear(eqx.Module):
 class BuggyLinear(eqx.Module):
     weight: Float[Array, "d_in d_out"]
 
-    def __init__(self, d_in: int, d_out: int, *, key):
+    def __init__(self, d_in: int, d_out: int, *, key: PRNGKeyArray) -> None:
         self.weight = jax.random.normal(key, (d_in, d_out))
 
     def __call__(
@@ -32,6 +34,3 @@ class BuggyLinear(eqx.Module):
         x: Float[Array, "batch d_in"],
     ) -> Float[Array, "batch d_in"]:  # Bug: should be d_out
         return x @ self.weight
-
-
-import jax  # noqa: E402

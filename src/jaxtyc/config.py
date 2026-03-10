@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import tomllib
 from dataclasses import dataclass
 from dataclasses import field
@@ -10,6 +11,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from jaxtyc.types import Diagnostic
+    from jaxtyc.types import Severity
 
 
 @dataclass(frozen=True)
@@ -26,13 +28,14 @@ class JaxtycConfig:
             after a file change.
     """
 
-    severity: str = "error"
+    severity: Severity = "error"
     ignore_rules: list[str] = field(default_factory=list)
     exclude: list[str] = field(default_factory=list)
     debounce_ms: int = 500
+    prefer_einops: bool = False
 
 
-_KNOWN_KEYS = frozenset(JaxtycConfig.__dataclass_fields__.keys())
+_KNOWN_KEYS: frozenset[str] = frozenset(JaxtycConfig.__dataclass_fields__.keys())
 
 
 def load_config(project_root: str | Path) -> JaxtycConfig:
@@ -64,10 +67,15 @@ def load_config(project_root: str | Path) -> JaxtycConfig:
 
     # Filter to known keys only
     filtered = {k: v for k, v in jaxtyc_config.items() if k in _KNOWN_KEYS}
+
+    # Environment variable override for einops preference
+    if os.environ.get("JAXTYC_PREFER_EINOPS", "").strip() in ("1", "true"):
+        filtered["prefer_einops"] = True
+
     return JaxtycConfig(**filtered)
 
 
-_SEVERITY_LEVELS = {"error": 3, "warning": 2, "info": 1}
+_SEVERITY_LEVELS: dict[str, int] = {"error": 3, "warning": 2, "info": 1}
 
 
 def filter_diagnostics(diagnostics: list[Diagnostic], config: JaxtycConfig) -> list[Diagnostic]:

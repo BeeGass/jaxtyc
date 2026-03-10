@@ -8,12 +8,14 @@ failures on CI, but still catch egregious regressions.
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
 
-def _timed(fn, *args, **kwargs):
+def _timed(fn: Callable[..., Any], *args: Any, **kwargs: Any) -> tuple[Any, float]:
     """Run fn and return (result, elapsed_seconds)."""
     start = time.perf_counter()
     result = fn(*args, **kwargs)
@@ -22,7 +24,7 @@ def _timed(fn, *args, **kwargs):
 
 
 class TestAnnotationParserPerformance:
-    def test_parse_single_file_under_5ms(self):
+    def test_parse_single_file_under_5ms(self) -> None:
         """AST parse a single file should take < 5ms."""
         from jaxtyc.analyzer.annotations import extract_function_specs
 
@@ -33,7 +35,7 @@ class TestAnnotationParserPerformance:
         _, elapsed = _timed(extract_function_specs, source, "bench.py")
         assert elapsed < 0.005, f"AST parse took {elapsed * 1000:.1f}ms, expected < 5ms"
 
-    def test_parse_all_fixtures_under_10ms(self):
+    def test_parse_all_fixtures_under_10ms(self) -> None:
         """Parsing all 6 fixture files should take < 10ms total."""
         from jaxtyc.analyzer.annotations import extract_function_specs
 
@@ -55,7 +57,7 @@ class TestAnnotationParserPerformance:
 
 
 class TestDimEnvPerformance:
-    def test_allocate_50_dims_under_1ms(self):
+    def test_allocate_50_dims_under_1ms(self) -> None:
         """Allocating 50 dimension names should take < 1ms."""
         from jaxtyc.analyzer.dim_env import DimEnv
 
@@ -74,7 +76,7 @@ class TestDimEnvPerformance:
 
 
 class TestTracerPerformance:
-    def test_eval_shape_per_function_under_5ms(self):
+    def test_eval_shape_per_function_under_5ms(self) -> None:
         """trace_function (eval_shape) should take < 5ms per function."""
         import jax.numpy as jnp
 
@@ -116,7 +118,7 @@ class TestTracerPerformance:
         _, elapsed = _timed(trace_function, attention, params, env)
         assert elapsed < 0.005, f"eval_shape took {elapsed * 1000:.2f}ms, expected < 5ms"
 
-    def test_make_jaxpr_per_function_under_10ms(self):
+    def test_make_jaxpr_per_function_under_10ms(self) -> None:
         """extract_source_mapped_intermediates (make_jaxpr) should take < 10ms."""
         import jax.numpy as jnp
 
@@ -159,7 +161,7 @@ class TestTracerPerformance:
 
 
 class TestPipelinePerformance:
-    def test_analyze_single_file_under_50ms(self):
+    def test_analyze_single_file_under_50ms(self) -> None:
         """Full analyze_file on a single-function file should take < 50ms."""
         from jaxtyc.analyzer.pipeline import analyze_file
 
@@ -171,7 +173,7 @@ class TestPipelinePerformance:
         _, elapsed = _timed(analyze_file, path)
         assert elapsed < 0.050, f"analyze_file took {elapsed * 1000:.1f}ms, expected < 50ms"
 
-    def test_analyze_all_fixtures_under_500ms(self):
+    def test_analyze_all_fixtures_under_500ms(self) -> None:
         """Full analyze_file on all 6 fixtures should take < 500ms."""
         from jaxtyc.analyzer.pipeline import analyze_file
 

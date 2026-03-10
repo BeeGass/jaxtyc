@@ -30,7 +30,7 @@ class DimEnv:
     def __init__(self, initial_sieve_limit: int = 1000) -> None:
         self._name_to_size: dict[str, int] = {}
         self._size_to_name: dict[int, str] = {}
-        self._sieve_limit = initial_sieve_limit
+        self._sieve_limit: int = initial_sieve_limit
         self._primes: list[int] = _prime_sieve(initial_sieve_limit)
         self._next_idx: int = 0
 
@@ -119,6 +119,14 @@ class DimEnv:
                 case "anonymous":
                     shape.append(self.get_size(f"_anon_{len(shape)}"))
         return tuple(shape)
+
+    def name_size_mapping(self) -> dict[str, int]:
+        """Return a copy of the dimension name to size mapping.
+
+        Returns:
+            Dictionary mapping dimension names to their assigned prime sizes.
+        """
+        return dict(self._name_to_size)
 
     def reset(self) -> None:
         """Clear all name-to-size mappings and reset the prime counter."""

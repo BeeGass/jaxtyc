@@ -12,32 +12,32 @@ from jaxtyc.types import TraceResult
 
 
 class TestDimSpec:
-    def test_named_dim(self):
+    def test_named_dim(self) -> None:
         d = DimSpec(kind="named", name="batch")
         assert d.kind == "named"
         assert d.name == "batch"
         assert d.size is None
 
-    def test_fixed_dim(self):
+    def test_fixed_dim(self) -> None:
         d = DimSpec(kind="fixed", size=4)
         assert d.kind == "fixed"
         assert d.size == 4
         assert d.name is None
 
-    def test_variadic_dim(self):
+    def test_variadic_dim(self) -> None:
         d = DimSpec(kind="variadic", name="batch")
         assert d.kind == "variadic"
         assert d.name == "batch"
 
-    def test_anonymous_dim(self):
+    def test_anonymous_dim(self) -> None:
         d = DimSpec(kind="anonymous")
         assert d.kind == "anonymous"
 
-    def test_ellipsis_dim(self):
+    def test_ellipsis_dim(self) -> None:
         d = DimSpec(kind="ellipsis")
         assert d.kind == "ellipsis"
 
-    def test_frozen(self):
+    def test_frozen(self) -> None:
         import pytest
 
         d = DimSpec(kind="named", name="seq")
@@ -46,7 +46,7 @@ class TestDimSpec:
 
 
 class TestShapeSpec:
-    def test_basic_shape(self):
+    def test_basic_shape(self) -> None:
         dims = (
             DimSpec(kind="named", name="batch"),
             DimSpec(kind="named", name="seq"),
@@ -58,16 +58,16 @@ class TestShapeSpec:
         assert not spec.is_scalar
         assert not spec.is_any_shape
 
-    def test_scalar(self):
+    def test_scalar(self) -> None:
         spec = ShapeSpec(dims=(), dtype="float32", is_scalar=True)
         assert spec.is_scalar
         assert len(spec.dims) == 0
 
-    def test_any_shape(self):
+    def test_any_shape(self) -> None:
         spec = ShapeSpec(dims=(), dtype="float32", is_any_shape=True)
         assert spec.is_any_shape
 
-    def test_frozen(self):
+    def test_frozen(self) -> None:
         import pytest
 
         spec = ShapeSpec(dims=(), dtype="float32")
@@ -76,7 +76,7 @@ class TestShapeSpec:
 
 
 class TestFunctionShapeSpec:
-    def test_basic(self):
+    def test_basic(self) -> None:
         param = ShapeSpec(
             dims=(DimSpec(kind="named", name="batch"),),
             dtype="float32",
@@ -99,7 +99,7 @@ class TestFunctionShapeSpec:
         assert not func.is_method
         assert func.class_name is None
 
-    def test_method(self):
+    def test_method(self) -> None:
         func = FunctionShapeSpec(
             name="__call__",
             file_path="model.py",
@@ -115,7 +115,7 @@ class TestFunctionShapeSpec:
 
 
 class TestDiagnostic:
-    def test_error(self):
+    def test_error(self) -> None:
         diag = Diagnostic(
             file="model.py",
             line=10,
@@ -127,7 +127,7 @@ class TestDiagnostic:
         assert diag.severity == "error"
         assert diag.rule == "shape-mismatch"
 
-    def test_info(self):
+    def test_info(self) -> None:
         diag = Diagnostic(
             file="model.py",
             line=1,
@@ -140,7 +140,7 @@ class TestDiagnostic:
 
 
 class TestTraceResult:
-    def test_success(self):
+    def test_success(self) -> None:
         result = TraceResult(
             function_name="attention",
             output_shape=(2, 3, 5, 5),
@@ -151,7 +151,7 @@ class TestTraceResult:
         assert result.success
         assert result.output_shape == (2, 3, 5, 5)
 
-    def test_failure(self):
+    def test_failure(self) -> None:
         result = TraceResult(
             function_name="broken",
             output_shape=None,
@@ -164,7 +164,7 @@ class TestTraceResult:
 
 
 class TestIntermediateShape:
-    def test_basic(self):
+    def test_basic(self) -> None:
         inter = IntermediateShape(
             shape=(2, 3, 5),
             dtype="float32",
@@ -180,7 +180,7 @@ class TestIntermediateShape:
 
 
 class TestFileResult:
-    def test_basic(self):
+    def test_basic(self) -> None:
         result = FileResult(
             file_path="model.py",
             functions_checked=3,
@@ -190,7 +190,7 @@ class TestFileResult:
         assert result.functions_checked == 3
         assert len(result.diagnostics) == 0
 
-    def test_with_diagnostics(self):
+    def test_with_diagnostics(self) -> None:
         diag = Diagnostic(
             file="model.py",
             line=10,

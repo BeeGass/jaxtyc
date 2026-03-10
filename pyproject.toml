@@ -1,6 +1,6 @@
 [project]
 name = "jaxtyc"
-version = "0.1.0"
+version = "0.3.0"
 description = "Static array shape checking for JAX powered by eval_shape"
 readme = "README.md"
 requires-python = ">=3.11,!=3.12,<3.15"
@@ -38,7 +38,8 @@ dependencies = [
 watch = ["watchfiles>=1.0"]
 flax = ["flax>=0.10.0"]
 equinox = ["equinox>=0.11"]
-all = ["jaxtyc[watch,flax,equinox]"]
+einops = ["einops>=0.8"]
+all = ["jaxtyc[watch,flax,equinox,einops]"]
 
 [dependency-groups]
 dev = [
@@ -88,7 +89,7 @@ line-length = 100
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM"]
-ignore = ["E501"]
+ignore = ["E501", "UP040"]
 
 [tool.ruff.lint.isort]
 force-single-line = true
@@ -116,6 +117,7 @@ allowed-unresolved-imports = [
     "jaxtyping.*",
     "flax.*",
     "equinox.*",
+    "einops.*",
     "watchfiles.*",
 ]
 

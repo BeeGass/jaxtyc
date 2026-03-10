@@ -19,7 +19,7 @@ def _make_spec(*names: str, dtype: str = "float32") -> ShapeSpec:
 
 
 class TestExtractSourceMappedIntermediates:
-    def test_returns_intermediates_with_shapes(self):
+    def test_returns_intermediates_with_shapes(self) -> None:
         def two_step(x):
             y = x * 2.0
             return y + 1.0
@@ -36,7 +36,7 @@ class TestExtractSourceMappedIntermediates:
             assert inter.dtype != ""
             assert inter.op_name != ""
 
-    def test_named_shapes_resolved(self):
+    def test_named_shapes_resolved(self) -> None:
         def identity(x):
             return x + 0.0  # Forces a jaxpr equation
 
@@ -51,7 +51,7 @@ class TestExtractSourceMappedIntermediates:
             names = inter.named_shape
             assert all(n is not None for n in names)
 
-    def test_source_lines_populated(self):
+    def test_source_lines_populated(self) -> None:
         def matmul_fn(a, b):
             return jnp.matmul(a, b)
 
@@ -69,7 +69,7 @@ class TestExtractSourceMappedIntermediates:
         has_source = any(i.source_line > 0 for i in intermediates)
         assert has_source
 
-    def test_empty_function(self):
+    def test_empty_function(self) -> None:
         def passthrough(x):
             return x
 
@@ -81,7 +81,7 @@ class TestExtractSourceMappedIntermediates:
         # Pure passthrough may produce no jaxpr equations
         assert isinstance(intermediates, list)
 
-    def test_multi_output_ops(self):
+    def test_multi_output_ops(self) -> None:
         def multi_step(x):
             a = jnp.sin(x)
             b = jnp.cos(x)
@@ -95,7 +95,7 @@ class TestExtractSourceMappedIntermediates:
         # Should have intermediates for sin, cos, and add
         assert len(intermediates) >= 3
 
-    def test_filter_by_file(self):
+    def test_filter_by_file(self) -> None:
         def compute(x):
             return jnp.sum(x, axis=-1)
 
