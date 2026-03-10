@@ -120,6 +120,33 @@ def _get_dtype_name(node: ast.expr) -> str | None:
     return None
 
 
+def _try_extract_tuple_return(node: ast.expr) -> list[ShapeSpec] | None:
+    """Try to extract multiple ShapeSpecs from a tuple return annotation.
+
+    Matches patterns like: tuple[Float[Array, "a b"], Float[Array, "c d"]]
+    """
+    if not isinstance(node, ast.Subscript):
+        return None
+
+    # Check for tuple[...] pattern
+    name = _get_dtype_name(node.value)
+    if name != "tuple":
+        return None
+
+    slc = node.slice
+    if not isinstance(slc, ast.Tuple):
+        return None
+
+    specs: list[ShapeSpec] = []
+    for elt in slc.elts:
+        spec = _try_extract_jaxtyping_annotation(elt)
+        if spec is None:
+            return None  # All elements must be jaxtyping annotations
+        specs.append(spec)
+
+    return specs if specs else None
+
+
 def extract_function_specs(source: str, file_path: str) -> list[FunctionShapeSpec]:
     """Extract FunctionShapeSpecs from Python source code.
 
@@ -181,8 +208,14 @@ def _extract_from_function(
                 params[arg.arg] = spec
 
     return_spec: ShapeSpec | None = None
+    return_specs: list[ShapeSpec] | None = None
     if node.returns is not None:
-        return_spec = _try_extract_jaxtyping_annotation(node.returns)
+        # Try tuple return first, fallback to single return
+        return_specs = _try_extract_tuple_return(node.returns)
+        if return_specs is not None:
+            return_spec = return_specs[0] if return_specs else None
+        else:
+            return_spec = _try_extract_jaxtyping_annotation(node.returns)
 
     # Only include functions that have at least one jaxtyping annotation
     if not params and return_spec is None:
@@ -196,8 +229,10 @@ def _extract_from_function(
             col_offset=node.col_offset,
             params=params,
             return_spec=return_spec,
+            return_specs=return_specs,
             is_method=is_method,
             class_name=class_name,
+            end_lineno=node.end_lineno or node.lineno,
         )
     )
 
@@ -226,7 +261,7 @@ def _visit_body_for_calls(
     body: list[ast.stmt],
     file_path: str,
     known_functions: set[str],
-    results: list,
+    results: list[CallSite],
     class_name: str | None,
 ) -> None:
     """Walk statements extracting call sites from function bodies."""
@@ -245,7 +280,7 @@ def _extract_calls_from_body(
     caller_name: str,
     file_path: str,
     known_functions: set[str],
-    results: list,
+    results: list[CallSite],
 ) -> None:
     """Walk a function body extracting calls to known functions."""
     for node in ast.walk(ast.Module(body=body, type_ignores=[])):

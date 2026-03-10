@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from collections.abc import Sequence
 from typing import Any
 
 import jax
@@ -10,7 +11,7 @@ import jax
 from jaxtyc.analyzer.dim_env import DimEnv
 from jaxtyc.types import IntermediateShape
 
-_JAX_INTERNAL_MARKERS = (
+_JAX_INTERNAL_MARKERS: tuple[str, ...] = (
     "site-packages/jax",
     "site-packages/jaxlib",
     "jax/_src/",
@@ -23,7 +24,7 @@ def _is_jax_internal(file_name: str) -> bool:
     return any(marker in file_name for marker in _JAX_INTERNAL_MARKERS)
 
 
-def _find_user_frame(frames: Any) -> tuple[str, int, int]:
+def _find_user_frame(frames: Sequence[Any]) -> tuple[str, int, int]:
     """Find the most specific user frame from a jaxpr traceback.
 
     Returns (file_name, line_num, col) where col is always 0

@@ -3,7 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from dataclasses import field
 from typing import Literal
+from typing import TypeAlias
+
+Severity: TypeAlias = Literal["error", "warning", "info"]
+NamedShape: TypeAlias = tuple[str | None, ...]
 
 
 @dataclass(frozen=True)
@@ -66,6 +71,31 @@ class FunctionShapeSpec:
     return_spec: ShapeSpec | None
     is_method: bool = False
     class_name: str | None = None
+    end_lineno: int = 0
+    return_specs: list[ShapeSpec] | None = None
+
+
+@dataclass(frozen=True)
+class DiagnosticData:
+    """Structured data attached to diagnostics for programmatic consumption.
+
+    Attributes:
+        expected_shape: Expected shape tuple from the annotation.
+        actual_shape: Actual shape tuple from tracing.
+        expected_named: Expected shape as dimension name strings.
+        actual_named: Actual shape as dimension name strings.
+        dim_name_mapping: Map of dimension names to their prime sizes.
+        suggested_fix: Human-readable description of what to fix.
+        rule: Diagnostic rule code.
+    """
+
+    expected_shape: tuple[int, ...] | None = None
+    actual_shape: tuple[int, ...] | None = None
+    expected_named: tuple[str, ...] | None = None
+    actual_named: tuple[str, ...] | None = None
+    dim_name_mapping: dict[str, int] | None = None
+    suggested_fix: str | None = None
+    rule: str = ""
 
 
 @dataclass(frozen=True)
@@ -85,9 +115,10 @@ class Diagnostic:
     file: str
     line: int
     col: int
-    severity: Literal["error", "warning", "info"]
+    severity: Severity
     message: str
     rule: str
+    data: DiagnosticData | None = None
 
 
 @dataclass(frozen=True)
@@ -112,7 +143,7 @@ class IntermediateShape:
     source_file: str
     source_line: int
     source_col: int
-    named_shape: tuple[str | None, ...]
+    named_shape: NamedShape
     op_name: str
 
 
@@ -133,6 +164,9 @@ class TraceResult:
     output_dtype: str | None
     intermediates: list[IntermediateShape]
     error: str | None
+    input_shapes: dict[str, tuple[int, ...]] = field(default_factory=dict)
+    output_shapes: list[tuple[int, ...]] | None = None
+    output_dtypes: list[str] | None = None
 
     @property
     def success(self) -> bool:
@@ -200,3 +234,16 @@ class FileResult:
     functions_checked: int
     diagnostics: list[Diagnostic]
     trace_results: list[TraceResult]
+
+
+@dataclass(frozen=True)
+class SuppressionComment:
+    """An inline suppression comment in source code.
+
+    Attributes:
+        line: 1-based line number where the comment appears.
+        rules: Rule names to suppress. Empty frozenset means suppress all.
+    """
+
+    line: int
+    rules: frozenset[str]

@@ -53,7 +53,7 @@ class WorkspaceIndex:
     """Thread-safe workspace-level index for cross-file navigation queries."""
 
     def __init__(self) -> None:
-        self._lock = threading.Lock()
+        self._lock: threading.Lock = threading.Lock()
         self._files: dict[str, FileIndex] = {}
 
     def update_file(self, file_index: FileIndex) -> None:
@@ -79,6 +79,21 @@ class WorkspaceIndex:
             return None
         for spec in idx.function_specs:
             if spec.lineno == line:
+                return spec
+        return None
+
+    def find_function_containing(self, uri: str, line: int) -> FunctionShapeSpec | None:
+        """Find the function whose signature spans the given 1-based line.
+
+        Matches if ``lineno <= line <= end_lineno`` (covers multi-line signatures).
+        Falls back to lineno-only match if end_lineno is not set.
+        """
+        idx = self.get_file(uri)
+        if idx is None:
+            return None
+        for spec in idx.function_specs:
+            end = spec.end_lineno if spec.end_lineno > 0 else spec.lineno
+            if spec.lineno <= line <= end:
                 return spec
         return None
 
@@ -157,6 +172,14 @@ class WorkspaceIndex:
         for idx in files:
             results.extend(c for c in idx.call_sites if c.callee_name == function_name)
         return results
+
+    def uri_for_file(self, file_path: str) -> str | None:
+        """Look up the URI for a file path from the index."""
+        with self._lock:
+            for fi in self._files.values():
+                if fi.file_path == file_path:
+                    return fi.uri
+        return None
 
     def get_callees_of(self, function_name: str, uri: str) -> list[CallSite]:
         """Find all functions called by the given function."""

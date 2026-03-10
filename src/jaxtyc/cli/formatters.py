@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 
 from jaxtyc.types import FileResult
 
@@ -101,7 +102,7 @@ def format_github(results: list[FileResult], elapsed: float) -> str:
     return "\n".join(lines)
 
 
-FORMATTERS = {
+FORMATTERS: dict[str, Callable[[list[FileResult], float], str]] = {
     "full": format_full,
     "concise": format_concise,
     "json": format_json,

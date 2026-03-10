@@ -16,7 +16,7 @@ from jaxtyc.types import DimSpec
 
 
 class TestParseShapeString:
-    def test_named_dims(self):
+    def test_named_dims(self) -> None:
         spec = parse_shape_string("batch seq d_model", "float32")
         assert spec.dims == (
             DimSpec(kind="named", name="batch"),
@@ -25,7 +25,7 @@ class TestParseShapeString:
         )
         assert spec.dtype == "float32"
 
-    def test_fixed_dim(self):
+    def test_fixed_dim(self) -> None:
         spec = parse_shape_string("batch 4 d_model", "float32")
         assert spec.dims == (
             DimSpec(kind="named", name="batch"),
@@ -33,14 +33,14 @@ class TestParseShapeString:
             DimSpec(kind="named", name="d_model"),
         )
 
-    def test_variadic_dim(self):
+    def test_variadic_dim(self) -> None:
         spec = parse_shape_string("*batch seq", "float32")
         assert spec.dims == (
             DimSpec(kind="variadic", name="batch"),
             DimSpec(kind="named", name="seq"),
         )
 
-    def test_anonymous_dim(self):
+    def test_anonymous_dim(self) -> None:
         spec = parse_shape_string("batch _ d_model", "float32")
         assert spec.dims == (
             DimSpec(kind="named", name="batch"),
@@ -48,23 +48,23 @@ class TestParseShapeString:
             DimSpec(kind="named", name="d_model"),
         )
 
-    def test_ellipsis_in_string(self):
+    def test_ellipsis_in_string(self) -> None:
         spec = parse_shape_string("... d_model", "float32")
         assert spec.dims == (
             DimSpec(kind="ellipsis"),
             DimSpec(kind="named", name="d_model"),
         )
 
-    def test_empty_string_is_scalar(self):
+    def test_empty_string_is_scalar(self) -> None:
         spec = parse_shape_string("", "float32")
         assert spec.is_scalar
         assert spec.dims == ()
 
-    def test_single_dim(self):
+    def test_single_dim(self) -> None:
         spec = parse_shape_string("features", "float32")
         assert spec.dims == (DimSpec(kind="named", name="features"),)
 
-    def test_mixed(self):
+    def test_mixed(self) -> None:
         spec = parse_shape_string("*batch 4 seq head_dim", "float32")
         assert len(spec.dims) == 4
         assert spec.dims[0] == DimSpec(kind="variadic", name="batch")
@@ -79,7 +79,7 @@ class TestParseShapeString:
 
 
 class TestExtractFunctionSpecs:
-    def test_simple_function(self):
+    def test_simple_function(self) -> None:
         source = textwrap.dedent("""\
             from jaxtyping import Array, Float
 
@@ -99,7 +99,7 @@ class TestExtractFunctionSpecs:
         assert len(func.return_spec.dims) == 4
         assert func.return_spec.dims[3] == DimSpec(kind="named", name="seq")
 
-    def test_no_return_annotation(self):
+    def test_no_return_annotation(self) -> None:
         source = textwrap.dedent("""\
             from jaxtyping import Array, Float
 
@@ -111,7 +111,7 @@ class TestExtractFunctionSpecs:
         assert specs[0].return_spec is None
         assert "x" in specs[0].params
 
-    def test_int_annotation(self):
+    def test_int_annotation(self) -> None:
         source = textwrap.dedent("""\
             from jaxtyping import Array, Int
 
@@ -123,7 +123,7 @@ class TestExtractFunctionSpecs:
         assert specs[0].params["ids"].dtype == "int"
         assert specs[0].return_spec.dtype == "int"
 
-    def test_bool_annotation(self):
+    def test_bool_annotation(self) -> None:
         source = textwrap.dedent("""\
             from jaxtyping import Array, Bool
 
@@ -134,7 +134,7 @@ class TestExtractFunctionSpecs:
         assert len(specs) == 1
         assert specs[0].params["x"].dtype == "bool"
 
-    def test_class_method(self):
+    def test_class_method(self) -> None:
         source = textwrap.dedent("""\
             from jaxtyping import Array, Float
 
@@ -150,7 +150,7 @@ class TestExtractFunctionSpecs:
         assert "self" not in func.params
         assert "x" in func.params
 
-    def test_no_jaxtyping_annotations_skipped(self):
+    def test_no_jaxtyping_annotations_skipped(self) -> None:
         source = textwrap.dedent("""\
             def add(x: int, y: int) -> int:
                 return x + y
@@ -158,7 +158,7 @@ class TestExtractFunctionSpecs:
         specs = extract_function_specs(source, "test.py")
         assert len(specs) == 0
 
-    def test_mixed_annotations(self):
+    def test_mixed_annotations(self) -> None:
         source = textwrap.dedent("""\
             from jaxtyping import Array, Float
 
@@ -170,7 +170,7 @@ class TestExtractFunctionSpecs:
         assert "x" in specs[0].params
         assert "training" not in specs[0].params
 
-    def test_multiple_functions(self):
+    def test_multiple_functions(self) -> None:
         source = textwrap.dedent("""\
             from jaxtyping import Array, Float
 
@@ -185,7 +185,7 @@ class TestExtractFunctionSpecs:
         assert specs[0].name == "encode"
         assert specs[1].name == "decode"
 
-    def test_ellipsis_any_shape(self):
+    def test_ellipsis_any_shape(self) -> None:
         source = textwrap.dedent("""\
             from jaxtyping import Array, Float
 
@@ -196,7 +196,7 @@ class TestExtractFunctionSpecs:
         assert len(specs) == 1
         assert specs[0].params["x"].is_any_shape
 
-    def test_scalar_annotation(self):
+    def test_scalar_annotation(self) -> None:
         source = textwrap.dedent("""\
             from jaxtyping import Array, Float
 
@@ -207,7 +207,7 @@ class TestExtractFunctionSpecs:
         assert len(specs) == 1
         assert specs[0].return_spec.is_scalar
 
-    def test_lineno_tracking(self):
+    def test_lineno_tracking(self) -> None:
         source = textwrap.dedent("""\
             from jaxtyping import Array, Float
 
@@ -230,7 +230,7 @@ class TestExtractFunctionSpecs:
 
 
 class TestExtractDimLocations:
-    def test_basic_shape_string(self):
+    def test_basic_shape_string(self) -> None:
         source = 'def f(x: Float[Array, "batch seq d_model"]): pass\n'
         locs = extract_dim_locations(source, "test.py")
         names = [loc.dim_name for loc in locs]
@@ -241,7 +241,7 @@ class TestExtractDimLocations:
             assert loc.param_name == "x"
             assert loc.function_name == "f"
 
-    def test_column_offsets(self):
+    def test_column_offsets(self) -> None:
         # "batch seq" starts after the opening quote
         # def f(x: Float[Array, "batch seq"]): pass
         # 0123456789...
@@ -257,7 +257,7 @@ class TestExtractDimLocations:
         assert locs[1].col_start == 29
         assert locs[1].col_end == 32
 
-    def test_multiline_function(self):
+    def test_multiline_function(self) -> None:
         source = textwrap.dedent("""\
             def attention(
                 q: Float[Array, "batch seq"],
@@ -278,7 +278,7 @@ class TestExtractDimLocations:
         assert locs[4].param_name == "__return__"
         assert locs[5].param_name == "__return__"
 
-    def test_variadic_dim(self):
+    def test_variadic_dim(self) -> None:
         source = 'def f(x: Float[Array, "*batch seq"]): pass\n'
         locs = extract_dim_locations(source, "test.py")
         assert len(locs) == 2
@@ -289,19 +289,19 @@ class TestExtractDimLocations:
         assert locs[0].col_end == 29  # end of "batch" token in "*batch"
         assert locs[1].dim_name == "seq"
 
-    def test_fixed_dims_skipped(self):
+    def test_fixed_dims_skipped(self) -> None:
         source = 'def f(x: Float[Array, "batch 4 seq"]): pass\n'
         locs = extract_dim_locations(source, "test.py")
         names = [loc.dim_name for loc in locs]
         assert names == ["batch", "seq"]
 
-    def test_anonymous_and_ellipsis_skipped(self):
+    def test_anonymous_and_ellipsis_skipped(self) -> None:
         source = 'def f(x: Float[Array, "... _ batch"]): pass\n'
         locs = extract_dim_locations(source, "test.py")
         assert len(locs) == 1
         assert locs[0].dim_name == "batch"
 
-    def test_return_annotation(self):
+    def test_return_annotation(self) -> None:
         source = 'def f(x: Float[Array, "a"]) -> Float[Array, "b c"]: pass\n'
         locs = extract_dim_locations(source, "test.py")
         assert len(locs) == 3
@@ -312,7 +312,7 @@ class TestExtractDimLocations:
         assert locs[2].param_name == "__return__"
         assert locs[2].dim_name == "c"
 
-    def test_class_method(self):
+    def test_class_method(self) -> None:
         source = textwrap.dedent("""\
             class Model:
                 def __call__(self, x: Float[Array, "batch dim"]) -> Float[Array, "batch dim"]:
@@ -325,12 +325,12 @@ class TestExtractDimLocations:
             assert loc.function_name == "__call__"
             assert loc.param_name in ("x", "__return__")
 
-    def test_no_jaxtyping_returns_empty(self):
+    def test_no_jaxtyping_returns_empty(self) -> None:
         source = "def f(x: int) -> int: pass\n"
         locs = extract_dim_locations(source, "test.py")
         assert locs == []
 
-    def test_syntax_error_returns_empty(self):
+    def test_syntax_error_returns_empty(self) -> None:
         source = "def f(x: Float[Array, :"
         locs = extract_dim_locations(source, "test.py")
         assert locs == []
@@ -342,7 +342,7 @@ class TestExtractDimLocations:
 
 
 class TestExtractCallSites:
-    def test_basic_call(self):
+    def test_basic_call(self) -> None:
         source = textwrap.dedent("""\
             def encode(x: Float[Array, "batch dim"]): pass
             def pipeline(x: Float[Array, "batch dim"]):
@@ -354,7 +354,7 @@ class TestExtractCallSites:
         assert sites[0].callee_name == "encode"
         assert sites[0].lineno == 3
 
-    def test_multiple_calls(self):
+    def test_multiple_calls(self) -> None:
         source = textwrap.dedent("""\
             def encode(x): pass
             def decode(x): pass
@@ -369,7 +369,7 @@ class TestExtractCallSites:
         for s in sites:
             assert s.caller_name == "autoencoder"
 
-    def test_unknown_function_ignored(self):
+    def test_unknown_function_ignored(self) -> None:
         source = textwrap.dedent("""\
             def f(x):
                 return unknown(x)
@@ -377,7 +377,7 @@ class TestExtractCallSites:
         sites = extract_call_sites(source, "test.py", {"encode"})
         assert len(sites) == 0
 
-    def test_attribute_call(self):
+    def test_attribute_call(self) -> None:
         source = textwrap.dedent("""\
             def f(x):
                 return self.encode(x)
@@ -387,7 +387,7 @@ class TestExtractCallSites:
         assert len(sites) == 1
         assert sites[0].callee_name == "encode"
 
-    def test_class_method_caller(self):
+    def test_class_method_caller(self) -> None:
         source = textwrap.dedent("""\
             class Model:
                 def forward(self, x):
@@ -397,23 +397,23 @@ class TestExtractCallSites:
         assert len(sites) == 1
         assert sites[0].caller_name == "Model.forward"
 
-    def test_col_offsets(self):
+    def test_col_offsets(self) -> None:
         source = "def f(x):\n    return encode(x)\n"
         sites = extract_call_sites(source, "test.py", {"encode"})
         assert len(sites) == 1
         assert sites[0].col_offset == 11
         assert sites[0].end_col_offset == 17  # "encode" is 6 chars
 
-    def test_syntax_error_returns_empty(self):
+    def test_syntax_error_returns_empty(self) -> None:
         sites = extract_call_sites("def f(:", "test.py", {"encode"})
         assert sites == []
 
-    def test_empty_known_functions(self):
+    def test_empty_known_functions(self) -> None:
         source = "def f(x): return encode(x)\n"
         sites = extract_call_sites(source, "test.py", set())
         assert sites == []
 
-    def test_nested_call_in_expression(self):
+    def test_nested_call_in_expression(self) -> None:
         source = textwrap.dedent("""\
             def f(x):
                 y = 1 + encode(x) * 2

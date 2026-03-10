@@ -6,15 +6,17 @@ import json
 import subprocess
 import sys
 import time
+from collections.abc import Generator
 from contextlib import contextmanager
 from pathlib import Path
+from typing import Any
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
 
-def _lsp_message(method: str, params: dict, msg_id: int | None = None) -> bytes:
+def _lsp_message(method: str, params: dict[str, Any], msg_id: int | None = None) -> bytes:
     """Encode an LSP JSON-RPC message with Content-Length header."""
-    body: dict = {"jsonrpc": "2.0", "method": method, "params": params}
+    body: dict[str, Any] = {"jsonrpc": "2.0", "method": method, "params": params}
     if msg_id is not None:
         body["id"] = msg_id
     content = json.dumps(body).encode("utf-8")
@@ -22,14 +24,14 @@ def _lsp_message(method: str, params: dict, msg_id: int | None = None) -> bytes:
     return header + content
 
 
-def _lsp_response(msg_id: int, result: dict) -> bytes:
+def _lsp_response(msg_id: int, result: dict[str, Any] | None) -> bytes:
     body = {"jsonrpc": "2.0", "id": msg_id, "result": result}
     content = json.dumps(body).encode("utf-8")
     header = f"Content-Length: {len(content)}\r\n\r\n".encode("ascii")
     return header + content
 
 
-def _parse_lsp_messages(data: bytes) -> list[dict]:
+def _parse_lsp_messages(data: bytes) -> list[dict[str, Any]]:
     """Parse LSP messages from raw bytes."""
     messages = []
     text = data.decode("utf-8", errors="replace")
@@ -52,13 +54,13 @@ def _parse_lsp_messages(data: bytes) -> list[dict]:
 class _Session:
     """Mutable state holder for an LSP test session."""
 
-    def __init__(self, proc: subprocess.Popen, uri: str | None):
+    def __init__(self, proc: subprocess.Popen[bytes], uri: str | None):
         self._proc = proc
         self.uri: str | None = uri
         self._next_id = 10
-        self.messages: list[dict] = []
+        self.messages: list[dict[str, Any]] = []
 
-    def request(self, method: str, params: dict) -> int:
+    def request(self, method: str, params: dict[str, Any]) -> int:
         """Send a JSON-RPC request and return the message ID."""
         msg_id = self._next_id
         self._next_id += 1
@@ -67,13 +69,13 @@ class _Session:
         return msg_id
 
 
-def _find_response(messages: list[dict], msg_id: int) -> dict | None:
+def _find_response(messages: list[dict[str, Any]], msg_id: int) -> dict[str, Any] | None:
     """Find a response message by ID."""
     return next((m for m in messages if m.get("id") == msg_id), None)
 
 
 @contextmanager
-def _lsp_session(fixture: str | None = None, wait: float = 2.0):
+def _lsp_session(fixture: str | None = None, wait: float = 2.0) -> Generator[_Session]:
     """Start an LSP server, initialize, optionally open a fixture, yield session, shutdown."""
     proc = subprocess.Popen(
         [sys.executable, "-m", "jaxtyc.cli.main", "lsp"],
@@ -128,7 +130,7 @@ def _lsp_session(fixture: str | None = None, wait: float = 2.0):
 
 
 class TestLSPServer:
-    def test_initialize_and_shutdown(self):
+    def test_initialize_and_shutdown(self) -> None:
         """Test that the LSP server responds to initialize and shutdown."""
         proc = subprocess.Popen(
             [sys.executable, "-m", "jaxtyc.cli.main", "lsp"],
@@ -168,7 +170,7 @@ class TestLSPServer:
         assert "result" in init_response
         assert "capabilities" in init_response["result"]
 
-    def test_diagnostics_on_save(self):
+    def test_diagnostics_on_save(self) -> None:
         """Test that saving a file with shape errors produces diagnostics."""
         proc = subprocess.Popen(
             [sys.executable, "-m", "jaxtyc.cli.main", "lsp"],
@@ -238,7 +240,7 @@ class TestLSPServer:
         assert len(diag["params"]["diagnostics"]) >= 1
         assert diag["params"]["diagnostics"][0]["severity"] == 1  # Error
 
-    def test_server_responsive_during_analysis(self):
+    def test_server_responsive_during_analysis(self) -> None:
         """Server should respond to shutdown promptly even after triggering analysis.
 
         This verifies that analysis runs in a thread and doesn't block the event loop.
@@ -297,7 +299,7 @@ class TestLSPServer:
         # Should have at least the initialize response
         assert any("result" in m for m in messages)
 
-    def test_diagnostics_on_change(self):
+    def test_diagnostics_on_change(self) -> None:
         """Editing a correct file to buggy content via didChange should produce error diagnostics."""
         proc = subprocess.Popen(
             [sys.executable, "-m", "jaxtyc.cli.main", "lsp"],
@@ -378,7 +380,7 @@ class TestLSPServer:
             "didChange should have triggered analysis producing error diagnostics"
         )
 
-    def test_progress_notification_on_analysis(self):
+    def test_progress_notification_on_analysis(self) -> None:
         """Server should send progress notifications during analysis."""
         proc = subprocess.Popen(
             [sys.executable, "-m", "jaxtyc.cli.main", "lsp"],
@@ -464,7 +466,7 @@ class TestLSPServer:
             f"Expected progress notifications, got messages: {[m.get('method') for m in messages]}"
         )
 
-    def test_codelens_shows_shapes(self):
+    def test_codelens_shows_shapes(self) -> None:
         """CodeLens should show shape annotations above jaxtyping-annotated functions."""
         proc = subprocess.Popen(
             [sys.executable, "-m", "jaxtyc.cli.main", "lsp"],
@@ -550,7 +552,7 @@ class TestLSPServer:
 class TestLSPNavigation:
     """LSP navigation handler integration tests."""
 
-    def test_document_symbol(self):
+    def test_document_symbol(self) -> None:
         with _lsp_session("correct_attention.py") as s:
             rid = s.request(
                 "textDocument/documentSymbol",
@@ -563,7 +565,7 @@ class TestLSPNavigation:
         assert symbols[0]["name"] == "attention"
         assert "detail" in symbols[0]
 
-    def test_definition_dim_jumps_to_first(self):
+    def test_definition_dim_jumps_to_first(self) -> None:
         """Click batch in k param, should jump to batch in q param."""
         with _lsp_session("correct_attention.py") as s:
             # batch in k param: line 10 (1-based) = line 9 (0-based), col 22
@@ -582,7 +584,7 @@ class TestLSPNavigation:
         assert result["range"]["start"]["line"] == 8
         assert result["range"]["start"]["character"] == 21
 
-    def test_definition_at_first_occurrence_returns_null(self):
+    def test_definition_at_first_occurrence_returns_null(self) -> None:
         with _lsp_session("correct_attention.py") as s:
             # batch in q param: line 9 (1-based) = line 8 (0-based), col 22
             rid = s.request(
@@ -596,7 +598,7 @@ class TestLSPNavigation:
         assert resp is not None
         assert resp["result"] is None
 
-    def test_references_dim(self):
+    def test_references_dim(self) -> None:
         with _lsp_session("correct_attention.py") as s:
             rid = s.request(
                 "textDocument/references",
@@ -612,7 +614,7 @@ class TestLSPNavigation:
         # batch appears in q, k, v, return = 4 occurrences
         assert len(refs) == 4
 
-    def test_document_highlight(self):
+    def test_document_highlight(self) -> None:
         with _lsp_session("correct_attention.py") as s:
             rid = s.request(
                 "textDocument/documentHighlight",
@@ -628,7 +630,7 @@ class TestLSPNavigation:
         for h in highlights:
             assert h["kind"] == 2  # DocumentHighlightKind.Read
 
-    def test_prepare_rename(self):
+    def test_prepare_rename(self) -> None:
         with _lsp_session("correct_attention.py") as s:
             rid = s.request(
                 "textDocument/prepareRename",
@@ -646,7 +648,7 @@ class TestLSPNavigation:
         assert result["range"]["start"]["character"] == 21
         assert result["range"]["end"]["character"] == 26
 
-    def test_rename(self):
+    def test_rename(self) -> None:
         with _lsp_session("correct_attention.py") as s:
             rid = s.request(
                 "textDocument/rename",
@@ -665,7 +667,7 @@ class TestLSPNavigation:
         for edit in edits:
             assert edit["newText"] == "batch_size"
 
-    def test_workspace_symbol(self):
+    def test_workspace_symbol(self) -> None:
         with _lsp_session("correct_attention.py") as s:
             rid = s.request("workspace/symbol", {"query": "atten"})
         resp = _find_response(s.messages, rid)
@@ -674,7 +676,7 @@ class TestLSPNavigation:
         assert len(symbols) >= 1
         assert symbols[0]["name"] == "attention"
 
-    def test_implementation(self):
+    def test_implementation(self) -> None:
         with _lsp_session("correct_attention.py") as s:
             # def attention( is on line 8 (1-based) = line 7 (0-based)
             rid = s.request(
@@ -690,7 +692,7 @@ class TestLSPNavigation:
         assert result is not None
         assert result["range"]["start"]["line"] == 7
 
-    def test_prepare_call_hierarchy(self):
+    def test_prepare_call_hierarchy(self) -> None:
         with _lsp_session("multi_function.py") as s:
             # autoencoder at line 22 (1-based) = line 21 (0-based)
             rid = s.request(
@@ -707,7 +709,7 @@ class TestLSPNavigation:
         assert items[0]["name"] == "autoencoder"
         assert "data" in items[0]
 
-    def test_incoming_calls(self):
+    def test_incoming_calls(self) -> None:
         with _lsp_session("multi_function.py") as s:
             rid = s.request(
                 "callHierarchy/incomingCalls",
@@ -738,7 +740,7 @@ class TestLSPNavigation:
         assert len(result) == 1
         assert result[0]["from"]["name"] == "autoencoder"
 
-    def test_outgoing_calls(self):
+    def test_outgoing_calls(self) -> None:
         with _lsp_session("multi_function.py") as s:
             rid = s.request(
                 "callHierarchy/outgoingCalls",

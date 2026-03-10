@@ -252,6 +252,16 @@ def cmd_lsp(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_mux(args: argparse.Namespace) -> int:
+    """Start the LSP multiplexer (ty + jaxtyc)."""
+    import asyncio
+
+    from jaxtyc.lsp.mux import run_mux
+
+    asyncio.run(run_mux())
+    return 0
+
+
 def cmd_version(args: argparse.Namespace) -> int:
     """Print version."""
     print(f"jaxtyc {jaxtyc.__version__}")
@@ -296,6 +306,10 @@ def main(argv: list[str] | None = None) -> int:
     # lsp
     lsp_parser = subparsers.add_parser("lsp", help="Start LSP server (stdio)")
     lsp_parser.set_defaults(func=cmd_lsp)
+
+    # mux
+    mux_parser = subparsers.add_parser("mux", help="Start LSP multiplexer (ty + jaxtyc)")
+    mux_parser.set_defaults(func=cmd_mux)
 
     # version
     version_parser = subparsers.add_parser("version", help="Print version")

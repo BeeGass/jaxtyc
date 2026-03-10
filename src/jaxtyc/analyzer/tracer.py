@@ -6,6 +6,7 @@ from collections.abc import Callable
 from typing import Any
 
 import jax
+from jax.typing import DTypeLike
 
 from jaxtyc.analyzer.dim_env import DimEnv
 from jaxtyc.types import IntermediateShape
@@ -13,7 +14,7 @@ from jaxtyc.types import ShapeSpec
 from jaxtyc.types import TraceResult
 
 # JAX dtype string mapping
-_DTYPE_MAP: dict[str, Any] = {
+_DTYPE_MAP: dict[str, DTypeLike] = {
     "float16": jax.numpy.float16,
     "float32": jax.numpy.float32,
     "float64": jax.numpy.float64,
@@ -39,7 +40,7 @@ _DTYPE_MAP: dict[str, Any] = {
 }
 
 
-def _resolve_jax_dtype(dtype_str: str) -> Any:
+def _resolve_jax_dtype(dtype_str: str) -> DTypeLike:
     """Convert a jaxtyc dtype string to a JAX dtype."""
     return _DTYPE_MAP.get(dtype_str, jax.numpy.float32)
 
@@ -51,7 +52,12 @@ def _build_abstract_input(spec: ShapeSpec, env: DimEnv) -> jax.ShapeDtypeStruct:
     return jax.ShapeDtypeStruct(shape, dtype)
 
 
-_JAX_INTERNAL_PATHS = ("jax/", "jaxlib/", "site-packages/jax", "site-packages/jaxlib")
+_JAX_INTERNAL_PATHS: tuple[str, ...] = (
+    "jax/",
+    "jaxlib/",
+    "site-packages/jax",
+    "site-packages/jaxlib",
+)
 
 
 def _is_jax_internal(file_name: str) -> bool:
@@ -157,16 +163,23 @@ def trace_function(
             error=str(e),
         )
 
-    # Extract output shape
+    # Extract output shape(s)
+    output_shapes: list[tuple[int, ...]] | None = None
+    output_dtypes: list[str] | None = None
+
     if hasattr(output_struct, "shape"):
         output_shape = output_struct.shape
         output_dtype = str(output_struct.dtype)
+        output_shapes = [output_shape]
+        output_dtypes = [output_dtype]
     else:
-        # Could be a pytree of outputs — take the first leaf
         leaves = jax.tree.leaves(output_struct)
-        if leaves and hasattr(leaves[0], "shape"):
-            output_shape = leaves[0].shape
-            output_dtype = str(leaves[0].dtype)
+        shaped_leaves = [lf for lf in leaves if hasattr(lf, "shape")]
+        if shaped_leaves:
+            output_shape = shaped_leaves[0].shape
+            output_dtype = str(shaped_leaves[0].dtype)
+            output_shapes = [lf.shape for lf in shaped_leaves]
+            output_dtypes = [str(lf.dtype) for lf in shaped_leaves]
         else:
             output_shape = None
             output_dtype = None
@@ -180,4 +193,7 @@ def trace_function(
         output_dtype=output_dtype,
         intermediates=intermediates,
         error=None,
+        input_shapes={name: struct.shape for name, struct in abstract_inputs.items()},
+        output_shapes=output_shapes,
+        output_dtypes=output_dtypes,
     )

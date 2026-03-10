@@ -2,19 +2,83 @@
 
 from __future__ import annotations
 
+import glob
 import importlib
 import importlib.util
+import os
 import sys
 from pathlib import Path
 from types import ModuleType
+
+# Track which venvs we've already activated to avoid duplicates
+_activated_venvs: set[str] = set()
+
+
+def _find_project_root(start: Path) -> Path | None:
+    """Walk up from *start* to find the project root (directory with pyproject.toml)."""
+    for parent in (start, *start.parents):
+        if (parent / "pyproject.toml").exists():
+            return parent
+    return None
+
+
+def _find_venv(start: Path) -> Path | None:
+    """Discover a virtual environment, matching ty's resolution order.
+
+    1. ``VIRTUAL_ENV`` env var (active venv)
+    2. ``.venv`` or ``venv`` in the project root (directory with pyproject.toml)
+    3. ``.venv`` or ``venv`` walking up from *start*
+    """
+    # 1. Active venv via env var
+    env_var = os.environ.get("VIRTUAL_ENV")
+    if env_var:
+        venv = Path(env_var)
+        if (venv / "pyvenv.cfg").exists():
+            return venv
+
+    # 2. Project root (where pyproject.toml lives)
+    project_root = _find_project_root(start)
+    if project_root is not None:
+        for name in (".venv", "venv"):
+            candidate = project_root / name
+            if (candidate / "pyvenv.cfg").exists():
+                return candidate
+
+    # 3. Walk up from start directory
+    for parent in (start, *start.parents):
+        for name in (".venv", "venv"):
+            candidate = parent / name
+            if (candidate / "pyvenv.cfg").exists():
+                return candidate
+    return None
+
+
+def _activate_venv(venv: Path) -> None:
+    """Add a venv's site-packages to sys.path if not already present."""
+    key = str(venv.resolve())
+    if key in _activated_venvs:
+        return
+
+    # Find site-packages: lib/python3.*/site-packages
+    pattern = str(venv / "lib" / "python3.*" / "site-packages")
+    matches = glob.glob(pattern)
+    if not matches:
+        return
+
+    site_packages = matches[0]
+    if site_packages not in sys.path:
+        sys.path.insert(0, site_packages)
+
+    _activated_venvs.add(key)
 
 
 def import_module_from_path(file_path: str) -> ModuleType:
     """Import a Python module from a file path.
 
-    Adds the file's parent directory to ``sys.path`` so relative imports work,
-    then loads the module via ``importlib``. Each import uses a unique module
-    name to avoid collisions with previously imported modules.
+    Discovers the project's virtual environment by walking up from the file
+    and adds its ``site-packages`` to ``sys.path``. Then adds the file's
+    parent directory so relative imports work, and loads the module via
+    ``importlib``. Each import uses a unique module name to avoid collisions.
 
     Args:
         file_path: Absolute or relative path to the ``.py`` file to import.
@@ -31,6 +95,21 @@ def import_module_from_path(file_path: str) -> ModuleType:
         raise ImportError(f"File not found: {file_path}")
     if not path.suffix == ".py":
         raise ImportError(f"Not a Python file: {file_path}")
+
+    # Discover and activate the project's venv
+    venv = _find_venv(path.parent)
+    if venv is not None:
+        _activate_venv(venv)
+
+    # Add project root and src/ directory to sys.path for package imports
+    project_root = _find_project_root(path.parent)
+    if project_root is not None:
+        root_str = str(project_root)
+        if root_str not in sys.path:
+            sys.path.insert(0, root_str)
+        src_dir = project_root / "src"
+        if src_dir.is_dir() and str(src_dir) not in sys.path:
+            sys.path.insert(0, str(src_dir))
 
     # Add parent directory to sys.path for imports
     parent = str(path.parent)
