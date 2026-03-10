@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from jaxtyc.types import ShapeSpec
 
+MIN_PRIME: int = 101
+
 
 def _prime_sieve(limit: int) -> list[int]:
     """Sieve of Eratosthenes. Returns all primes up to `limit`."""
@@ -27,21 +29,29 @@ class DimEnv:
     - Product-based ops (reshape, flatten) produce unique results
     """
 
-    def __init__(self, initial_sieve_limit: int = 1000) -> None:
+    def __init__(
+        self,
+        initial_sieve_limit: int = 1000,
+        reserved: frozenset[int] = frozenset(),
+    ) -> None:
         self._name_to_size: dict[str, int] = {}
         self._size_to_name: dict[int, str] = {}
         self._sieve_limit: int = initial_sieve_limit
         self._primes: list[int] = _prime_sieve(initial_sieve_limit)
         self._next_idx: int = 0
+        self._reserved: frozenset[int] = reserved
+        self._anon_counter: int = 0
 
     def _next_prime(self) -> int:
         """Get the next unused prime. Extends sieve if exhausted."""
-        while self._next_idx >= len(self._primes):
-            self._sieve_limit *= 2
-            self._primes = _prime_sieve(self._sieve_limit)
-        prime = self._primes[self._next_idx]
-        self._next_idx += 1
-        return prime
+        while True:
+            while self._next_idx >= len(self._primes):
+                self._sieve_limit *= 2
+                self._primes = _prime_sieve(self._sieve_limit)
+            prime = self._primes[self._next_idx]
+            self._next_idx += 1
+            if prime >= MIN_PRIME and prime not in self._reserved:
+                return prime
 
     def get_size(self, name: str) -> int:
         """Get the prime size for a dimension name. Assigns one if new.
@@ -117,7 +127,8 @@ class DimEnv:
                         ]
                     )
                 case "anonymous":
-                    shape.append(self.get_size(f"_anon_{len(shape)}"))
+                    self._anon_counter += 1
+                    shape.append(self.get_size(f"_anon_{self._anon_counter}"))
         return tuple(shape)
 
     def name_size_mapping(self) -> dict[str, int]:
@@ -133,3 +144,4 @@ class DimEnv:
         self._name_to_size.clear()
         self._size_to_name.clear()
         self._next_idx = 0
+        self._anon_counter = 0

@@ -207,6 +207,77 @@ class TestExtractFunctionSpecs:
         assert len(specs) == 1
         assert specs[0].return_spec.is_scalar
 
+    def test_posonly_args(self) -> None:
+        source = textwrap.dedent("""\
+            from jaxtyping import Array, Float
+
+            def f(x: Float[Array, "a b"], /) -> Float[Array, "a b"]:
+                pass
+        """)
+        specs = extract_function_specs(source, "test.py")
+        assert len(specs) == 1
+        assert "x" in specs[0].params
+
+    def test_kwonly_args(self) -> None:
+        source = textwrap.dedent("""\
+            from jaxtyping import Array, Float
+
+            def f(*, x: Float[Array, "a b"]) -> Float[Array, "a b"]:
+                pass
+        """)
+        specs = extract_function_specs(source, "test.py")
+        assert len(specs) == 1
+        assert "x" in specs[0].params
+
+    def test_mixed_posonly_kwonly_args(self) -> None:
+        source = textwrap.dedent("""\
+            from jaxtyping import Array, Float
+
+            def f(x: Float[Array, "a b"], /, *, y: Float[Array, "c d"]) -> Float[Array, "a b"]:
+                pass
+        """)
+        specs = extract_function_specs(source, "test.py")
+        assert len(specs) == 1
+        assert "x" in specs[0].params
+        assert "y" in specs[0].params
+
+    def test_async_function_name_col_offset(self) -> None:
+        source = textwrap.dedent("""\
+            from jaxtyping import Array, Float
+
+            async def attention(x: Float[Array, "batch dim"]) -> Float[Array, "batch dim"]:
+                pass
+        """)
+        specs = extract_function_specs(source, "test.py")
+        assert len(specs) == 1
+        # "async def " is 10 chars; col_offset is 0 for top-level
+        assert specs[0].name_col_offset == 10
+
+    def test_sync_function_name_col_offset(self) -> None:
+        source = textwrap.dedent("""\
+            from jaxtyping import Array, Float
+
+            def attention(x: Float[Array, "batch dim"]) -> Float[Array, "batch dim"]:
+                pass
+        """)
+        specs = extract_function_specs(source, "test.py")
+        assert len(specs) == 1
+        # "def " is 4 chars; col_offset is 0 for top-level
+        assert specs[0].name_col_offset == 4
+
+    def test_typing_tuple_return(self) -> None:
+        source = textwrap.dedent("""\
+            from typing import Tuple
+            from jaxtyping import Array, Float
+
+            def f(x: Float[Array, "a b"]) -> Tuple[Float[Array, "a b"], Float[Array, "c d"]]:
+                pass
+        """)
+        specs = extract_function_specs(source, "test.py")
+        assert len(specs) == 1
+        assert specs[0].return_specs is not None
+        assert len(specs[0].return_specs) == 2
+
     def test_lineno_tracking(self) -> None:
         source = textwrap.dedent("""\
             from jaxtyping import Array, Float

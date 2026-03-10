@@ -130,7 +130,7 @@ def _try_extract_tuple_return(node: ast.expr) -> list[ShapeSpec] | None:
 
     # Check for tuple[...] pattern
     name = _get_dtype_name(node.value)
-    if name != "tuple":
+    if name is None or name.lower() != "tuple":
         return None
 
     slc = node.slice
@@ -198,7 +198,8 @@ def _extract_from_function(
     is_method = class_name is not None
     params: dict[str, ShapeSpec] = {}
 
-    for arg in node.args.args:
+    all_args = list(node.args.posonlyargs) + list(node.args.args) + list(node.args.kwonlyargs)
+    for arg in all_args:
         # Skip 'self' and 'cls' for methods
         if is_method and arg.arg in ("self", "cls"):
             continue
@@ -221,6 +222,7 @@ def _extract_from_function(
     if not params and return_spec is None:
         return
 
+    keyword_len = 10 if isinstance(node, ast.AsyncFunctionDef) else 4
     results.append(
         FunctionShapeSpec(
             name=node.name,
@@ -233,6 +235,7 @@ def _extract_from_function(
             is_method=is_method,
             class_name=class_name,
             end_lineno=node.end_lineno or node.lineno,
+            name_col_offset=node.col_offset + keyword_len,
         )
     )
 
@@ -346,7 +349,8 @@ def _extract_dims_from_function(
     is_method = class_name is not None
     func_name = node.name
 
-    for arg in node.args.args:
+    all_args = list(node.args.posonlyargs) + list(node.args.args) + list(node.args.kwonlyargs)
+    for arg in all_args:
         if is_method and arg.arg in ("self", "cls"):
             continue
         if arg.annotation is not None:

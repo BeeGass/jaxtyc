@@ -30,44 +30,87 @@ All three must pass before submitting a PR.
 ```
 src/jaxtyc/
   __init__.py              # Public API: analyze_file, Diagnostic, FileResult, TraceResult
-  types.py                 # Core dataclasses: DimSpec, ShapeSpec, FunctionShapeSpec, etc.
+  types.py                 # Core dataclasses: DimSpec, ShapeSpec, FunctionShapeSpec, DiagnosticData, etc.
   config.py                # [tool.jaxtyc] config loading from pyproject.toml
+
   analyzer/
-    annotations.py         # AST parser for jaxtyping annotations
-    dim_env.py             # Prime sieve dimension environment
-    importer.py            # Dynamic module import via importlib
+    annotations.py         # AST parser for jaxtyping annotations, dim locations, call sites
+    dim_env.py             # Prime sieve dimension environment (shared per file)
+    importer.py            # Dynamic module import with venv auto-discovery
     tracer.py              # jax.eval_shape / jax.make_jaxpr tracing
     source_map.py          # Jaxpr source_info frame extraction
-    checker.py             # Shape comparison and diagnostic emission
+    checker.py             # Shape comparison and diagnostic emission (10 rules)
+    suppressions.py        # Inline # jaxtyc: ignore comment parsing
     pipeline.py            # End-to-end orchestration (analyze_file)
+
   cli/
-    main.py                # CLI entry point: check, trace, watch, lsp, version
+    main.py                # CLI entry point: check, trace, watch, lsp, mux, version
     formatters.py          # Output formatters: full, concise, json, github
+
   lsp/
-    server.py              # pygls-based LSP server
+    server.py              # pygls-based LSP server core + _analyze_and_publish
+    _state.py              # Shared mutable caches (analysis, CodeLens, diagnostics, DimEnv)
+    _util.py               # uri_to_path, dim_range, shape_summary, debounce_seconds
+    _diagnostics.py        # didOpen, didSave, didChange, didClose, pull model
+    _navigation.py         # Hover, CodeLens, symbols, definition, references, rename, call hierarchy
+    _code_actions.py       # Quick fixes with shape suggestions + suppress action
+    _completion.py         # Dimension name autocomplete in shape strings
+    _semantic_tokens.py    # Semantic highlighting for dim names
+    _signature_help.py     # Shape signatures for function calls
+    _inlay_hints.py        # Inline shape annotations
+    _linked_editing.py     # Simultaneous dim name editing
+    _folding.py            # Folding ranges for annotated functions
+    _configuration.py      # Config hot-reload on pyproject.toml changes
+    suggestions.py         # Shape fix generation (JAX-native + einops)
+    index.py               # WorkspaceIndex: cross-file navigation
+    mux.py                 # LSP multiplexer (ty/pyright + jaxtyc, single stdio pipe)
 
 tests/
+  conftest.py              # Shared fixtures and test configuration
   fixtures/                # Python files used as test inputs
     correct_attention.py   # Zero-diagnostic baseline
     wrong_transpose.py     # Triggers shape-mismatch
     wrong_rank.py          # Triggers rank-mismatch
-    untraceable.py         # Non-jaxtyping files (silently skipped)
+    wrong_inner_dim.py     # Inner dimension alignment error
+    multi_function.py      # Multiple annotated functions
+    cross_function_mismatch.py  # Cross-function shape inconsistency
+    tuple_return.py        # Correct tuple return
+    tuple_return_mismatch.py    # Tuple return count error
+    suppressed.py          # Inline suppression comments
+    nnx_module.py          # Flax NNX module fixture
+    eqx_module.py          # Equinox module fixture
     ellipsis_patterns.py   # Variadic and ellipsis annotation tests
+    int_annotations.py     # Int dtype annotations
+    bool_annotations.py    # Bool dtype annotations
+    complex_annotations.py # Complex dtype annotations
+    key_annotations.py     # Key dtype annotations
+    shaped_annotations.py  # Shaped dtype annotations
+    untraceable.py         # Non-jaxtyping files (silently skipped)
   test_annotations.py      # Annotation parser tests
   test_dim_env.py          # DimEnv prime assignment tests
-  test_checker.py          # Shape checker tests
+  test_checker.py          # Shape checker tests (all 10 rules)
   test_integration.py      # Full pipeline tests (analyze_file on fixtures)
   test_cli.py              # CLI invocation tests
-  test_lsp.py              # LSP server tests
+  test_config.py           # Configuration loading tests
+  test_importer.py         # Module importer + venv discovery tests
+  test_lsp.py              # LSP server handler tests
+  test_mux.py              # LSP multiplexer tests
+  test_nnx.py              # Flax NNX tracing tests
   test_source_map.py       # Source mapping tests
   test_tracer.py           # Tracer tests
   test_types.py            # Dataclass construction tests
   test_public_api.py       # Public API surface tests
+  test_formatters.py       # Output formatter tests
+  test_suggestions.py      # Shape fix suggestion tests
+  test_suppressions.py     # Inline suppression tests
+  test_index.py            # WorkspaceIndex tests
+  test_self_analysis.py    # Self-analysis (jaxtyc checking its own fixtures)
+  test_benchmarks.py       # Performance benchmarks
 ```
 
 ## Adding a New Diagnostic Rule
 
-1. **Define the rule string** in `checker.py`. Add a new branch to `check_function()` or `_check_shape()` that constructs a `Diagnostic` with your rule code:
+1. **Define the rule string** in `checker.py`. Add a new branch to `check_function()` or `_check_shape()` that constructs a `Diagnostic` with your rule code and structured `DiagnosticData`:
 
     ```python
     Diagnostic(
@@ -77,6 +120,15 @@ tests/
         severity="error",  # or "warning" / "info"
         message="Description of what went wrong",
         rule="your-rule-name",
+        data=DiagnosticData(
+            expected_shape=expected,
+            actual_shape=actual,
+            expected_named=env.shape_to_names(expected),
+            actual_named=env.shape_to_names(actual),
+            dim_name_mapping=env.name_size_mapping(),
+            suggested_fix=_suggest_fix(expected, actual, env),
+            rule="your-rule-name",
+        ),
     )
     ```
 

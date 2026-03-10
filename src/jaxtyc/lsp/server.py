@@ -15,16 +15,42 @@ from pygls.lsp.server import LanguageServer
 
 from jaxtyc.analyzer.annotations import extract_function_specs
 from jaxtyc.analyzer.pipeline import analyze_file
+from jaxtyc.config import filter_diagnostics
 from jaxtyc.config import load_config
 from jaxtyc.lsp import _state
 from jaxtyc.lsp._util import debounce_seconds
 from jaxtyc.lsp._util import uri_to_path
 from jaxtyc.lsp.index import build_file_index
+from jaxtyc.types import FunctionShapeSpec
 from jaxtyc.types import IntermediateShape
 
 logger: logging.Logger = logging.getLogger(__name__)
 
-server: LanguageServer = LanguageServer("jaxtyc", _pkg_version("jaxtyc"))
+server: LanguageServer = LanguageServer(
+    "jaxtyc",
+    _pkg_version("jaxtyc"),
+    text_document_sync_kind=types.TextDocumentSyncKind.Full,
+)
+
+
+def _collect_literal_dims(func_specs: list[FunctionShapeSpec]) -> frozenset[int]:
+    """Pre-scan function specs to collect literal dimension values for reservation."""
+    reserved: set[int] = set()
+    for spec in func_specs:
+        for pspec in spec.params.values():
+            for dim in pspec.dims:
+                if dim.kind == "fixed" and dim.size is not None:
+                    reserved.add(dim.size)
+        if spec.return_spec:
+            for dim in spec.return_spec.dims:
+                if dim.kind == "fixed" and dim.size is not None:
+                    reserved.add(dim.size)
+        if spec.return_specs:
+            for rspec in spec.return_specs:
+                for dim in rspec.dims:
+                    if dim.kind == "fixed" and dim.size is not None:
+                        reserved.add(dim.size)
+    return frozenset(reserved)
 
 
 def _analyze_and_publish(ls: LanguageServer, uri: str, source: str | None = None) -> None:
@@ -89,9 +115,12 @@ def _analyze_and_publish(ls: LanguageServer, uri: str, source: str | None = None
     else:
         result = analyze_file(file_path)
 
+    # Apply config-based filtering (severity threshold, ignore_rules)
+    filtered_diags = filter_diagnostics(result.diagnostics, _state.config)
+
     # Convert to LSP diagnostics
     lsp_diagnostics: list[types.Diagnostic] = []
-    for diag in result.diagnostics:
+    for diag in filtered_diags:
         if diag.severity == "error":
             severity = types.DiagnosticSeverity.Error
         elif diag.severity == "warning":
@@ -129,20 +158,10 @@ def _analyze_and_publish(ls: LanguageServer, uri: str, source: str | None = None
             )
         )
 
-    _state.diagnostics_cache[uri] = lsp_diagnostics
-
-    ls.text_document_publish_diagnostics(
-        types.PublishDiagnosticsParams(
-            uri=uri,
-            diagnostics=lsp_diagnostics,
-        )
-    )
-
     # Cache intermediates for hover
     all_intermediates: list[IntermediateShape] = []
     for trace in result.trace_results:
         all_intermediates.extend(trace.intermediates)
-    _state.analysis_cache[uri] = all_intermediates
 
     # Extract function specs once -- reused for CodeLens and navigation index
     try:
@@ -162,6 +181,9 @@ def _analyze_and_publish(ls: LanguageServer, uri: str, source: str | None = None
     # Import DimEnv once for both CodeLens and hover enhancement
     from jaxtyc.analyzer.dim_env import DimEnv
 
+    # Collect literal dim values to reserve them from prime assignment
+    reserved = _collect_literal_dims(func_specs)
+
     # Build CodeLens cache from function specs + trace results
     try:
         lenses: list[tuple[int, str]] = []
@@ -177,7 +199,7 @@ def _analyze_and_publish(ls: LanguageServer, uri: str, source: str | None = None
                 param_parts.append(f"{pname}: ({dim_names})")
             ret_part = ""
             if trace.output_shape is not None:
-                env_for_names = DimEnv()
+                env_for_names = DimEnv(reserved=reserved)
                 # Rebuild env with the same dim names as the spec
                 for pspec in spec.params.values():
                     env_for_names.make_shape(pspec)
@@ -188,21 +210,35 @@ def _analyze_and_publish(ls: LanguageServer, uri: str, source: str | None = None
                 ret_part = f" -> ({named_out})"
             title = f"shapes: {', '.join(param_parts)}{ret_part}"
             lenses.append((spec.lineno - 1, title))  # Convert to 0-indexed
-        _state.codelens_cache[uri] = lenses
     except Exception:
-        _state.codelens_cache[uri] = []
+        lenses = []
 
-    # Cache DimEnv for hover enhancement
+    # Build DimEnv for hover enhancement
+    hover_env = None
     try:
-        hover_env = DimEnv()
+        hover_env = DimEnv(reserved=reserved)
         for spec in func_specs:
             for pspec in spec.params.values():
                 hover_env.make_shape(pspec)
             if spec.return_spec is not None:
                 hover_env.make_shape(spec.return_spec)
-        _state.dim_env_cache[uri] = hover_env
     except Exception:
-        pass
+        hover_env = None
+
+    # Batch-write all caches atomically
+    with _state.cache_lock:
+        _state.diagnostics_cache[uri] = lsp_diagnostics
+        _state.analysis_cache[uri] = all_intermediates
+        _state.codelens_cache[uri] = lenses
+        if hover_env is not None:
+            _state.dim_env_cache[uri] = hover_env
+
+    ls.text_document_publish_diagnostics(
+        types.PublishDiagnosticsParams(
+            uri=uri,
+            diagnostics=lsp_diagnostics,
+        )
+    )
 
     # End progress
     if token is not None:

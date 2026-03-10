@@ -92,16 +92,16 @@ attention(q: float32[batch, heads, seq, head_dim], k: float32[batch, heads, seq,
 
 ### How prime mapping works
 
-When jaxtyc builds abstract inputs, it assigns each dimension name the next prime:
+When jaxtyc builds abstract inputs, it assigns each dimension name a unique prime starting at 101 (to avoid collisions with small fixed sizes in annotations):
 
 | Dimension | Prime |
 |-----------|-------|
-| `batch` | 2 |
-| `heads` | 3 |
-| `seq` | 5 |
-| `head_dim` | 7 |
+| `batch` | 101 |
+| `heads` | 103 |
+| `seq` | 107 |
+| `head_dim` | 109 |
 
-JAX's `eval_shape` propagates these sizes through the computation graph without executing any FLOPs. At the output, jaxtyc reverse-maps each prime back to its name. If the output contains `7` where the annotation says `5`, that is `head_dim` where `seq` was expected -- a shape mismatch, reported with the exact dimension names rather than opaque integers.
+JAX's `eval_shape` propagates these sizes through the computation graph without executing any FLOPs. At the output, jaxtyc reverse-maps each prime back to its name. If the output contains `109` where the annotation says `107`, that is `head_dim` where `seq` was expected -- a shape mismatch, reported with the exact dimension names rather than opaque integers.
 
 !!! tip "When to use trace"
     `jaxtyc trace` is most useful for debugging *why* a shape mismatch occurs. The intermediate shapes show exactly which operation introduced the wrong dimension.

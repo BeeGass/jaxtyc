@@ -7,11 +7,16 @@
 ## Features
 
 - **Zero runtime cost** -- uses `jax.eval_shape` only; no arrays allocated, no computation executed
-- **Prime-based symbolic shapes** -- each dimension name maps to a unique prime, so `d_in != d_out` is guaranteed (no accidental size collisions)
-- **LSP server** -- inline diagnostics, hover for intermediate shapes, CodeLens showing resolved shapes above function definitions
+- **Prime-based symbolic shapes** -- each dimension name maps to a unique prime (>= 101), so `d_in != d_out` is guaranteed (no accidental size collisions)
+- **10 diagnostic rules** -- shape/rank mismatch, cross-function shape propagation, parameter consistency, tuple return checking, trace errors, and more
+- **Inline suppressions** -- `# jaxtyc: ignore` and `# jaxtyc: ignore[rule-name]` to suppress diagnostics per-line
+- **LSP server** -- diagnostics, hover, CodeLens, go-to-definition, references, rename, code actions, completion, semantic tokens, inlay hints, signature help, linked editing, folding, call hierarchy, and config hot-reload
+- **LSP multiplexer** -- `jaxtyc mux` runs ty/pyright alongside jaxtyc behind a single stdio pipe, merging results transparently
 - **CLI with 4 output formats** -- `full` (human-readable), `concise` (one line per error), `json` (machine-readable), `github` (inline PR annotations)
+- **Flax NNX + Equinox support** -- traces bound methods on module instances via `nnx.eval_shape` / `jax.eval_shape`
 - **CI-ready** -- `jaxtyc check --format github` emits `::error` annotations that GitHub Actions renders inline on PRs
-- **Configurable via `pyproject.toml`** -- severity threshold, rule ignoring, file exclusion patterns under `[tool.jaxtyc]`
+- **Configurable via `pyproject.toml`** -- severity threshold, rule ignoring, file exclusion, einops preferences under `[tool.jaxtyc]`
+- **Venv auto-discovery** -- follows ty's resolution order (`VIRTUAL_ENV` -> `.venv` at project root -> walk-up) so dependencies are found automatically
 
 ---
 
@@ -36,7 +41,9 @@
 | Extra | Installs | Use case |
 |-------|----------|----------|
 | `jaxtyc[watch]` | `watchfiles` | `jaxtyc watch` -- re-check on file save |
-| `jaxtyc[flax]` | `flax >=0.10` | Flax NNX module support |
+| `jaxtyc[flax]` | `flax >=0.10` | Flax NNX module tracing |
+| `jaxtyc[equinox]` | `equinox >=0.11` | Equinox module tracing |
+| `jaxtyc[einops]` | `einops >=0.8` | einops-style fix suggestions in code actions |
 | `jaxtyc[all]` | All of the above | Everything |
 
 **Verify:**

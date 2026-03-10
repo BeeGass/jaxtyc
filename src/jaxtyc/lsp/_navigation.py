@@ -75,7 +75,8 @@ def hover(ls: LanguageServer, params: types.HoverParams) -> types.Hover | None:
     if dim is not None:
         lines_parts: list[str] = [f"**`{dim.dim_name}`** — dimension name"]
         # Show resolved prime size if available
-        env = _state.dim_env_cache.get(uri)
+        with _state.cache_lock:
+            env = _state.dim_env_cache.get(uri)
         if env is not None:
             from jaxtyc.analyzer.dim_env import DimEnv
 
@@ -127,7 +128,8 @@ def hover(ls: LanguageServer, params: types.HoverParams) -> types.Hover | None:
                 )
 
     # Show intermediate shapes at cursor line
-    intermediates = _state.analysis_cache.get(uri, [])
+    with _state.cache_lock:
+        intermediates = _state.analysis_cache.get(uri, [])
     if not intermediates:
         return None
 
@@ -156,7 +158,8 @@ def hover(ls: LanguageServer, params: types.HoverParams) -> types.Hover | None:
 def code_lens(ls: LanguageServer, params: types.CodeLensParams) -> list[types.CodeLens]:
     """Return shape annotations as CodeLens items above function definitions."""
     uri = params.text_document.uri
-    lenses = _state.codelens_cache.get(uri, [])
+    with _state.cache_lock:
+        lenses = _state.codelens_cache.get(uri, [])
 
     return [
         types.CodeLens(

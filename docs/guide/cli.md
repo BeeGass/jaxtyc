@@ -1,6 +1,6 @@
 # CLI
 
-jaxtyc ships a single `jaxtyc` command with five subcommands. Install with `uv add jaxtyc` and the CLI is available immediately.
+jaxtyc ships a single `jaxtyc` command with six subcommands. Install with `uv add jaxtyc` and the CLI is available immediately.
 
 ```
 jaxtyc <command> [options]
@@ -186,11 +186,48 @@ jaxtyc lsp
 
 The LSP server provides:
 
-- **Diagnostics** on open, save, and edit (debounced at 500ms by default, configurable via `debounce_ms`).
-- **Hover** showing intermediate shapes at the cursor line.
+- **Diagnostics** on open, save, and edit (debounced at 500ms by default, configurable via `debounce_ms`). Supports both push and pull diagnostic models.
+- **Hover** showing intermediate shapes at the cursor line, dimension name info (symbolic prime, all usages), parameter shapes, and function shape signatures.
 - **CodeLens** displaying traced shape summaries above annotated functions.
+- **Go to Definition / Find References** for dimension names (cross-file) and functions.
+- **Rename** dimension names across all annotations in the workspace.
+- **Code Actions** with shape fix suggestions (transpose, expand_dims, squeeze, reshape) in both JAX-native and einops notation.
+- **Completion** for dimension names inside jaxtyping shape strings.
+- **Signature Help** showing shape signatures when calling annotated functions.
+- **Semantic Tokens** highlighting dimension names with definition/reference distinction.
+- **Inlay Hints** showing resolved shapes inline at end of lines.
+- **Linked Editing** for simultaneous dim name editing within a function.
+- **Folding Ranges** for multi-parameter annotated functions.
+- **Call Hierarchy** with shape details for incoming/outgoing calls.
+- **Document / Workspace Symbols** with shape summaries.
+- **Configuration Hot-Reload** watching `pyproject.toml` for `[tool.jaxtyc]` changes.
 
 See [Editors](../editors/editors.md) for editor-specific setup.
+
+---
+
+## `jaxtyc mux`
+
+Start the LSP multiplexer over stdio. Runs a Python type checker (ty or pyright) alongside jaxtyc behind a single stdio pipe, merging results transparently. Intended for editors that only support one LSP server per file extension.
+
+```
+jaxtyc mux
+```
+
+**Behavior:**
+
+1. Auto-discovers the best available type checker in order: `pyright-langserver`, `ty`, `pyright`.
+2. Defers spawning both servers until the first file-referencing message (e.g., `didOpen`), using the file path to detect the project root and set the working directory for venv discovery.
+3. Sends requests to both servers simultaneously. Results are merged per method type:
+    - **Array methods** (codeLens, codeAction, references, etc.): concatenated
+    - **Hover**: markdown combined with separator
+    - **Completion**: item lists merged
+    - **Single-value** (definition, rename, etc.): first non-null, preferring the type checker
+4. Diagnostics from both servers are merged per-URI and forwarded to the client.
+
+A 3-second timeout ensures the client always gets a response even if one server is slow.
+
+See [Editors > Claude Code](../editors/editors.md) for setup instructions.
 
 ---
 
@@ -200,5 +237,5 @@ Print the installed version and exit.
 
 ```
 $ jaxtyc version
-jaxtyc 0.1.0
+jaxtyc 0.3.0
 ```

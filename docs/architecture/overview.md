@@ -10,13 +10,15 @@ flowchart LR
     D --> E[DimEnv: Assign Primes]
     E --> F[jax.eval_shape]
     F --> G[Shape Checker]
-    G --> H[Diagnostics]
-    E --> I[jax.make_jaxpr]
-    I --> J[Source Mapping]
-    J --> K[Hover/CodeLens]
+    G --> H[Cross-Function Check]
+    H --> I[Inline Suppressions]
+    I --> J[Diagnostics]
+    E --> K[jax.make_jaxpr]
+    K --> L[Source Mapping]
+    L --> M[Hover/CodeLens]
 ```
 
-The pipeline has two output paths from `DimEnv`. The primary path (`eval_shape` -> checker -> diagnostics) powers the `check` command and LSP error reporting. The secondary path (`make_jaxpr` -> source mapping) powers the `trace` command, LSP hover, and CodeLens.
+The pipeline has two output paths from `DimEnv`. The primary path (`eval_shape` -> checker -> cross-function check -> suppressions -> diagnostics) powers the `check` command and LSP error reporting. The secondary path (`make_jaxpr` -> source mapping) powers the `trace` command, LSP hover, and CodeLens.
 
 ---
 
@@ -24,32 +26,40 @@ The pipeline has two output paths from `DimEnv`. The primary path (`eval_shape` 
 
 | Module | File | Responsibility |
 |--------|------|---------------|
-| annotations | `analyzer/annotations.py` | AST-based jaxtyping annotation parser. Extracts `FunctionShapeSpec` from `Float[Array, "batch seq d_model"]`-style type hints. |
-| dim_env | `analyzer/dim_env.py` | Prime sieve dimension environment. Maps each named dimension to a unique prime for unambiguous symbolic tracing. |
-| importer | `analyzer/importer.py` | Dynamic module import for tracing. Loads user `.py` files via `importlib` so live function objects are available to JAX. |
-| tracer | `analyzer/tracer.py` | `jax.eval_shape` / `jax.make_jaxpr` wrappers. Builds `ShapeDtypeStruct` inputs from specs, runs tracing, extracts output shapes and intermediates. |
+| annotations | `analyzer/annotations.py` | AST-based jaxtyping annotation parser. Extracts `FunctionShapeSpec` from `Float[Array, "batch seq d_model"]`-style type hints. Also extracts `DimLocation` for cross-file navigation and `CallSite` for cross-function analysis. |
+| dim_env | `analyzer/dim_env.py` | Prime sieve dimension environment. Maps each named dimension to a unique prime (>= 101) for unambiguous symbolic tracing. Shared per file. |
+| importer | `analyzer/importer.py` | Dynamic module import with venv auto-discovery. Finds virtual environments (following ty's resolution order), adds `site-packages` to `sys.path`, and loads user `.py` files via `importlib`. |
+| tracer | `analyzer/tracer.py` | `jax.eval_shape` / `jax.make_jaxpr` wrappers. Builds `ShapeDtypeStruct` inputs from specs, runs tracing, extracts output shapes and intermediates. Handles single and multi-output (PyTree) returns. |
 | source_map | `analyzer/source_map.py` | Jaxpr `source_info` extraction. Walks jaxpr equations to find user-code frames, filtering out JAX-internal stack frames. |
-| checker | `analyzer/checker.py` | Shape comparison: expected vs actual. Emits `shape-mismatch`, `rank-mismatch`, and `trace-error` diagnostics. |
-| pipeline | `analyzer/pipeline.py` | End-to-end orchestration. Sequences parse -> import -> trace -> check for a single file. Entry point: `analyze_file()`. |
-| config | `config.py` | `[tool.jaxtyc]` config loading from `pyproject.toml`. Supports severity filtering, rule ignoring, and file exclusion. |
+| checker | `analyzer/checker.py` | Shape comparison: expected vs actual. Emits `shape-mismatch`, `rank-mismatch`, `trace-error`, `param-inconsistency`, `cross-function-mismatch`, and `return-count-mismatch` diagnostics. Attaches `DiagnosticData` with structured shape info and suggested fixes. |
+| suppressions | `analyzer/suppressions.py` | Inline suppression comment parsing. Extracts `# jaxtyc: ignore` and `# jaxtyc: ignore[rule-name]` comments and filters matching diagnostics. |
+| pipeline | `analyzer/pipeline.py` | End-to-end orchestration. Sequences parse -> import -> trace -> check -> cross-function -> suppress for a single file. Entry point: `analyze_file()`. Handles Flax NNX and Equinox module tracing. |
+| config | `config.py` | `[tool.jaxtyc]` config loading from `pyproject.toml`. Supports severity filtering, rule ignoring, file exclusion, einops preferences, and hover compaction. |
 | formatters | `cli/formatters.py` | Output formatters: `full` (human-readable), `concise` (one-liner), `json` (machine-readable), `github` (Actions annotations). |
-| server | `lsp/server.py` | pygls-based LSP server. Registers `didOpen`, `didSave`, `didChange` (debounced), `hover`, and `codeLens` handlers. |
+| server | `lsp/server.py` | pygls-based LSP server core. Runs `_analyze_and_publish` with caching, debouncing, and progress reporting. Imports 10 handler sub-modules that register 29 LSP method handlers. |
+| mux | `lsp/mux.py` | LSP multiplexer. Runs ty/pyright + jaxtyc behind a single stdio pipe with dual-send request merging, deferred server spawning, and diagnostic aggregation. |
+| suggestions | `lsp/suggestions.py` | Shape fix generation. Produces JAX-native (`jnp.transpose`, `jnp.expand_dims`, `jnp.squeeze`, `jnp.reshape`) and einops-style suggestions for code actions. |
+| index | `lsp/index.py` | `WorkspaceIndex` for cross-file navigation. Thread-safe index of functions, dimension locations, and call sites across all open files. |
 
 ---
 
 ## Data Flow
 
-1. **Parse**: `extract_function_specs(source, path)` walks the AST and returns a `list[FunctionShapeSpec]` -- one per function that has at least one jaxtyping annotation.
+1. **Parse**: `extract_function_specs(source, path)` walks the AST and returns a `list[FunctionShapeSpec]` -- one per function that has at least one jaxtyping annotation. Also extracts `DimLocation` and `CallSite` data for navigation and cross-function analysis.
 
-2. **Import**: `import_module_from_path(path)` loads the user module into the current process so JAX can trace its functions. The parent directory is added to `sys.path`.
+2. **Import**: `import_module_from_path(path)` discovers the project's virtual environment (following ty's resolution order: `VIRTUAL_ENV` -> `.venv` at project root -> walk-up), adds `site-packages` to `sys.path`, and loads the user module so JAX can trace its functions.
 
-3. **Dimension assignment**: A fresh `DimEnv` is created per function. Each named dimension (e.g., `batch`, `seq`, `d_model`) gets a unique prime (2, 3, 5, ...). Fixed dimensions (literal integers in annotations) keep their original values.
+3. **Dimension assignment**: A shared `DimEnv` is created per file with reserved literal sizes. Each named dimension (e.g., `batch`, `seq`, `d_model`) gets a unique prime (>= 101). Fixed dimensions (literal integers in annotations) keep their original values. Sharing the `DimEnv` across all functions in a file ensures the same dimension name always maps to the same prime, enabling cross-function consistency checking.
 
-4. **Tracing**: `jax.eval_shape(fn, **abstract_inputs)` propagates shapes through the function without running computation. The abstract inputs are `ShapeDtypeStruct` objects built from the prime-assigned shapes.
+4. **Tracing**: `jax.eval_shape(fn, **abstract_inputs)` propagates shapes through the function without running computation. The abstract inputs are `ShapeDtypeStruct` objects built from the prime-assigned shapes. For Flax NNX modules, `nnx.eval_shape` is used; for Equinox modules, `jax.eval_shape` traces bound methods on abstract module instances.
 
-5. **Checking**: The checker compares the traced output shape against the return annotation's expected shape (also built from primes via the same `DimEnv`). Mismatches produce diagnostics.
+5. **Checking**: The checker compares the traced output shape against the return annotation's expected shape (also built from primes via the same `DimEnv`). Parameter shapes are also verified against traced inputs. Mismatches produce diagnostics with `DiagnosticData` carrying expected/actual shapes, dimension name mappings, and suggested fixes.
 
-6. **Source mapping** (optional): `jax.make_jaxpr` is run separately to extract per-equation source locations. Each equation's `source_info.traceback.frames` is filtered to find the user's source line, skipping JAX internals.
+6. **Cross-function propagation**: `extract_call_sites()` finds calls between annotated functions. For each call site, `check_call_site()` verifies that the callee's traced output matches its annotation, emitting `cross-function-mismatch` if not.
+
+7. **Inline suppressions**: `extract_suppressions()` parses `# jaxtyc: ignore` comments, and `filter_inline_suppressions()` removes matching diagnostics.
+
+8. **Source mapping** (optional): `jax.make_jaxpr` is run separately to extract per-equation source locations. Each equation's `source_info.traceback.frames` is filtered to find the user's source line, skipping JAX internals.
 
 ---
 
@@ -57,8 +67,8 @@ The pipeline has two output paths from `DimEnv`. The primary path (`eval_shape` 
 
 **Zero runtime cost.** jaxtyc is a static analysis tool. It uses `jax.eval_shape` which performs no actual computation -- only shape propagation through abstract values. Analyzed code is never executed with real data.
 
-**Unambiguous shapes via primes.** Every named dimension gets a unique prime number. Since primes are coprime by definition, no combination of operations (transpose, reshape, matmul) can accidentally produce a shape that matches the expected shape when the actual computation is wrong. See [Internals](internals.md#prime-sieve-dimensions) for details.
+**Unambiguous shapes via primes.** Every named dimension gets a unique prime number (>= 101). Since primes are coprime by definition, no combination of operations (transpose, reshape, matmul) can accidentally produce a shape that matches the expected shape when the actual computation is wrong. See [Internals](internals.md#prime-sieve-dimensions) for details.
 
 **Graceful degradation.** Files without jaxtyping annotations are silently skipped (zero diagnostics, zero errors). Import failures, resolve failures, and trace failures produce info-level diagnostics rather than crashing. The tool always produces a `FileResult`, even on failure.
 
-**Composable with existing tooling.** jaxtyc runs alongside pyright, pylsp, ruff, or any other Python tool. The LSP server publishes diagnostics under the `jaxtyc` source name so they are distinguishable. The CLI supports `--format github` for CI integration.
+**Composable with existing tooling.** jaxtyc runs alongside pyright, ty, pylsp, ruff, or any other Python tool. The LSP server publishes diagnostics under the `jaxtyc` source name so they are distinguishable. The `jaxtyc mux` multiplexer merges jaxtyc with a type checker behind a single stdio pipe for editors that only support one server per language. The CLI supports `--format github` for CI integration.

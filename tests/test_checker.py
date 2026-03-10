@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from jaxtyc.analyzer.checker import check_call_site
 from jaxtyc.analyzer.checker import check_function
 from jaxtyc.analyzer.dim_env import DimEnv
+from jaxtyc.types import CallSite
 from jaxtyc.types import DimSpec
 from jaxtyc.types import FunctionShapeSpec
 from jaxtyc.types import ShapeSpec
@@ -224,6 +226,35 @@ class TestCheckFunction:
         assert len(diagnostics) == 1
         assert diagnostics[0].rule == "shape-mismatch"
 
+    def test_fixed_dim_with_reserved_no_collision(self) -> None:
+        env = DimEnv(reserved=frozenset({4}))
+        ret_spec = ShapeSpec(
+            dims=(
+                DimSpec(kind="named", name="batch"),
+                DimSpec(kind="fixed", size=4),
+            ),
+            dtype="float32",
+        )
+        func_spec = FunctionShapeSpec(
+            name="project",
+            file_path="model.py",
+            lineno=5,
+            col_offset=0,
+            params={},
+            return_spec=ret_spec,
+        )
+        # Actual output matches: batch prime and literal 4
+        batch_size = env.get_size("batch")
+        trace = TraceResult(
+            function_name="project",
+            output_shape=(batch_size, 4),
+            output_dtype="float32",
+            intermediates=[],
+            error=None,
+        )
+        diagnostics = check_function(func_spec, trace, env)
+        assert len(diagnostics) == 0
+
     def test_message_includes_named_shapes(self) -> None:
         env = DimEnv()
         func_spec = FunctionShapeSpec(
@@ -248,3 +279,117 @@ class TestCheckFunction:
         # Should mention the expected and actual named shapes
         assert "Expected" in msg or "expected" in msg
         assert "Got" in msg or "got" in msg
+
+
+class TestCheckCallSite:
+    def test_matching_callee_output_no_diagnostics(self) -> None:
+        env = DimEnv()
+        callee_spec = FunctionShapeSpec(
+            name="encode",
+            file_path="model.py",
+            lineno=5,
+            col_offset=0,
+            params={"x": _named("batch", "dim")},
+            return_spec=_named("batch", "hidden"),
+        )
+        expected_output = env.make_shape(callee_spec.return_spec)
+        callee_trace = TraceResult(
+            function_name="encode",
+            output_shape=expected_output,
+            output_dtype="float32",
+            intermediates=[],
+            error=None,
+        )
+        caller_spec = FunctionShapeSpec(
+            name="pipeline",
+            file_path="model.py",
+            lineno=15,
+            col_offset=0,
+            params={"x": _named("batch", "dim")},
+            return_spec=_named("batch", "dim"),
+        )
+        call = CallSite(
+            caller_name="pipeline",
+            callee_name="encode",
+            file_path="model.py",
+            lineno=16,
+            col_offset=4,
+            end_col_offset=10,
+        )
+        diagnostics = check_call_site(call, caller_spec, callee_spec, callee_trace, env)
+        assert len(diagnostics) == 0
+
+    def test_mismatching_callee_output_produces_diagnostic(self) -> None:
+        env = DimEnv()
+        callee_spec = FunctionShapeSpec(
+            name="encode",
+            file_path="model.py",
+            lineno=5,
+            col_offset=0,
+            params={"x": _named("batch", "dim")},
+            return_spec=_named("batch", "hidden"),
+        )
+        # Actual output doesn't match annotation: returns (batch, dim) not (batch, hidden)
+        wrong_output = env.make_shape(_named("batch", "dim"))
+        callee_trace = TraceResult(
+            function_name="encode",
+            output_shape=wrong_output,
+            output_dtype="float32",
+            intermediates=[],
+            error=None,
+        )
+        caller_spec = FunctionShapeSpec(
+            name="pipeline",
+            file_path="model.py",
+            lineno=15,
+            col_offset=0,
+            params={"x": _named("batch", "dim")},
+            return_spec=_named("batch", "dim"),
+        )
+        call = CallSite(
+            caller_name="pipeline",
+            callee_name="encode",
+            file_path="model.py",
+            lineno=16,
+            col_offset=4,
+            end_col_offset=10,
+        )
+        diagnostics = check_call_site(call, caller_spec, callee_spec, callee_trace, env)
+        assert len(diagnostics) == 1
+        assert diagnostics[0].rule == "cross-function-mismatch"
+
+    def test_trace_error_skips_check(self) -> None:
+        env = DimEnv()
+        callee_spec = FunctionShapeSpec(
+            name="encode",
+            file_path="model.py",
+            lineno=5,
+            col_offset=0,
+            params={},
+            return_spec=_named("batch", "hidden"),
+        )
+        callee_trace = TraceResult(
+            function_name="encode",
+            output_shape=None,
+            output_dtype=None,
+            intermediates=[],
+            error="trace failed",
+        )
+        caller_spec = FunctionShapeSpec(
+            name="pipeline",
+            file_path="model.py",
+            lineno=15,
+            col_offset=0,
+            params={},
+            return_spec=None,
+        )
+        call = CallSite(
+            caller_name="pipeline",
+            callee_name="encode",
+            file_path="model.py",
+            lineno=16,
+            col_offset=4,
+            end_col_offset=10,
+        )
+        diagnostics = check_call_site(call, caller_spec, callee_spec, callee_trace, env)
+        assert len(diagnostics) == 0

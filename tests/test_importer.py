@@ -30,13 +30,13 @@ class TestImportModuleFromPath:
                 import_module_from_path(f.name)
             Path(f.name).unlink()
 
-    def test_adds_parent_to_sys_path(self) -> None:
-        parent = str(FIXTURES.resolve())
-        # Remove if already present to test the addition
-        if parent in sys.path:
-            sys.path.remove(parent)
+    def test_sys_path_not_polluted(self) -> None:
+        original_path = sys.path[:]
         import_module_from_path(str(FIXTURES / "correct_attention.py"))
-        assert parent in sys.path
+        # Only venv entries (if any) should persist; parent dir should not
+        new_entries = set(sys.path) - set(original_path)
+        for entry in new_entries:
+            assert "site-packages" in entry  # Only venv additions allowed
 
     def test_unique_module_name(self) -> None:
         module = import_module_from_path(str(FIXTURES / "correct_attention.py"))

@@ -32,17 +32,16 @@ def spec_range(spec: FunctionShapeSpec) -> types.Range:
     line = max(0, spec.lineno - 1)
     return types.Range(
         start=types.Position(line=line, character=spec.col_offset),
-        end=types.Position(line=line, character=spec.col_offset + len(spec.name) + 4),
+        end=types.Position(line=line, character=spec.name_col_offset + len(spec.name)),
     )
 
 
 def spec_selection_range(spec: FunctionShapeSpec) -> types.Range:
     """Build an LSP selection Range for the function name only."""
     line = max(0, spec.lineno - 1)
-    name_start = spec.col_offset + 4
     return types.Range(
-        start=types.Position(line=line, character=name_start),
-        end=types.Position(line=line, character=name_start + len(spec.name)),
+        start=types.Position(line=line, character=spec.name_col_offset),
+        end=types.Position(line=line, character=spec.name_col_offset + len(spec.name)),
     )
 
 

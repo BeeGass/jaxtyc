@@ -16,11 +16,15 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 import shutil
 import sys
 from collections import defaultdict
+from importlib.metadata import version as _pkg_version
 from pathlib import Path
 from typing import Any  # noqa: F401 (used in annotations, invisible with __future__)
+from urllib.parse import unquote
+from urllib.parse import urlparse
 
 DUAL_METHODS = frozenset(
     {
@@ -63,6 +67,41 @@ ARRAY_MERGE = frozenset(
 MERGE_TIMEOUT = 3.0
 
 
+# Max characters for hover text before truncation
+_HOVER_MAX_CHARS = 1500
+
+
+def _hover_compact_enabled() -> bool:
+    """Check if hover compaction is enabled.
+
+    Controlled by JAXTYC_HOVER_COMPACT env var (default: true).
+    Set to "0" or "false" to disable.
+    """
+    val = os.environ.get("JAXTYC_HOVER_COMPACT", "1").strip().lower()
+    return val not in ("0", "false", "no", "off")
+
+
+def _clean_hover_text(text: str) -> str:
+    """Compact hover markdown to reduce context consumption.
+
+    When hover_compact is disabled (JAXTYC_HOVER_COMPACT=0), only performs
+    minimal cleanup. When enabled (default), also unescapes markdown,
+    strips trailing whitespace, collapses blank lines, and truncates.
+    """
+    # Always replace &nbsp; — these are never useful as raw text
+    text = text.replace("&nbsp;", " ")
+
+    if not _hover_compact_enabled():
+        return text
+
+    text = text.replace("\\_", "_")
+    text = re.sub(r"  +$", "", text, flags=re.MULTILINE)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    if len(text) > _HOVER_MAX_CHARS:
+        text = text[:_HOVER_MAX_CHARS] + "\n\n*...(truncated)*"
+    return text
+
+
 def _merge_hover(primary_result: dict | None, jaxtyc_result: dict | None) -> dict | None:
     if primary_result is None and jaxtyc_result is None:
         return None
@@ -77,8 +116,8 @@ def _merge_hover(primary_result: dict | None, jaxtyc_result: dict | None) -> dic
             return contents
         return ""
 
-    primary_val = _extract_value(primary_result)
-    jaxtyc_val = _extract_value(jaxtyc_result)
+    primary_val = _clean_hover_text(_extract_value(primary_result))
+    jaxtyc_val = _clean_hover_text(_extract_value(jaxtyc_result))
 
     if primary_val and jaxtyc_val:
         combined = primary_val + "\n\n---\n\n" + jaxtyc_val
@@ -146,7 +185,10 @@ async def read_message(reader: asyncio.StreamReader) -> dict | None:
             length = int(part.split(":", 1)[1].strip())
     if length == 0:
         return None
-    body = await reader.readexactly(length)
+    try:
+        body = await reader.readexactly(length)
+    except (asyncio.IncompleteReadError, ConnectionResetError):
+        return None
     return json.loads(body)
 
 
@@ -205,7 +247,7 @@ def _detect_project_root(file_path: str) -> str | None:
 def _uri_to_path(uri: str) -> str | None:
     """Convert a file:// URI to a filesystem path."""
     if uri.startswith("file://"):
-        return uri[len("file://"):]
+        return unquote(urlparse(uri).path)
     return None
 
 
@@ -348,6 +390,9 @@ async def run_mux() -> None:
         if dr is None or dr["done"]:
             return
         dr["done"] = True
+        timeout_task = dr.get("_timeout_task")
+        if timeout_task is not None:
+            timeout_task.cancel()
 
         result = merge_results(dr["method"], dr["primary_response"], dr["jaxtyc_response"])
         await send_to_client(
@@ -458,11 +503,24 @@ async def run_mux() -> None:
                                         "codeActionProvider": True,
                                         "codeLensProvider": {},
                                         "renameProvider": True,
+                                        "prepareRenameProvider": True,
                                         "foldingRangeProvider": True,
                                         "inlayHintProvider": True,
                                         "callHierarchyProvider": True,
                                         "implementationProvider": True,
                                         "workspaceSymbolProvider": True,
+                                        "signatureHelpProvider": {
+                                            "triggerCharacters": ["(", ","],
+                                        },
+                                        "semanticTokensProvider": {
+                                            "legend": {
+                                                "tokenTypes": ["variable"],
+                                                "tokenModifiers": ["definition"],
+                                            },
+                                            "full": True,
+                                        },
+                                        "linkedEditingRangeProvider": True,
+                                        "documentHighlightProvider": True,
                                         "diagnosticProvider": {
                                             "interFileDependencies": False,
                                             "workspaceDiagnostics": False,
@@ -470,7 +528,7 @@ async def run_mux() -> None:
                                     },
                                     "serverInfo": {
                                         "name": "jaxtyc-mux",
-                                        "version": "0.4.0",
+                                        "version": _pkg_version("jaxtyc"),
                                     },
                                 },
                             }
@@ -502,6 +560,25 @@ async def run_mux() -> None:
                 await send_to(primary_proc, msg)
                 await send_to(jaxtyc_proc, msg)
                 break
+
+            elif method == "$/cancelRequest":
+                cancel_id = msg.get("params", {}).get("id")
+                await send_to(primary_proc, msg)
+                if cancel_id is not None and cancel_id in dual_requests:
+                    dr = dual_requests[cancel_id]
+                    jaxtyc_id = dr.get("jaxtyc_id")
+                    if jaxtyc_id is not None:
+                        await send_to(
+                            jaxtyc_proc,
+                            {
+                                "jsonrpc": "2.0",
+                                "method": "$/cancelRequest",
+                                "params": {"id": jaxtyc_id},
+                            },
+                        )
+                    await finalize_dual(cancel_id)
+                else:
+                    await send_to(jaxtyc_proc, msg)
 
             elif has_id and method in DUAL_METHODS:
                 client_id = msg["id"]

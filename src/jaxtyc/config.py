@@ -33,6 +33,7 @@ class JaxtycConfig:
     exclude: list[str] = field(default_factory=list)
     debounce_ms: int = 500
     prefer_einops: bool = False
+    hover_compact: bool = True
 
 
 _KNOWN_KEYS: frozenset[str] = frozenset(JaxtycConfig.__dataclass_fields__.keys())

@@ -23,6 +23,7 @@ class TestSelfAnalysis:
             "bool_annotations.py",
             "complex_annotations.py",
             "shaped_annotations.py",
+            "tuple_return.py",
         ],
     )
     def test_correct_fixtures_produce_no_errors(self, fixture: str) -> None:
@@ -43,6 +44,8 @@ class TestSelfAnalysis:
             "wrong_transpose.py",
             "wrong_rank.py",
             "wrong_inner_dim.py",
+            "tuple_return_mismatch.py",
+            "cross_function_mismatch.py",
         ],
     )
     def test_buggy_fixtures_produce_errors(self, fixture: str) -> None:

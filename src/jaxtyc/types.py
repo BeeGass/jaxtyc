@@ -72,6 +72,7 @@ class FunctionShapeSpec:
     is_method: bool = False
     class_name: str | None = None
     end_lineno: int = 0
+    name_col_offset: int = 0
     return_specs: list[ShapeSpec] | None = None
 
 

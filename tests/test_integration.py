@@ -55,3 +55,22 @@ class TestAnalyzeFileEndToEnd:
         result = analyze_file("/nonexistent/path.py")
         assert result.functions_checked == 0
         assert any(d.severity == "info" for d in result.diagnostics)
+
+    def test_tuple_return_correct(self) -> None:
+        result = analyze_file(str(FIXTURES / "tuple_return.py"))
+        assert result.functions_checked >= 1
+        errors = [d for d in result.diagnostics if d.severity == "error"]
+        assert len(errors) == 0, f"Unexpected errors: {errors}"
+
+    def test_tuple_return_mismatch(self) -> None:
+        result = analyze_file(str(FIXTURES / "tuple_return_mismatch.py"))
+        assert result.functions_checked >= 1
+        errors = [d for d in result.diagnostics if d.severity == "error"]
+        assert len(errors) >= 1
+        assert any(d.rule == "shape-mismatch" for d in errors)
+
+    def test_cross_function_mismatch(self) -> None:
+        result = analyze_file(str(FIXTURES / "cross_function_mismatch.py"))
+        assert result.functions_checked >= 1
+        errors = [d for d in result.diagnostics if d.severity == "error"]
+        assert any(d.rule == "cross-function-mismatch" for d in errors)

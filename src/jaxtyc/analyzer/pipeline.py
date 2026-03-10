@@ -123,11 +123,29 @@ def analyze_file(file_path: str) -> FileResult:
             trace_results=trace_results,
         )
 
+    # Collect literal dim values to reserve them so primes never collide
+    reserved_literals: set[int] = set()
+    for func_spec in func_specs:
+        for pspec in func_spec.params.values():
+            for dim in pspec.dims:
+                if dim.kind == "fixed" and dim.size is not None:
+                    reserved_literals.add(dim.size)
+        if func_spec.return_spec:
+            for dim in func_spec.return_spec.dims:
+                if dim.kind == "fixed" and dim.size is not None:
+                    reserved_literals.add(dim.size)
+        if func_spec.return_specs:
+            for rspec in func_spec.return_specs:
+                for dim in rspec.dims:
+                    if dim.kind == "fixed" and dim.size is not None:
+                        reserved_literals.add(dim.size)
+
     # Shared DimEnv across all functions in the file — same dim name always maps
     # to the same prime, enabling cross-function consistency checking.
-    env = DimEnv()
+    env = DimEnv(reserved=frozenset(reserved_literals))
 
     # Trace and check each annotated function
+    traced: dict[str, tuple[FunctionShapeSpec, TraceResult]] = {}
     functions_checked = 0
     for func_spec in func_specs:
         # Resolve the function object from the module
@@ -159,6 +177,7 @@ def analyze_file(file_path: str) -> FileResult:
             if cls is not None and _is_nnx_module(cls):
                 trace = _trace_nnx_method(cls, func_spec, env)
                 trace_results.append(trace)
+                traced[func_spec.name] = (func_spec, trace)
                 functions_checked += 1
                 diags = check_function(func_spec, trace, env)
                 diagnostics.extend(diags)
@@ -166,6 +185,7 @@ def analyze_file(file_path: str) -> FileResult:
             if cls is not None and _is_eqx_module(cls):
                 trace = _trace_eqx_method(cls, func_spec, env)
                 trace_results.append(trace)
+                traced[func_spec.name] = (func_spec, trace)
                 functions_checked += 1
                 diags = check_function(func_spec, trace, env)
                 diagnostics.extend(diags)
@@ -173,6 +193,7 @@ def analyze_file(file_path: str) -> FileResult:
 
         trace = trace_function(fn, func_spec.params, env)
         trace_results.append(trace)
+        traced[func_spec.name] = (func_spec, trace)
         functions_checked += 1
 
         # Check shapes against annotations
@@ -180,9 +201,6 @@ def analyze_file(file_path: str) -> FileResult:
         diagnostics.extend(diags)
 
     # Cross-function shape propagation
-    traced: dict[str, tuple[FunctionShapeSpec, TraceResult]] = {}
-    for spec, trace in zip(func_specs, trace_results, strict=False):
-        traced[spec.name] = (spec, trace)
 
     known_functions = {s.name for s in func_specs}
     call_sites = extract_call_sites(source, file_path, known_functions)
