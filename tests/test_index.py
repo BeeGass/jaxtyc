@@ -354,3 +354,82 @@ def test_find_function_by_name_preferred_uri() -> None:
     assert results_b[0].file_path == "/b.py"
     # Unknown preferred_uri still returns all
     assert len(idx.find_function_by_name("encode", preferred_uri="file:///c.py")) == 2
+
+
+def test_search_symbols_includes_non_annotated() -> None:
+    """search_symbols should find non-annotated functions via function_defs."""
+    from jaxtyc.types import FunctionDefInfo
+
+    idx = WorkspaceIndex()
+    helper_def = FunctionDefInfo(
+        name="normalize",
+        file_path="/a.py",
+        lineno=3,
+        col_offset=0,
+        name_col_offset=4,
+    )
+    spec = FunctionShapeSpec(
+        name="encode",
+        file_path="/a.py",
+        lineno=10,
+        col_offset=0,
+        params={},
+        return_spec=None,
+    )
+    idx.update_file(
+        FileIndex(
+            file_path="/a.py",
+            uri="file:///a.py",
+            function_specs=[spec],
+            dim_locations=[],
+            call_sites=[],
+            function_defs=[
+                helper_def,
+                FunctionDefInfo(
+                    name="encode",
+                    file_path="/a.py",
+                    lineno=10,
+                    col_offset=0,
+                    name_col_offset=4,
+                ),
+            ],
+        )
+    )
+    # Annotated function found
+    assert len(idx.search_symbols("encode")) == 1
+    # Non-annotated function should also be found
+    results = idx.search_symbols("normalize")
+    assert len(results) == 1
+    assert results[0].name == "normalize"
+    # Empty query returns all
+    all_results = idx.search_symbols("")
+    names = {r.name for r in all_results}
+    assert "encode" in names
+    assert "normalize" in names
+
+
+def test_find_dim_definition_file_scoped() -> None:
+    """find_dim_definition without function_name should search the entire file."""
+    ws = WorkspaceIndex()
+    dims = [
+        _make_dim("batch", "x", "encode", 5, 22, 27),
+        _make_dim("batch", "__return__", "encode", 6, 20, 25),
+        _make_dim("batch", "h", "decode", 10, 22, 27),
+        _make_dim("batch", "__return__", "decode", 11, 20, 25),
+    ]
+    fi = FileIndex(
+        file_path="test.py",
+        uri="file:///test.py",
+        function_specs=[],
+        dim_locations=dims,
+        call_sites=[],
+    )
+    ws.update_file(fi)
+    # Function-scoped: first batch in decode is line 10
+    defn = ws.find_dim_definition("batch", "decode", "file:///test.py")
+    assert defn is not None
+    assert defn.lineno == 10
+    # File-scoped: first batch in the entire file is line 5
+    defn_file = ws.find_dim_definition_in_file("batch", "file:///test.py")
+    assert defn_file is not None
+    assert defn_file.lineno == 5

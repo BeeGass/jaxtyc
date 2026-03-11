@@ -131,6 +131,16 @@ class WorkspaceIndex:
                 return dim
         return None
 
+    def find_dim_definition_in_file(self, dim_name: str, uri: str) -> DimLocation | None:
+        """Find the first occurrence of a dim name in the file (any function)."""
+        idx = self.get_file(uri)
+        if idx is None:
+            return None
+        for dim in idx.dim_locations:
+            if dim.dim_name == dim_name:
+                return dim
+        return None
+
     def find_dim_references_in_function(
         self, dim_name: str, function_name: str, uri: str
     ) -> list[DimLocation]:
@@ -172,16 +182,30 @@ class WorkspaceIndex:
                 results.sort(key=lambda s: s.file_path != preferred_path)
         return results
 
-    def search_symbols(self, query: str) -> list[FunctionShapeSpec]:
-        """Search for functions whose names contain the query (case-insensitive)."""
+    def search_symbols(self, query: str) -> list[FunctionShapeSpec | FunctionDefInfo]:
+        """Search for functions whose names contain the query (case-insensitive).
+
+        Searches both annotated (FunctionShapeSpec) and non-annotated (FunctionDefInfo)
+        functions. Annotated specs are preferred over bare defs for the same function.
+        """
         q = query.lower()
         with self._lock:
             files = list(self._files.values())
-        results: list[FunctionShapeSpec] = []
+        results: list[FunctionShapeSpec | FunctionDefInfo] = []
+        seen: set[tuple[str, int]] = set()  # (file_path, lineno) dedup
         for idx in files:
             for spec in idx.function_specs:
                 if q in spec.name.lower():
                     results.append(spec)
+                    seen.add((spec.file_path, spec.lineno))
+                    if len(results) >= 50:
+                        return results
+            for fdef in idx.function_defs:
+                if (fdef.file_path, fdef.lineno) in seen:
+                    continue
+                if q in fdef.name.lower():
+                    results.append(fdef)
+                    seen.add((fdef.file_path, fdef.lineno))
                     if len(results) >= 50:
                         return results
         return results

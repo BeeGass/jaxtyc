@@ -332,9 +332,14 @@ def go_to_definition(
     # Try dimension name first
     dim = _state.workspace_index.find_dim_at(uri, line, col)
     if dim is not None:
+        # Try function-scoped first
         defn = _state.workspace_index.find_dim_definition(dim.dim_name, dim.function_name, uri)
-        if defn is not None:
+        if defn is not None and (defn.lineno != dim.lineno or defn.col_start != dim.col_start):
             return types.Location(uri=uri, range=dim_range(defn))
+        # Fall back to file-scoped (first occurrence in the entire file)
+        file_defn = _state.workspace_index.find_dim_definition_in_file(dim.dim_name, uri)
+        if file_defn is not None:
+            return types.Location(uri=uri, range=dim_range(file_defn))
         return None
 
     # Try function name
@@ -475,22 +480,31 @@ def rename(ls: LanguageServer, params: types.RenameParams) -> types.WorkspaceEdi
 def workspace_symbol(
     ls: LanguageServer, params: types.WorkspaceSymbolParams
 ) -> list[types.SymbolInformation] | None:
-    """Search shape-annotated functions across the workspace."""
+    """Search all workspace functions by name (annotated and non-annotated)."""
+    from jaxtyc.types import FunctionShapeSpec
+
     results = _state.workspace_index.search_symbols(params.query)
     if not results:
         return None
 
     symbols: list[types.SymbolInformation] = []
-    for spec in results:
-        kind = types.SymbolKind.Method if spec.is_method else types.SymbolKind.Function
-        # Convert file path to URI
-        spec_uri = f"file://{spec.file_path}"
+    for item in results:
+        kind = types.SymbolKind.Method if item.is_method else types.SymbolKind.Function
+        item_uri = f"file://{item.file_path}"
+        if isinstance(item, FunctionShapeSpec):
+            sel_range = spec_selection_range(item)
+        else:
+            line = max(0, item.lineno - 1)
+            sel_range = types.Range(
+                start=types.Position(line=line, character=item.name_col_offset),
+                end=types.Position(line=line, character=item.name_col_offset + len(item.name)),
+            )
         symbols.append(
             types.SymbolInformation(
-                name=spec.name,
+                name=item.name,
                 kind=kind,
-                location=types.Location(uri=spec_uri, range=spec_selection_range(spec)),
-                container_name=spec.class_name,
+                location=types.Location(uri=item_uri, range=sel_range),
+                container_name=item.class_name,
             )
         )
     return symbols or None
@@ -508,8 +522,11 @@ def go_to_implementation(
     dim = _state.workspace_index.find_dim_at(uri, line, col)
     if dim is not None:
         defn = _state.workspace_index.find_dim_definition(dim.dim_name, dim.function_name, uri)
-        if defn is not None:
+        if defn is not None and (defn.lineno != dim.lineno or defn.col_start != dim.col_start):
             return types.Location(uri=uri, range=dim_range(defn))
+        file_defn = _state.workspace_index.find_dim_definition_in_file(dim.dim_name, uri)
+        if file_defn is not None:
+            return types.Location(uri=uri, range=dim_range(file_defn))
         return None
 
     spec = _state.workspace_index.find_function_at(uri, line, col)

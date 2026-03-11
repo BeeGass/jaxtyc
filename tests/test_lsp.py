@@ -2168,3 +2168,87 @@ class TestDimGoToDefinition:
         loc = result[0] if isinstance(result, list) else result
         assert loc.range.start.line == 4
         assert loc.range.start.character == 22
+
+
+class TestDimGoToDefinitionFileScoped:
+    """goToDefinition on a dim at its function-scoped definition should fall back to file-scoped."""
+
+    def setup_method(self) -> None:
+        from jaxtyc.lsp import _state
+        from jaxtyc.lsp.index import FileIndex
+        from jaxtyc.types import DimLocation
+
+        self.uri = "file:///test/scope.py"
+        # "batch" appears in two functions: encode (line 5) and decode (line 10)
+        self.dims = [
+            DimLocation(
+                dim_name="batch",
+                param_name="x",
+                function_name="encode",
+                file_path="/test/scope.py",
+                lineno=5,
+                col_start=22,
+                col_end=27,
+            ),
+            DimLocation(
+                dim_name="batch",
+                param_name="__return__",
+                function_name="encode",
+                file_path="/test/scope.py",
+                lineno=6,
+                col_start=20,
+                col_end=25,
+            ),
+            DimLocation(
+                dim_name="batch",
+                param_name="h",
+                function_name="decode",
+                file_path="/test/scope.py",
+                lineno=10,
+                col_start=22,
+                col_end=27,
+            ),
+            DimLocation(
+                dim_name="batch",
+                param_name="__return__",
+                function_name="decode",
+                file_path="/test/scope.py",
+                lineno=11,
+                col_start=20,
+                col_end=25,
+            ),
+        ]
+        _state.workspace_index.update_file(
+            FileIndex(
+                file_path="/test/scope.py",
+                uri=self.uri,
+                function_specs=[],
+                dim_locations=self.dims,
+                call_sites=[],
+            )
+        )
+
+    def teardown_method(self) -> None:
+        from jaxtyc.lsp import _state
+
+        _state.workspace_index.remove_file(self.uri)
+
+    def test_go_to_definition_cross_function_dim(self) -> None:
+        """goToDefinition on 'batch' in decode should navigate to first 'batch' in the file (encode)."""
+        from lsprotocol import types as lsp_types
+
+        from jaxtyc.lsp._navigation import go_to_definition
+        from jaxtyc.lsp.server import server
+
+        # Cursor on batch in decode (line 10, col 24)
+        params = lsp_types.DefinitionParams(
+            text_document=lsp_types.TextDocumentIdentifier(uri=self.uri),
+            position=lsp_types.Position(line=9, character=24),  # line 10 -> 0-based 9
+        )
+        result = go_to_definition(server, params)
+        assert result is not None
+        loc = result[0] if isinstance(result, list) else result
+        # Should navigate to encode's batch on line 5 (0-based 4), not decode's batch on line 10
+        assert loc.range.start.line == 4, (
+            f"Expected line 4 (first file occurrence in encode), got {loc.range.start.line}"
+        )
