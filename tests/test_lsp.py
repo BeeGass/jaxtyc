@@ -2527,3 +2527,74 @@ class TestExternalCallsConfig:
             _state.workspace_index.remove_file(uri)
         finally:
             _state.config = orig_config
+
+
+class TestEarlyIndexBuild:
+    def test_workspace_index_populated_from_source(self) -> None:
+        """build_file_index from source populates workspace_index with navigation data."""
+        import textwrap
+
+        from jaxtyc.analyzer.annotations import extract_function_specs
+        from jaxtyc.lsp import _state
+        from jaxtyc.lsp.index import build_file_index
+
+        source = textwrap.dedent("""\
+            from jaxtyping import Array, Float
+
+            def encode(x: Float[Array, "batch d"]) -> Float[Array, "batch d"]:
+                return x
+        """)
+        uri = "file:///test/early.py"
+        file_path = "/test/early.py"
+
+        func_specs = extract_function_specs(source, file_path)
+        file_index = build_file_index(source, file_path, uri, func_specs=func_specs)
+        _state.workspace_index.update_file(file_index)
+
+        # Navigation data is available
+        assert _state.workspace_index.get_file(uri) is not None
+        fi = _state.workspace_index.get_file(uri)
+        assert len(fi.function_specs) == 1
+        assert fi.function_specs[0].name == "encode"
+        assert len(fi.dim_locations) > 0  # batch, d in param + return
+        assert len(fi.function_defs) >= 1  # at least encode
+
+        _state.workspace_index.remove_file(uri)
+
+    def test_navigation_available_before_trace_results(self) -> None:
+        """Workspace index should have specs even when no trace results exist."""
+        import textwrap
+
+        from jaxtyc.lsp import _state
+
+        source = textwrap.dedent("""\
+            from jaxtyping import Array, Float
+
+            def encode(x: Float[Array, "batch d"]) -> Float[Array, "batch d"]:
+                return x
+        """)
+        uri = "file:///test/early2.py"
+        file_path = "/test/early2.py"
+
+        from jaxtyc.analyzer.annotations import extract_function_specs
+        from jaxtyc.lsp.index import build_file_index
+
+        func_specs = extract_function_specs(source, file_path)
+        file_index = build_file_index(source, file_path, uri, func_specs=func_specs)
+        _state.workspace_index.update_file(file_index)
+
+        # Navigation works (specs, dims) but no trace data yet
+        spec = _state.workspace_index.find_function_at(uri, 3, 4)
+        assert spec is not None
+        assert spec.name == "encode"
+
+        # Just verify workspace index is populated, not empty
+        fi = _state.workspace_index.get_file(uri)
+        assert fi is not None
+        assert len(fi.dim_locations) > 0
+
+        # But trace caches should be empty (analysis hasn't run)
+        with _state.cache_lock:
+            assert uri not in _state.trace_results_cache
+
+        _state.workspace_index.remove_file(uri)

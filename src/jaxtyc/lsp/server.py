@@ -195,6 +195,39 @@ def _analyze_and_publish(ls: LanguageServer, uri: str, source: str | None = None
     except Exception:
         token = None
 
+    # ---- FAST: read source + build navigation index early ----
+    # This makes navigation features (hover, goToDefinition) available
+    # immediately, before the expensive analyze_file() call.
+    try:
+        source_text = Path(file_path).read_text(encoding="utf-8") if source is None else source
+        func_specs = extract_function_specs(source_text, file_path)
+    except Exception:
+        func_specs = []
+        source_text = ""
+
+    all_known: set[str] = set()
+    for fi in _state.workspace_index.all_files():
+        all_known.update(s.name for s in fi.function_specs)
+        all_known.update(d.name for d in fi.function_defs)
+    all_known.update(s.name for s in func_specs)
+
+    try:
+        file_index = build_file_index(
+            source_text,
+            file_path,
+            uri,
+            func_specs=func_specs,
+            extra_known_names=frozenset(all_known),
+            include_external_calls=_state.config.navigation.include_external_calls,
+        )
+        _state.workspace_index.update_file(file_index)
+    except Exception:
+        logger.debug("Failed to build navigation index for %s", file_path, exc_info=True)
+
+    # Cache source text early for inlay hints
+    with _state.cache_lock:
+        _state.source_cache[uri] = source_text
+
     if source is not None:
         # Write in-memory content to temp file for analysis
         suffix = Path(file_path).suffix
@@ -297,35 +330,6 @@ def _analyze_and_publish(ls: LanguageServer, uri: str, source: str | None = None
     all_intermediates: list[IntermediateShape] = []
     for trace in result.trace_results:
         all_intermediates.extend(trace.intermediates)
-
-    # Extract function specs once -- reused for CodeLens and navigation index
-    try:
-        source_text = Path(file_path).read_text(encoding="utf-8") if source is None else source
-        func_specs = extract_function_specs(source_text, file_path)
-    except Exception:
-        func_specs = []
-        source_text = ""
-
-    # Collect all known function names across workspace for cross-file call detection
-    all_known: set[str] = set()
-    for fi in _state.workspace_index.all_files():
-        all_known.update(s.name for s in fi.function_specs)
-        all_known.update(d.name for d in fi.function_defs)
-    all_known.update(s.name for s in func_specs)
-
-    # Build navigation index
-    try:
-        file_index = build_file_index(
-            source_text,
-            file_path,
-            uri,
-            func_specs=func_specs,
-            extra_known_names=frozenset(all_known),
-            include_external_calls=_state.config.navigation.include_external_calls,
-        )
-        _state.workspace_index.update_file(file_index)
-    except Exception:
-        logger.debug("Failed to build navigation index for %s", file_path, exc_info=True)
 
     # Import DimEnv once for both CodeLens and hover enhancement
     from jaxtyc.analyzer.dim_env import DimEnv
