@@ -34,35 +34,68 @@ The server communicates over stdio and provides:
 
 === "VS Code"
 
-    Use any generic LSP client extension (e.g., [glslang](https://marketplace.visualstudio.com/items?itemName=AntHillPlan.vscode-glslang) or [vscode-lsp-sample](https://github.com/nicolo-ribaudo/tc39-proposal-lsp)). Add to `.vscode/settings.json`:
+    Install the jaxtyc extension from the `.vsix` file in `editors/vscode/`:
 
-    ```json
-    {
-      "generic-lsp.servers": [
-        {
-          "name": "jaxtyc",
-          "command": "jaxtyc",
-          "args": ["lsp"],
-          "languages": ["python"]
-        }
-      ]
-    }
+    ```bash
+    cd editors/vscode && npm install && npm run bundle
+    npx @vscode/vsce package --allow-missing-repository
+    code --install-extension jaxtyc-*.vsix
     ```
 
-    Alternatively, if jaxtyc is installed in a project-local venv managed by uv:
+    Or use the justfile from the project root: `just vscode-update`
 
-    ```json
-    {
-      "generic-lsp.servers": [
-        {
-          "name": "jaxtyc",
-          "command": "uv",
-          "args": ["run", "jaxtyc", "lsp"],
-          "languages": ["python"]
-        }
-      ]
-    }
-    ```
+    **Multi-root workspaces:** The extension starts a separate LSP client per workspace folder, each discovering its own Python environment independently.
+
+    The extension auto-detects your Python environment in this order:
+
+    1. `VIRTUAL_ENV` environment variable (activated venv with jaxtyc importable)
+    2. `.venv/bin/python3` in any workspace folder or immediate subfolder (for worktree layouts)
+    3. `jaxtyc` executable on PATH (installed via `uv tool install jaxtyc`)
+    4. VS Code Python extension's `python.defaultInterpreterPath`
+    5. `python3` on PATH
+
+    Each candidate is validated before use -- the first one where jaxtyc is actually importable wins. Override with the `jaxtyc.pythonPath` setting if needed.
+
+    **Configuration:**
+
+    | Setting | Default | Description |
+    |---------|---------|-------------|
+    | `jaxtyc.mode` | `lsp` | `lsp` for shape checking only, `mux` to multiplex with ty/pyright |
+    | `jaxtyc.pythonPath` | (auto) | Path to Python interpreter with jaxtyc installed |
+    | `jaxtyc.args` | `[]` | Extra CLI arguments passed to the server |
+    | `jaxtyc.hints.errorMode` | `both` | `both` shows shape and error, `replace` shows only error |
+    | `jaxtyc.hints.errorLocation` | `divergence` | Where to place error hints |
+    | `jaxtyc.hints.errorStyle` | `pipe` | Separator style between shape and error text |
+    | `jaxtyc.sharding.display` | `append` | Sharding display mode |
+    | `jaxtyc.sharding.rules` | all enabled | Allow-list of sharding diagnostic rules |
+
+    **Commands:**
+
+    | Command | Description |
+    |---------|-------------|
+    | `jaxtyc: Show Menu` | Open the status bar quick pick menu |
+    | `jaxtyc: Restart Server` | Kill and respawn all LSP servers |
+    | `jaxtyc: Check Current File` | Run `jaxtyc check` on the active file and show output |
+    | `jaxtyc: Trace Function` | Trace a function and show shape flow in a webview panel |
+
+    **Snippets:** Type a prefix in a Python file and press Tab:
+
+    | Prefix | Expands to |
+    |--------|-----------|
+    | `jfloat` | `Float[Array, "batch seq dim"]` |
+    | `jint` | `Int[Array, "batch seq"]` |
+    | `jbool` | `Bool[Array, "batch seq"]` |
+    | `jshaped` | `Shaped[Array, "*dims"]` |
+    | `jimport` | `from jaxtyping import Array, Float, Int` |
+    | `jignore` | `# jaxtyc: ignore[rule-name]` |
+
+    **Status bar:** Shows mode and folder health. Click for quick pick menu, hover for server version.
+
+    !!! tip "Mux mode"
+        Setting `jaxtyc.mode` to `mux` starts the LSP multiplexer, which runs both a type checker (ty or pyright) and jaxtyc behind a single LSP connection. When using mux mode, disable Pylance to avoid duplicate diagnostics.
+
+    !!! tip "Trace visualization"
+        Run `jaxtyc: Trace Function` to trace a jaxtyping-annotated function. A webview panel opens showing the function signature, intermediate JAX operations with shapes/dtypes, and output match status.
 
 === "Neovim"
 
@@ -340,6 +373,8 @@ The server communicates over stdio and provides:
 
 !!! note "Common issues"
     - **No diagnostics appear**: Ensure the file contains jaxtyping annotations (`Float[Array, "..."]`). Files without them are silently skipped.
+    - **VS Code: "jaxtyc not found"**: The extension couldn't find a Python environment with jaxtyc installed. Either install it globally (`uv tool install jaxtyc`), add it to your project's venv (`uv add --dev jaxtyc`), or set `jaxtyc.pythonPath` explicitly.
+    - **VS Code: diagnostics missing in multi-root workspace**: The extension checks `.venv` in each workspace folder and one level of subdirectories. If your venv is deeper, set `jaxtyc.pythonPath` per workspace.
     - **Import errors in diagnostics**: The jaxtyc process must have access to all imports used by the analyzed file. Install dependencies in the same venv or use `uv run --project`.
     - **Stale diagnostics after refactor**: Save the file to trigger a fresh analysis. Debounced change analysis uses a temp file and may lag behind large refactors.
     - **Claude Code: only one server's diagnostics show**: Ensure you are using the multiplexer (`python-lsp-mux`), not separate plugins for ty and jaxtyc. Claude Code only starts one LSP server per file extension.

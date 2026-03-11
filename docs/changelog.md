@@ -5,6 +5,30 @@ All notable changes to jaxtyc are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## v0.4.0 — 2026-03-10
+
+### Added
+
+- **VS Code extension v0.2.0** (`editors/vscode/`): Native extension with auto-discovery of Python environments, status bar, and full LSP client integration
+- **Multi-root workspace support**: Per-folder LSP clients, each discovering its own Python environment independently. Status bar reflects aggregate health across all folders
+- **Python auto-detection**: Extension discovers jaxtyc across `VIRTUAL_ENV`, workspace `.venv` directories (including worktree subdirs), `jaxtyc` on PATH, VS Code Python extension interpreter, and `python3` fallback -- validates each candidate before use
+- **Mux mode support**: `jaxtyc.mode` setting switches between `lsp` (shape checking only) and `mux` (multiplexed with ty/pyright)
+- **Status bar quick pick menu**: Click the status bar to access Restart Server, Check Current File, Trace Function, Show Output, and Open Settings
+- **Server version tooltip**: Hover over the status bar to see the connected jaxtyc server version
+- **Trace visualization**: `jaxtyc: Trace Function` command runs `jaxtyc trace` and renders results in a webview panel with shape flow table, intermediate operations, and match/mismatch status
+- **jaxtyping snippets**: 6 snippets (`jfloat`, `jint`, `jbool`, `jshaped`, `jimport`, `jignore`) for Python files
+- **Problem matcher**: Parses `jaxtyc check` output format into VS Code's Problems panel
+- **Config change watcher**: Automatically restarts servers (with 1-second debounce) when `jaxtyc.mode` or `jaxtyc.pythonPath` settings change
+- **GitHub Actions CI**: Python CI workflow (ruff, ty, pytest matrix on 3.11/3.13) and VS Code extension CI (tsc, vitest, esbuild, vsce package with artifact upload)
+- **Pre-commit hooks**: `.pre-commit-config.yaml` with ruff-check, ruff-format, and ty via prek (Rust-based pre-commit replacement)
+- **Justfile**: Development task runner with `just vscode-update` pipeline (tool install, bundle, package, install)
+- **Test suite**: 51 vitest tests (39 discovery + 12 trace-panel) covering discovery logic, candidate ordering, command building, trace parsing, HTML rendering, and edge cases
+
+### Changed
+
+- **Editors documentation**: VS Code section updated with multi-root support, snippets, trace visualization, all new commands, full configuration table
+- **README**: Updated VS Code install instructions with justfile alternative
+
 ## v0.3.1 — 2026-03-10
 
 ### Fixed

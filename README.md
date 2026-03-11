@@ -58,6 +58,26 @@ model.py:8:0: error[shape-mismatch]
 Found 1 error(s) in 1 function(s) checked (0.03s)
 ```
 
+## Editor Integration
+
+### VS Code
+
+Install the [jaxtyc extension](editors/vscode/):
+
+```bash
+cd editors/vscode && npm install && npm run bundle
+npx @vscode/vsce package --allow-missing-repository
+code --install-extension jaxtyc-*.vsix
+```
+
+Or use the justfile: `just vscode-update`
+
+The extension auto-discovers your Python environment (`.venv`, `VIRTUAL_ENV`, or `jaxtyc` on PATH) and starts the LSP server automatically. Supports multi-root workspaces with per-folder LSP clients. Includes jaxtyping snippets, a trace visualization webview, and a status bar quick pick menu.
+
+### Other Editors
+
+jaxtyc works in any editor that supports LSP (Neovim, Helix, etc.). See the [editor setup docs](https://beegass.github.io/jaxtyc/editors/editors/) for configuration.
+
 ## CLI
 
 ```

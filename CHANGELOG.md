@@ -5,6 +5,27 @@ All notable changes to jaxtyc are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] — VS Code Extension v0.2.0
+
+### Added
+
+- **Multi-root workspace support**: Per-folder LSP clients, each discovering its own Python environment independently
+- **Status bar quick pick menu**: Click the status bar for Restart Server, Check Current File, Trace Function, Show Output, Open Settings
+- **Server version tooltip**: Hover over the status bar to see the connected server version
+- **Trace visualization**: `jaxtyc: Trace Function` command with webview panel showing shape flow, intermediate operations, and match/mismatch status
+- **jaxtyping snippets**: `jfloat`, `jint`, `jbool`, `jshaped`, `jimport`, `jignore` for Python files
+- **Problem matcher**: Parses `jaxtyc check` output into VS Code's Problems panel
+- **GitHub Actions CI**: Python CI (ruff, ty, pytest 3.11/3.13 matrix) and VS Code extension CI (tsc, vitest, esbuild, vsce package)
+- **Pre-commit hooks**: `.pre-commit-config.yaml` with ruff + ty via prek
+- **Justfile**: Development task runner (`just vscode-update`, `just test-all`, etc.)
+- VS Code extension test count: 30 -> 51 (added trace-panel tests)
+
+### Changed
+
+- VS Code extension version: 0.1.4 -> 0.2.0
+- Config change handler now debounces (1 second) before restarting servers
+- Extension documentation updated with multi-root, snippets, trace, all commands
+
 ## [v0.3.1] — 2026-03-10
 
 ### Fixed
