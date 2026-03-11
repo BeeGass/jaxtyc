@@ -12,7 +12,7 @@ jaxtyc lsp
 
 The server communicates over stdio and provides:
 
-- **Diagnostics** -- shape errors (`shape-mismatch`, `rank-mismatch`, `trace-error`, `cross-function-mismatch`, `param-inconsistency`, `return-count-mismatch`) appear as editor diagnostics on open, save, and change. Both push and pull diagnostic models are supported. Changes are debounced (default 500ms).
+- **Diagnostics** -- shape errors (`shape-mismatch`, `rank-mismatch`, `trace-error`, `cross-function-mismatch`, `param-inconsistency`, `return-count-mismatch`) and sharding errors (`sharding-rank-mismatch`, `sharding-axis-unknown`, `sharding-conflict`, `sharding-io-mismatch`) appear as editor diagnostics on open, save, and change. Both push and pull diagnostic models are supported. Changes are debounced (default 500ms).
 - **Hover** -- hover over any line in a traced function to see intermediate JAX operation shapes, or hover over a dimension name in a shape string to see its symbolic prime size, usage count, and all reference locations.
 - **CodeLens** -- a virtual annotation above each jaxtyping-annotated function showing traced input/output shapes.
 - **Go to Definition / Find References** -- navigate to dimension name definitions and find all references across the workspace, including cross-file.
@@ -21,7 +21,7 @@ The server communicates over stdio and provides:
 - **Completion** -- autocomplete dimension names inside jaxtyping shape strings, drawn from all dims in the workspace.
 - **Signature Help** -- shape signatures displayed when calling jaxtyping-annotated functions.
 - **Semantic Tokens** -- dimension names in shape strings are highlighted, with definition vs. reference distinction.
-- **Inlay Hints** -- inline resolved shapes at the end of lines with intermediate operations.
+- **Inlay Hints** -- inline resolved shapes in compact `dtype[dim1, dim2]` format, with error hints at divergence points and sharding info (`P(...)`) when present. Smart positioning after variable names on assignment lines.
 - **Linked Editing Range** -- simultaneously edit matching dimension names within the same function.
 - **Folding Ranges** -- collapsible ranges for functions with many shape-annotated parameters.
 - **Call Hierarchy** -- incoming/outgoing call graphs for shape-annotated functions, with shape details.

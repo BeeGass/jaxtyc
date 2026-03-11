@@ -39,7 +39,9 @@ src/jaxtyc/
     importer.py            # Dynamic module import with venv auto-discovery
     tracer.py              # jax.eval_shape / jax.make_jaxpr tracing
     source_map.py          # Jaxpr source_info frame extraction
-    checker.py             # Shape comparison and diagnostic emission (10 rules)
+    checker.py             # Shape comparison and diagnostic emission (14 rules)
+    divergence.py          # Divergence detection: find first shape deviation
+    sharding_checker.py    # Sharding validation: rank, axis, conflict, io-mismatch
     suppressions.py        # Inline # jaxtyc: ignore comment parsing
     pipeline.py            # End-to-end orchestration (analyze_file)
 
@@ -79,6 +81,8 @@ tests/
     suppressed.py          # Inline suppression comments
     nnx_module.py          # Flax NNX module fixture
     eqx_module.py          # Equinox module fixture
+    nnx_sharded.py         # Flax NNX module with sharding constraints
+    sharded_rank_mismatch.py  # Sharding rank mismatch trigger
     ellipsis_patterns.py   # Variadic and ellipsis annotation tests
     int_annotations.py     # Int dtype annotations
     bool_annotations.py    # Bool dtype annotations
@@ -92,6 +96,9 @@ tests/
   test_integration.py      # Full pipeline tests (analyze_file on fixtures)
   test_cli.py              # CLI invocation tests
   test_config.py           # Configuration loading tests
+  test_divergence.py       # Divergence detection tests
+  test_sharding.py         # Sharding extraction tests
+  test_sharding_checker.py # Sharding checker tests
   test_importer.py         # Module importer + venv discovery tests
   test_lsp.py              # LSP server handler tests
   test_mux.py              # LSP multiplexer tests

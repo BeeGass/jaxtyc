@@ -23,11 +23,31 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **Pre-commit hooks**: `.pre-commit-config.yaml` with ruff-check, ruff-format, and ty via prek (Rust-based pre-commit replacement)
 - **Justfile**: Development task runner with `just vscode-update` pipeline (tool install, bundle, package, install)
 - **Test suite**: 51 vitest tests (39 discovery + 12 trace-panel) covering discovery logic, candidate ordering, command building, trace parsing, HTML rendering, and edge cases
+- **Error hints (divergence detection)**: `ErrorHintInfo` type and `find_divergence_points()` in new `analyzer/divergence.py`; inline error display at the first operation whose shape deviates from the annotated return
+- **Sharding checker**: New `analyzer/sharding_checker.py` with 4 diagnostic rules: `sharding-rank-mismatch`, `sharding-axis-unknown`, `sharding-conflict`, `sharding-io-mismatch`
+- **Sharding extraction in tracer**: `_extract_sharding_info()` reads `PartitionSpec` and mesh axes from `sharding_constraint` and `shard_map` jaxpr primitives; attached to `IntermediateShape` via new `ShardingInfo` dataclass
+- **NNX/Equinox intermediate extraction**: Module tracing now returns populated `intermediates` via `_extract_intermediates` (previously returned `[]`)
+- **Dimension-aware module construction**: `_collect_dim_kwargs()` introspects constructor signatures and builds prime-based kwargs, replacing hardcoded `d_in=2, d_out=3`
+- **Compact inlay hint format**: `dtype[dim1, dim2]` with 3 dtype styles (numpy, jax, jaxtyping), last-per-line deduplication, smart positioning after variable names
+- **Sharding display in inlay hints and hover**: `P('data', None)` appended to shape; hover shows mesh axis info
+- **Error display in inlay hints**: Divergence error message appended with configurable separator (pipe or icon)
+- **`HintsConfig`**: `error_mode`, `error_location`, `error_style`, `dtype_style` under `[tool.jaxtyc.hints]`
+- **`ShardingConfig`**: `display` and `rules` under `[tool.jaxtyc.sharding]`
+- **`format_dtype()`**: Dtype abbreviation utility (numpy, jax, jaxtyping styles) covering FP8, FP4/FP6, sub-byte ints
+- New test suites: `test_divergence.py` (8), `test_sharding.py` (4), `test_sharding_checker.py` (8)
+- Extended tests: `test_types.py` (+5), `test_config.py` (+19), `test_lsp.py` (+20), `test_nnx.py` (+7), `test_integration.py` (+1)
 
 ### Changed
 
 - **Editors documentation**: VS Code section updated with multi-root support, snippets, trace visualization, all new commands, full configuration table
 - **README**: Updated VS Code install instructions with justfile alternative
+- **NNX tracing**: Switched from abstract `nnx.eval_shape` to concrete model construction with `nnx.split/merge` + `jax.eval_shape`
+- **Inlay hints**: Rewritten with compact `dtype[dim1, dim2]` format, smart after-variable positioning, error/sharding display
+- **Hover intermediates**: Structured display with `dtype[dim1, dim2]` format, "final" marker, inline sharding
+- **`IntermediateShape`**: Extended with optional `sharding: ShardingInfo | None` field
+- **`JaxtycConfig`**: Extended with nested `hints: HintsConfig` and `sharding: ShardingConfig`
+- **`filter_diagnostics`**: Now additionally filters sharding diagnostics against `sharding.rules` allow-list
+- **`didClose` handler**: Also clears `error_hints_cache` and `source_cache`
 
 ## v0.3.1 — 2026-03-10
 
