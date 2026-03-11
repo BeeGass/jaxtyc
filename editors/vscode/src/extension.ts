@@ -16,6 +16,7 @@ import {
   ServerCommand,
   statusText,
 } from "./discovery";
+import { parseTraceOutput, renderTraceHtml } from "./trace-panel";
 
 const clients = new Map<string, LanguageClient>();
 const folderStatuses = new Map<string, FolderStatus>();
@@ -194,6 +195,7 @@ export async function activate(
         { label: "$(refresh) Restart Server", action: "restart" },
         { label: "$(file-code) Check Current File", action: "check" },
         { label: "$(output) Show Output", action: "output" },
+        { label: "$(beaker) Trace Function", action: "trace" },
         { label: "$(gear) Open Settings", action: "settings" },
       ];
       const pick = await vscode.window.showQuickPick(items, {
@@ -211,6 +213,8 @@ export async function activate(
         vscode.commands.executeCommand("jaxtyc.restartServer");
       } else if (pick.action === "check") {
         vscode.commands.executeCommand("jaxtyc.checkFile");
+      } else if (pick.action === "trace") {
+        vscode.commands.executeCommand("jaxtyc.traceFunction");
       }
     })
   );
@@ -266,6 +270,70 @@ export async function activate(
             outputChannel.appendLine(`Error: ${error.message}`);
         }
       );
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("jaxtyc.traceFunction", async () => {
+      const editor = vscode.window.activeTextEditor;
+      if (!editor) {
+        vscode.window.showWarningMessage("No active Python file.");
+        return;
+      }
+      const filePath = editor.document.uri.fsPath;
+      const funcName = await vscode.window.showInputBox({
+        prompt: "Function name to trace",
+        placeHolder: "e.g. linear",
+      });
+      if (!funcName) return;
+
+      const target = `${filePath}::${funcName}`;
+      const folderPath = folderForPath(
+        filePath,
+        (vscode.workspace.workspaceFolders ?? []).map((f) => f.uri.fsPath)
+      );
+      const { pythonPath } = getConfig();
+      const discovered = folderPath
+        ? discoverServerForFolder(folderPath, "lsp", [])
+        : undefined;
+
+      let cmd: string;
+      let args: string[];
+      if (pythonPath) {
+        cmd = pythonPath;
+        args = ["-m", "jaxtyc.cli.main", "trace", target];
+      } else if (discovered) {
+        const isPython = discovered.args[0] === "-m";
+        cmd = discovered.command;
+        args = isPython
+          ? ["-m", "jaxtyc.cli.main", "trace", target]
+          : ["trace", target];
+      } else {
+        vscode.window.showErrorMessage("jaxtyc not found.");
+        return;
+      }
+
+      outputChannel.appendLine(`Tracing ${target}...`);
+
+      execFile(cmd, args, { cwd: folderPath }, (error, stdout, stderr) => {
+        if (stderr) outputChannel.appendLine(stderr);
+        if (error && !stdout) {
+          outputChannel.appendLine(`Trace failed: ${error.message}`);
+          vscode.window.showErrorMessage(`Trace failed: ${error.message}`);
+          return;
+        }
+        const data = parseTraceOutput(stdout);
+        const panel = vscode.window.createWebviewPanel(
+          "jaxtycTrace",
+          `jaxtyc Trace: ${funcName}`,
+          vscode.ViewColumn.Beside,
+          { enableScripts: false }
+        );
+        const cssUri = panel.webview.asWebviewUri(
+          vscode.Uri.joinPath(context.extensionUri, "media", "trace.css")
+        );
+        panel.webview.html = renderTraceHtml(data, cssUri.toString());
+      });
     })
   );
 

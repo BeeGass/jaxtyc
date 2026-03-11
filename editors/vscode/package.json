@@ -139,6 +139,10 @@
       {
         "command": "jaxtyc.showMenu",
         "title": "jaxtyc: Show Menu"
+      },
+      {
+        "command": "jaxtyc.traceFunction",
+        "title": "jaxtyc: Trace Function"
       }
     ],
     "snippets": [
