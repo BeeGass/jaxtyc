@@ -6,11 +6,13 @@ import threading
 from dataclasses import dataclass
 from dataclasses import field
 
+from jaxtyc.analyzer.annotations import extract_all_function_defs
 from jaxtyc.analyzer.annotations import extract_call_sites
 from jaxtyc.analyzer.annotations import extract_dim_locations
 from jaxtyc.analyzer.annotations import extract_function_specs
 from jaxtyc.types import CallSite
 from jaxtyc.types import DimLocation
+from jaxtyc.types import FunctionDefInfo
 from jaxtyc.types import FunctionShapeSpec
 
 
@@ -23,6 +25,7 @@ class FileIndex:
     function_specs: list[FunctionShapeSpec]
     dim_locations: list[DimLocation]
     call_sites: list[CallSite] = field(default_factory=list)
+    function_defs: list[FunctionDefInfo] = field(default_factory=list)
 
 
 def build_file_index(
@@ -30,22 +33,34 @@ def build_file_index(
     file_path: str,
     uri: str,
     func_specs: list[FunctionShapeSpec] | None = None,
+    extra_known_names: frozenset[str] | None = None,
+    include_external_calls: bool = False,
 ) -> FileIndex:
     """Build a complete FileIndex from source code.
 
     If func_specs is provided, reuses them instead of re-parsing.
+    If extra_known_names is provided, those names are included in call-site
+    detection alongside locally defined functions, enabling cross-file call
+    discovery.
     """
     if func_specs is None:
         func_specs = extract_function_specs(source, file_path)
     dim_locs = extract_dim_locations(source, file_path)
-    known_names = {s.name for s in func_specs}
-    call_sites = extract_call_sites(source, file_path, known_names)
+    func_defs = extract_all_function_defs(source, file_path)
+    # known_names includes ALL workspace functions, not just annotated
+    known_names = {d.name for d in func_defs} | {s.name for s in func_specs}
+    if extra_known_names:
+        known_names |= extra_known_names
+    call_sites = extract_call_sites(
+        source, file_path, known_names, include_external=include_external_calls
+    )
     return FileIndex(
         file_path=file_path,
         uri=uri,
         function_specs=func_specs,
         dim_locations=dim_locs,
         call_sites=call_sites,
+        function_defs=func_defs,
     )
 
 
@@ -119,6 +134,16 @@ class WorkspaceIndex:
                 return dim
         return None
 
+    def find_dim_definition_in_file(self, dim_name: str, uri: str) -> DimLocation | None:
+        """Find the first occurrence of a dim name in the file (any function)."""
+        idx = self.get_file(uri)
+        if idx is None:
+            return None
+        for dim in idx.dim_locations:
+            if dim.dim_name == dim_name:
+                return dim
+        return None
+
     def find_dim_references_in_function(
         self, dim_name: str, function_name: str, uri: str
     ) -> list[DimLocation]:
@@ -141,31 +166,62 @@ class WorkspaceIndex:
             results.extend(d for d in idx.dim_locations if d.dim_name == dim_name)
         return results
 
-    def find_function_by_name(self, name: str) -> list[FunctionShapeSpec]:
+    def find_function_by_name(
+        self, name: str, preferred_uri: str | None = None
+    ) -> list[FunctionShapeSpec]:
         """Find all functions with the given name across the workspace."""
         with self._lock:
             files = list(self._files.values())
         results: list[FunctionShapeSpec] = []
         for idx in files:
             results.extend(s for s in idx.function_specs if s.name == name)
+        if preferred_uri is not None and len(results) > 1:
+            preferred_path: str | None = None
+            with self._lock:
+                pf = self._files.get(preferred_uri)
+                if pf is not None:
+                    preferred_path = pf.file_path
+            if preferred_path is not None:
+                results.sort(key=lambda s: s.file_path != preferred_path)
         return results
 
-    def search_symbols(self, query: str) -> list[FunctionShapeSpec]:
-        """Search for functions whose names contain the query (case-insensitive)."""
+    def search_symbols(self, query: str) -> list[FunctionShapeSpec | FunctionDefInfo]:
+        """Search for functions whose names contain the query (case-insensitive).
+
+        Searches both annotated (FunctionShapeSpec) and non-annotated (FunctionDefInfo)
+        functions. Annotated specs are preferred over bare defs for the same function.
+        """
         q = query.lower()
         with self._lock:
             files = list(self._files.values())
-        results: list[FunctionShapeSpec] = []
+        results: list[FunctionShapeSpec | FunctionDefInfo] = []
+        seen: set[tuple[str, int]] = set()  # (file_path, lineno) dedup
         for idx in files:
             for spec in idx.function_specs:
                 if q in spec.name.lower():
                     results.append(spec)
+                    seen.add((spec.file_path, spec.lineno))
+                    if len(results) >= 50:
+                        return results
+            for fdef in idx.function_defs:
+                if (fdef.file_path, fdef.lineno) in seen:
+                    continue
+                if q in fdef.name.lower():
+                    results.append(fdef)
+                    seen.add((fdef.file_path, fdef.lineno))
                     if len(results) >= 50:
                         return results
         return results
 
     def get_callers_of(self, function_name: str, uri: str) -> list[CallSite]:
-        """Find all call sites where the given function is called."""
+        """Find call sites for the function within a specific file."""
+        idx = self.get_file(uri)
+        if idx is None:
+            return []
+        return [c for c in idx.call_sites if c.callee_name == function_name]
+
+    def get_all_callers_of(self, function_name: str) -> list[CallSite]:
+        """Find all call sites for the function across the entire workspace."""
         with self._lock:
             files = list(self._files.values())
         results: list[CallSite] = []
@@ -181,9 +237,38 @@ class WorkspaceIndex:
                     return fi.uri
         return None
 
+    def find_function_def_by_name(
+        self, name: str, preferred_uri: str | None = None
+    ) -> list[FunctionDefInfo]:
+        """Find all function definitions with the given name across the workspace."""
+        with self._lock:
+            files = list(self._files.values())
+        results: list[FunctionDefInfo] = []
+        for idx in files:
+            results.extend(d for d in idx.function_defs if d.name == name)
+        if preferred_uri is not None and len(results) > 1:
+            preferred_path: str | None = None
+            with self._lock:
+                pf = self._files.get(preferred_uri)
+                if pf is not None:
+                    preferred_path = pf.file_path
+            if preferred_path is not None:
+                results.sort(key=lambda d: d.file_path != preferred_path)
+        return results
+
     def get_callees_of(self, function_name: str, uri: str) -> list[CallSite]:
         """Find all functions called by the given function."""
         idx = self.get_file(uri)
         if idx is None:
             return []
         return [c for c in idx.call_sites if c.caller_name == function_name]
+
+    def find_call_site_at(self, uri: str, line: int, col: int) -> CallSite | None:
+        """Find a call site at the given 1-based line, 0-based col."""
+        idx = self.get_file(uri)
+        if idx is None:
+            return None
+        for cs in idx.call_sites:
+            if cs.lineno == line and cs.col_offset <= col < cs.end_col_offset:
+                return cs
+        return None

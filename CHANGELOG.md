@@ -5,6 +5,22 @@ All notable changes to jaxtyc are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.5.0] — 2026-03-11
+
+### Changed
+
+- **Navigation defaults**: `references_scope` now defaults to `"workspace"` (was `"file"`) and `include_external_calls` now defaults to `true` (was `false`), giving cross-file references, workspace-wide incoming calls, and full call graphs out of the box
+- **External call display**: `outgoingCalls` and hover now show qualified names for library calls (e.g. `jnp.matmul` instead of `matmul`)
+
+### Added
+
+- **`CallSite.callee_qualified_name`**: Optional field storing the full dotted path for attribute calls (e.g. `jnp.lax.scan`), extracted from `ast.Attribute` chains via new `_dotted_name()` helper in `annotations.py`
+- **External call hover**: Hovering on an external call site (e.g. `jnp.dot(x, y)`) now shows `**jnp.dot** (external)` instead of returning nothing
+- **Trace error fallback hover**: Hovering on an intermediate line inside a function whose tracing failed now shows the trace error message (e.g. `Trace error in encode: dot_general requires...`)
+- **Navigation docs**: `[tool.jaxtyc.navigation]` section documented in configuration guide with `references_scope` and `include_external_calls` options
+- New tests: qualified name extraction, hover trace error fallback, external call hover, external qualified name in outgoing calls
+- Test count: 447 -> 498
+
 ## [v0.4.0] — 2026-03-10
 
 ### Added
@@ -168,6 +184,7 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Flax NNX and Equinox module support (auto-skips `self`/`cls` parameters)
 - CI workflow and mkdocs documentation site
 
+[v0.5.0]: https://github.com/BeeGass/jaxtyc/compare/v0.4.0...v0.5.0
 [v0.4.0]: https://github.com/BeeGass/jaxtyc/compare/v0.3.1...v0.4.0
 [v0.3.1]: https://github.com/BeeGass/jaxtyc/compare/v0.3.0...v0.3.1
 [v0.3.0]: https://github.com/BeeGass/jaxtyc/compare/v0.2.0...v0.3.0

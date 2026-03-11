@@ -5,6 +5,21 @@ All notable changes to jaxtyc are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## v0.5.0 — 2026-03-11
+
+### Changed
+
+- **Navigation defaults**: `references_scope` now defaults to `"workspace"` (was `"file"`) and `include_external_calls` now defaults to `true` (was `false"`), giving cross-file references, workspace-wide incoming calls, and full call graphs out of the box
+- **External call display**: `outgoingCalls` and hover now show qualified names for library calls (e.g. `jnp.matmul` instead of `matmul`)
+
+### Added
+
+- **`CallSite.callee_qualified_name`**: Optional field storing the full dotted path for attribute calls (e.g. `jnp.lax.scan`)
+- **External call hover**: Hovering on external call sites shows qualified name with `(external)` label
+- **Trace error fallback hover**: Hovering on intermediate lines inside failed-trace functions shows the trace error message
+- **Navigation docs**: `[tool.jaxtyc.navigation]` section documented in configuration guide
+- Test count: 447 -> 498
+
 ## v0.4.0 — 2026-03-10
 
 ### Added

@@ -7,6 +7,7 @@ from jaxtyc.types import CallSite
 from jaxtyc.types import Diagnostic
 from jaxtyc.types import DiagnosticData
 from jaxtyc.types import FunctionShapeSpec
+from jaxtyc.types import RelatedLocation
 from jaxtyc.types import ShapeSpec
 from jaxtyc.types import TraceResult
 
@@ -207,6 +208,15 @@ def _check_shape(
                     dim_name_mapping=env.name_size_mapping(),
                     suggested_fix=_suggest_fix(expected_shape, actual_shape, env, "rank-mismatch"),
                     rule="rank-mismatch",
+                    related_locations=(
+                        RelatedLocation(
+                            file_path=func_spec.file_path,
+                            line=func_spec.lineno,
+                            col=func_spec.name_col_offset,
+                            end_col=func_spec.name_col_offset + len(func_spec.name),
+                            message=f"Return annotation of `{func_spec.name}`",
+                        ),
+                    ),
                 ),
             )
         )
@@ -236,6 +246,15 @@ def _check_shape(
                     dim_name_mapping=env.name_size_mapping(),
                     suggested_fix=_suggest_fix(expected_shape, actual_shape, env, "shape-mismatch"),
                     rule="shape-mismatch",
+                    related_locations=(
+                        RelatedLocation(
+                            file_path=func_spec.file_path,
+                            line=func_spec.lineno,
+                            col=func_spec.name_col_offset,
+                            end_col=func_spec.name_col_offset + len(func_spec.name),
+                            message=f"Return annotation of `{func_spec.name}`",
+                        ),
+                    ),
                 ),
             )
         )
@@ -294,6 +313,15 @@ def check_call_site(
                     actual_named=_named_shape_tuple(actual_shape, env),
                     dim_name_mapping=env.name_size_mapping(),
                     rule="cross-function-mismatch",
+                    related_locations=(
+                        RelatedLocation(
+                            file_path=callee_spec.file_path,
+                            line=callee_spec.lineno,
+                            col=callee_spec.name_col_offset,
+                            end_col=callee_spec.name_col_offset + len(callee_spec.name),
+                            message=f"Definition of `{call.callee_name}`",
+                        ),
+                    ),
                 ),
             )
         )

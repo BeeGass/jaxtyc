@@ -348,3 +348,62 @@ class TestNestedConfig:
         assert "sharding-rank-mismatch" in rules
         assert "sharding-axis-unknown" not in rules  # filtered by allowlist
         assert "shape-mismatch" in rules  # non-sharding rules unaffected
+
+
+class TestNavigationConfig:
+    def test_navigation_config_defaults(self) -> None:
+        """NavigationConfig has correct defaults."""
+        from jaxtyc.config import NavigationConfig
+
+        nav = NavigationConfig()
+        assert nav.references_scope == "workspace"
+        assert nav.include_external_calls is True
+
+    def test_navigation_config_frozen(self) -> None:
+        """NavigationConfig should be immutable."""
+        import pytest
+
+        from jaxtyc.config import NavigationConfig
+
+        nav = NavigationConfig()
+        with pytest.raises(AttributeError):
+            nav.references_scope = "workspace"  # type: ignore[misc]
+
+    def test_jaxtyc_config_has_navigation(self) -> None:
+        """JaxtycConfig includes navigation sub-config."""
+        from jaxtyc.config import NavigationConfig
+
+        cfg = JaxtycConfig()
+        assert isinstance(cfg.navigation, NavigationConfig)
+
+    def test_load_navigation_subsection(self) -> None:
+        """load_config reads [tool.jaxtyc.navigation] from pyproject.toml."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            pyproject = Path(tmpdir) / "pyproject.toml"
+            pyproject.write_text(
+                "[tool.jaxtyc.navigation]\n"
+                'references_scope = "file"\n'
+                "include_external_calls = false\n"
+            )
+            cfg = load_config(tmpdir)
+            assert cfg.navigation.references_scope == "file"
+            assert cfg.navigation.include_external_calls is False
+
+    def test_navigation_defaults_when_missing(self) -> None:
+        """Missing [tool.jaxtyc.navigation] uses defaults."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            pyproject = Path(tmpdir) / "pyproject.toml"
+            pyproject.write_text("[tool.jaxtyc]\nseverity = 'warning'\n")
+            cfg = load_config(tmpdir)
+            assert cfg.navigation.references_scope == "workspace"
+            assert cfg.navigation.include_external_calls is True
+
+    def test_navigation_unknown_keys_ignored(self) -> None:
+        """Unknown keys inside navigation subsection are silently ignored."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            pyproject = Path(tmpdir) / "pyproject.toml"
+            pyproject.write_text(
+                '[tool.jaxtyc.navigation]\nbogus_key = true\nreferences_scope = "workspace"\n'
+            )
+            cfg = load_config(tmpdir)
+            assert cfg.navigation.references_scope == "workspace"

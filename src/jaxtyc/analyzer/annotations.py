@@ -8,6 +8,7 @@ import re
 from jaxtyc.types import CallSite
 from jaxtyc.types import DimLocation
 from jaxtyc.types import DimSpec
+from jaxtyc.types import FunctionDefInfo
 from jaxtyc.types import FunctionShapeSpec
 from jaxtyc.types import ShapeSpec
 
@@ -244,11 +245,15 @@ def extract_call_sites(
     source: str,
     file_path: str,
     known_functions: set[str],
+    include_external: bool = False,
 ) -> list[CallSite]:
     """Extract call sites between shape-annotated functions.
 
     Walks function bodies for ast.Call nodes and matches callee names
     against the set of known shape-annotated function names.
+
+    When *include_external* is True, calls to functions **not** in
+    *known_functions* are also recorded (e.g. library/external calls).
     """
     try:
         tree = ast.parse(source, filename=file_path)
@@ -256,7 +261,14 @@ def extract_call_sites(
         return []
 
     results: list[CallSite] = []
-    _visit_body_for_calls(tree.body, file_path, known_functions, results, class_name=None)
+    _visit_body_for_calls(
+        tree.body,
+        file_path,
+        known_functions,
+        results,
+        class_name=None,
+        include_external=include_external,
+    )
     return results
 
 
@@ -266,16 +278,41 @@ def _visit_body_for_calls(
     known_functions: set[str],
     results: list[CallSite],
     class_name: str | None,
+    include_external: bool = False,
 ) -> None:
     """Walk statements extracting call sites from function bodies."""
     for node in body:
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             caller = f"{class_name}.{node.name}" if class_name else node.name
-            _extract_calls_from_body(node.body, caller, file_path, known_functions, results)
+            _extract_calls_from_body(
+                node.body,
+                caller,
+                file_path,
+                known_functions,
+                results,
+                include_external=include_external,
+            )
         elif isinstance(node, ast.ClassDef):
             _visit_body_for_calls(
-                node.body, file_path, known_functions, results, class_name=node.name
+                node.body,
+                file_path,
+                known_functions,
+                results,
+                class_name=node.name,
+                include_external=include_external,
             )
+
+
+def _dotted_name(node: ast.Attribute) -> str:
+    """Build a dotted name from an ast.Attribute chain (e.g. jnp.lax.scan)."""
+    parts = [node.attr]
+    current: ast.expr = node.value
+    while isinstance(current, ast.Attribute):
+        parts.append(current.attr)
+        current = current.value
+    if isinstance(current, ast.Name):
+        parts.append(current.id)
+    return ".".join(reversed(parts))
 
 
 def _extract_calls_from_body(
@@ -284,12 +321,14 @@ def _extract_calls_from_body(
     file_path: str,
     known_functions: set[str],
     results: list[CallSite],
+    include_external: bool = False,
 ) -> None:
     """Walk a function body extracting calls to known functions."""
     for node in ast.walk(ast.Module(body=body, type_ignores=[])):
         if not isinstance(node, ast.Call):
             continue
         callee_name: str | None = None
+        qualified: str | None = None
         col_start = 0
         col_end = 0
         if isinstance(node.func, ast.Name):
@@ -298,9 +337,10 @@ def _extract_calls_from_body(
             col_end = node.func.end_col_offset or (col_start + len(callee_name))
         elif isinstance(node.func, ast.Attribute):
             callee_name = node.func.attr
+            qualified = _dotted_name(node.func)
             col_start = node.func.col_offset
             col_end = node.func.end_col_offset or (col_start + len(callee_name))
-        if callee_name and callee_name in known_functions:
+        if callee_name and (callee_name in known_functions or include_external):
             results.append(
                 CallSite(
                     caller_name=caller_name,
@@ -309,8 +349,42 @@ def _extract_calls_from_body(
                     lineno=node.lineno,
                     col_offset=col_start,
                     end_col_offset=col_end,
+                    callee_qualified_name=qualified,
                 )
             )
+
+
+def extract_all_function_defs(source: str, file_path: str) -> list[FunctionDefInfo]:
+    """Extract name and location for every function definition in source."""
+    try:
+        tree = ast.parse(source, filename=file_path)
+    except SyntaxError:
+        return []
+
+    results: list[FunctionDefInfo] = []
+
+    def _visit(body: list[ast.stmt], class_name: str | None) -> None:
+        for node in body:
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                keyword_len = 10 if isinstance(node, ast.AsyncFunctionDef) else 4
+                results.append(
+                    FunctionDefInfo(
+                        name=node.name,
+                        file_path=file_path,
+                        lineno=node.lineno,
+                        col_offset=node.col_offset,
+                        end_lineno=node.end_lineno or node.lineno,
+                        name_col_offset=node.col_offset + keyword_len,
+                        is_method=class_name is not None,
+                        class_name=class_name,
+                    )
+                )
+                _visit(node.body, None)
+            elif isinstance(node, ast.ClassDef):
+                _visit(node.body, node.name)
+
+    _visit(tree.body, None)
+    return results
 
 
 def extract_dim_locations(source: str, file_path: str) -> list[DimLocation]:

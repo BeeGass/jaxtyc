@@ -242,3 +242,258 @@ class TestWorkspaceIndex:
         assert len(callees) == 2
         names = {c.callee_name for c in callees}
         assert names == {"encode", "decode"}
+
+
+def test_find_call_site_at() -> None:
+    """find_call_site_at should match position within a call site range."""
+    idx = WorkspaceIndex()
+    cs = CallSite(
+        caller_name="main",
+        callee_name="encode",
+        file_path="/test.py",
+        lineno=10,
+        col_offset=4,
+        end_col_offset=10,
+    )
+    fi = FileIndex(
+        file_path="/test.py",
+        uri="file:///test.py",
+        function_specs=[],
+        dim_locations=[],
+        call_sites=[cs],
+    )
+    idx.update_file(fi)
+
+    # Inside range
+    found = idx.find_call_site_at("file:///test.py", 10, 6)
+    assert found is not None
+    assert found.callee_name == "encode"
+
+    # At start boundary
+    found = idx.find_call_site_at("file:///test.py", 10, 4)
+    assert found is not None
+
+    # At end boundary (exclusive)
+    not_found = idx.find_call_site_at("file:///test.py", 10, 10)
+    assert not_found is None
+
+    # Wrong line
+    not_found = idx.find_call_site_at("file:///test.py", 11, 6)
+    assert not_found is None
+
+    # Unknown URI
+    not_found = idx.find_call_site_at("file:///other.py", 10, 6)
+    assert not_found is None
+
+
+def test_find_function_def_by_name() -> None:
+    from jaxtyc.types import FunctionDefInfo
+
+    idx = WorkspaceIndex()
+    fdef = FunctionDefInfo(
+        name="helper", file_path="/a.py", lineno=3, col_offset=0, name_col_offset=4
+    )
+    idx.update_file(
+        FileIndex(
+            file_path="/a.py",
+            uri="file:///a.py",
+            function_specs=[],
+            dim_locations=[],
+            call_sites=[],
+            function_defs=[fdef],
+        )
+    )
+    results = idx.find_function_def_by_name("helper")
+    assert len(results) == 1
+    assert results[0].name == "helper"
+
+
+def test_find_function_by_name_preferred_uri() -> None:
+    """preferred_uri should sort matching specs so the preferred file comes first."""
+    idx = WorkspaceIndex()
+    spec_a = FunctionShapeSpec(
+        name="encode",
+        file_path="/a.py",
+        lineno=5,
+        col_offset=0,
+        params={},
+        return_spec=None,
+    )
+    spec_b = FunctionShapeSpec(
+        name="encode",
+        file_path="/b.py",
+        lineno=10,
+        col_offset=0,
+        params={},
+        return_spec=None,
+    )
+    idx.update_file(
+        FileIndex(
+            file_path="/a.py",
+            uri="file:///a.py",
+            function_specs=[spec_a],
+            dim_locations=[],
+            call_sites=[],
+        )
+    )
+    idx.update_file(
+        FileIndex(
+            file_path="/b.py",
+            uri="file:///b.py",
+            function_specs=[spec_b],
+            dim_locations=[],
+            call_sites=[],
+        )
+    )
+    # Without preferred_uri, returns both
+    assert len(idx.find_function_by_name("encode")) == 2
+    # With preferred_uri, preferred file's spec comes first
+    results_a = idx.find_function_by_name("encode", preferred_uri="file:///a.py")
+    assert results_a[0].file_path == "/a.py"
+    results_b = idx.find_function_by_name("encode", preferred_uri="file:///b.py")
+    assert results_b[0].file_path == "/b.py"
+    # Unknown preferred_uri still returns all
+    assert len(idx.find_function_by_name("encode", preferred_uri="file:///c.py")) == 2
+
+
+def test_search_symbols_includes_non_annotated() -> None:
+    """search_symbols should find non-annotated functions via function_defs."""
+    from jaxtyc.types import FunctionDefInfo
+
+    idx = WorkspaceIndex()
+    helper_def = FunctionDefInfo(
+        name="normalize",
+        file_path="/a.py",
+        lineno=3,
+        col_offset=0,
+        name_col_offset=4,
+    )
+    spec = FunctionShapeSpec(
+        name="encode",
+        file_path="/a.py",
+        lineno=10,
+        col_offset=0,
+        params={},
+        return_spec=None,
+    )
+    idx.update_file(
+        FileIndex(
+            file_path="/a.py",
+            uri="file:///a.py",
+            function_specs=[spec],
+            dim_locations=[],
+            call_sites=[],
+            function_defs=[
+                helper_def,
+                FunctionDefInfo(
+                    name="encode",
+                    file_path="/a.py",
+                    lineno=10,
+                    col_offset=0,
+                    name_col_offset=4,
+                ),
+            ],
+        )
+    )
+    # Annotated function found
+    assert len(idx.search_symbols("encode")) == 1
+    # Non-annotated function should also be found
+    results = idx.search_symbols("normalize")
+    assert len(results) == 1
+    assert results[0].name == "normalize"
+    # Empty query returns all
+    all_results = idx.search_symbols("")
+    names = {r.name for r in all_results}
+    assert "encode" in names
+    assert "normalize" in names
+
+
+def test_find_dim_definition_file_scoped() -> None:
+    """find_dim_definition without function_name should search the entire file."""
+    ws = WorkspaceIndex()
+    dims = [
+        _make_dim("batch", "x", "encode", 5, 22, 27),
+        _make_dim("batch", "__return__", "encode", 6, 20, 25),
+        _make_dim("batch", "h", "decode", 10, 22, 27),
+        _make_dim("batch", "__return__", "decode", 11, 20, 25),
+    ]
+    fi = FileIndex(
+        file_path="test.py",
+        uri="file:///test.py",
+        function_specs=[],
+        dim_locations=dims,
+        call_sites=[],
+    )
+    ws.update_file(fi)
+    # Function-scoped: first batch in decode is line 10
+    defn = ws.find_dim_definition("batch", "decode", "file:///test.py")
+    assert defn is not None
+    assert defn.lineno == 10
+    # File-scoped: first batch in the entire file is line 5
+    defn_file = ws.find_dim_definition_in_file("batch", "file:///test.py")
+    assert defn_file is not None
+    assert defn_file.lineno == 5
+
+
+def test_get_callers_of_scoped_to_file() -> None:
+    """get_callers_of should only return call sites from the specified file."""
+    ws = WorkspaceIndex()
+    cs_a = CallSite("main_a", "decode", "/a.py", 10, 4, 10)
+    cs_b = CallSite("main_b", "decode", "/b.py", 20, 4, 10)
+    ws.update_file(
+        FileIndex(
+            file_path="/a.py",
+            uri="file:///a.py",
+            function_specs=[],
+            dim_locations=[],
+            call_sites=[cs_a],
+        )
+    )
+    ws.update_file(
+        FileIndex(
+            file_path="/b.py",
+            uri="file:///b.py",
+            function_specs=[],
+            dim_locations=[],
+            call_sites=[cs_b],
+        )
+    )
+    # File-scoped: only call sites in file A
+    callers_a = ws.get_callers_of("decode", "file:///a.py")
+    assert len(callers_a) == 1
+    assert callers_a[0].caller_name == "main_a"
+    # File-scoped: only call sites in file B
+    callers_b = ws.get_callers_of("decode", "file:///b.py")
+    assert len(callers_b) == 1
+    assert callers_b[0].caller_name == "main_b"
+    # Unknown URI returns empty
+    assert ws.get_callers_of("decode", "file:///unknown.py") == []
+
+
+def test_get_all_callers_of() -> None:
+    """get_all_callers_of returns call sites from all files."""
+    ws = WorkspaceIndex()
+    cs_a = CallSite("main_a", "decode", "/a.py", 10, 4, 10)
+    cs_b = CallSite("main_b", "decode", "/b.py", 20, 4, 10)
+    ws.update_file(
+        FileIndex(
+            file_path="/a.py",
+            uri="file:///a.py",
+            function_specs=[],
+            dim_locations=[],
+            call_sites=[cs_a],
+        )
+    )
+    ws.update_file(
+        FileIndex(
+            file_path="/b.py",
+            uri="file:///b.py",
+            function_specs=[],
+            dim_locations=[],
+            call_sites=[cs_b],
+        )
+    )
+    all_callers = ws.get_all_callers_of("decode")
+    assert len(all_callers) == 2
+    names = {c.caller_name for c in all_callers}
+    assert names == {"main_a", "main_b"}

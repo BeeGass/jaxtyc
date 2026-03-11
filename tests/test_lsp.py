@@ -584,7 +584,7 @@ class TestLSPNavigation:
         assert result["range"]["start"]["line"] == 8
         assert result["range"]["start"]["character"] == 21
 
-    def test_definition_at_first_occurrence_returns_null(self) -> None:
+    def test_definition_at_first_occurrence_returns_self(self) -> None:
         with _lsp_session("correct_attention.py") as s:
             # batch in q param: line 9 (1-based) = line 8 (0-based), col 22
             rid = s.request(
@@ -596,7 +596,10 @@ class TestLSPNavigation:
             )
         resp = _find_response(s.messages, rid)
         assert resp is not None
-        assert resp["result"] is None
+        loc = resp["result"]
+        assert loc is not None, "goToDefinition should return definition even at first occurrence"
+        assert loc["range"]["start"]["line"] == 8
+        assert loc["range"]["start"]["character"] == 21
 
     def test_references_dim(self) -> None:
         with _lsp_session("correct_attention.py") as s:
@@ -771,6 +774,163 @@ class TestLSPNavigation:
         assert len(result) == 2
         names = {r["to"]["name"] for r in result}
         assert names == {"encode", "decode"}
+
+
+class TestNonAnnotatedCallHierarchy:
+    """outgoingCalls should include non-annotated workspace functions."""
+
+    def setup_method(self) -> None:
+        from jaxtyc.lsp import _state
+        from jaxtyc.lsp.index import FileIndex
+        from jaxtyc.types import CallSite
+        from jaxtyc.types import FunctionDefInfo
+        from jaxtyc.types import FunctionShapeSpec
+
+        self.uri = "file:///test/calls.py"
+        spec = FunctionShapeSpec(
+            name="encode",
+            file_path="/test/calls.py",
+            lineno=10,
+            col_offset=0,
+            params={},
+            return_spec=None,
+            name_col_offset=4,
+        )
+        helper_def = FunctionDefInfo(
+            name="normalize",
+            file_path="/test/calls.py",
+            lineno=3,
+            col_offset=0,
+            end_lineno=5,
+            name_col_offset=4,
+        )
+        call = CallSite(
+            caller_name="encode",
+            callee_name="normalize",
+            file_path="/test/calls.py",
+            lineno=12,
+            col_offset=15,
+            end_col_offset=24,
+        )
+        _state.workspace_index.update_file(
+            FileIndex(
+                file_path="/test/calls.py",
+                uri=self.uri,
+                function_specs=[spec],
+                dim_locations=[],
+                call_sites=[call],
+                function_defs=[
+                    helper_def,
+                    FunctionDefInfo(
+                        name="encode",
+                        file_path="/test/calls.py",
+                        lineno=10,
+                        col_offset=0,
+                        end_lineno=15,
+                        name_col_offset=4,
+                    ),
+                ],
+            )
+        )
+
+    def teardown_method(self) -> None:
+        from jaxtyc.lsp import _state
+
+        _state.workspace_index.remove_file(self.uri)
+
+    def test_outgoing_calls_includes_non_annotated_callee(self) -> None:
+        from lsprotocol import types as lsp_types
+
+        from jaxtyc.lsp._navigation import outgoing_calls
+        from jaxtyc.lsp.server import server
+
+        item = lsp_types.CallHierarchyItem(
+            name="encode",
+            kind=lsp_types.SymbolKind.Function,
+            uri=self.uri,
+            range=lsp_types.Range(
+                start=lsp_types.Position(line=9, character=0),
+                end=lsp_types.Position(line=14, character=0),
+            ),
+            selection_range=lsp_types.Range(
+                start=lsp_types.Position(line=9, character=4),
+                end=lsp_types.Position(line=9, character=10),
+            ),
+            data={"function_name": "encode", "uri": self.uri},
+        )
+        params = lsp_types.CallHierarchyOutgoingCallsParams(item=item)
+        result = outgoing_calls(server, params)
+        assert result is not None
+        assert len(result) == 1
+        assert result[0].to.name == "normalize"
+
+    def test_incoming_calls_includes_non_annotated_caller(self) -> None:
+        from lsprotocol import types as lsp_types
+
+        from jaxtyc.config import JaxtycConfig
+        from jaxtyc.config import NavigationConfig
+        from jaxtyc.lsp import _state
+        from jaxtyc.lsp._navigation import incoming_calls
+        from jaxtyc.lsp.index import FileIndex
+        from jaxtyc.lsp.server import server
+        from jaxtyc.types import CallSite
+        from jaxtyc.types import FunctionDefInfo
+
+        uri2 = "file:///test/caller.py"
+        main_def = FunctionDefInfo(
+            name="main",
+            file_path="/test/caller.py",
+            lineno=1,
+            col_offset=0,
+            end_lineno=4,
+            name_col_offset=4,
+        )
+        call = CallSite(
+            caller_name="main",
+            callee_name="encode",
+            file_path="/test/caller.py",
+            lineno=3,
+            col_offset=8,
+            end_col_offset=14,
+        )
+        _state.workspace_index.update_file(
+            FileIndex(
+                file_path="/test/caller.py",
+                uri=uri2,
+                function_specs=[],
+                dim_locations=[],
+                call_sites=[call],
+                function_defs=[main_def],
+            )
+        )
+
+        # Cross-file incoming calls require workspace scope
+        orig_config = _state.config
+        try:
+            _state.config = JaxtycConfig(navigation=NavigationConfig(references_scope="workspace"))
+            item = lsp_types.CallHierarchyItem(
+                name="encode",
+                kind=lsp_types.SymbolKind.Function,
+                uri=self.uri,
+                range=lsp_types.Range(
+                    start=lsp_types.Position(line=9, character=0),
+                    end=lsp_types.Position(line=14, character=0),
+                ),
+                selection_range=lsp_types.Range(
+                    start=lsp_types.Position(line=9, character=4),
+                    end=lsp_types.Position(line=9, character=10),
+                ),
+                data={"function_name": "encode", "uri": self.uri},
+            )
+            params = lsp_types.CallHierarchyIncomingCallsParams(item=item)
+            result = incoming_calls(server, params)
+            assert result is not None
+            # Should find "main" as a caller even though it has no FunctionShapeSpec
+            caller_names = [r.from_.name for r in result]
+            assert "main" in caller_names
+        finally:
+            _state.config = orig_config
+            _state.workspace_index.remove_file(uri2)
 
 
 class TestLSPInlayHints:
@@ -1347,3 +1507,1306 @@ class TestLSPErrorHintsState:
             time.sleep(0.5)
         # If we get here without error, the close handler processed without
         # crashing on the error_hints_cache key
+
+
+class TestTraceResultsCache:
+    """Tests for trace_results_cache in LSP state."""
+
+    def test_trace_results_cache_exists(self) -> None:
+        """_state module should have trace_results_cache dict."""
+        from jaxtyc.lsp import _state
+
+        assert hasattr(_state, "trace_results_cache")
+        assert isinstance(_state.trace_results_cache, dict)
+
+    def test_trace_results_populated_after_analysis(self) -> None:
+        """After analysis, trace_results_cache should contain function traces."""
+        from jaxtyc.lsp import _state
+        from jaxtyc.types import TraceResult
+
+        uri = "file:///test/trace_cache_test.py"
+        tr = TraceResult(
+            function_name="test_fn",
+            output_shape=(4, 8),
+            output_dtype="float32",
+            intermediates=[],
+            error=None,
+        )
+        with _state.cache_lock:
+            _state.trace_results_cache[uri] = {"test_fn": tr}
+        assert _state.trace_results_cache[uri]["test_fn"].output_shape == (4, 8)
+        with _state.cache_lock:
+            _state.trace_results_cache.pop(uri, None)
+
+
+class TestHoverDivergenceInfo:
+    """Tests for divergence-aware hover in LSP navigation."""
+
+    def test_hover_on_error_line_shows_divergence(self) -> None:
+        """Hover on a line with a divergence error shows expected vs actual."""
+        from jaxtyc.lsp import _state
+        from jaxtyc.types import ErrorHintInfo
+        from jaxtyc.types import IntermediateShape
+
+        uri = "file:///test/hover_diverge.py"
+        with _state.cache_lock:
+            _state.analysis_cache[uri] = [
+                IntermediateShape(
+                    shape=(4, 16),
+                    dtype="float32",
+                    source_file="/test/hover_diverge.py",
+                    source_line=5,
+                    source_col=0,
+                    named_shape=("batch", "d_out"),
+                    op_name="dot_general",
+                ),
+            ]
+            _state.error_hints_cache[uri] = [
+                ErrorHintInfo(
+                    source_line=5,
+                    message="dim 1: expected d_model, got d_out",
+                    rule="shape-mismatch",
+                    function_name="forward",
+                    expected_named=("batch", "d_model"),
+                    actual_named=("batch", "d_out"),
+                ),
+            ]
+
+        from lsprotocol import types as lsp_types
+
+        from jaxtyc.lsp._navigation import hover
+        from jaxtyc.lsp.server import server
+
+        params = lsp_types.HoverParams(
+            text_document=lsp_types.TextDocumentIdentifier(uri=uri),
+            position=lsp_types.Position(line=4, character=0),
+        )
+        result = hover(server, params)
+        assert result is not None
+        content = result.contents.value
+        assert "dot_general" in content
+        assert "d_model" in content
+        assert "d_out" in content
+
+        with _state.cache_lock:
+            _state.analysis_cache.pop(uri, None)
+            _state.error_hints_cache.pop(uri, None)
+
+    def test_hover_no_divergence_when_clean(self) -> None:
+        """Hover on a clean line should not show divergence info."""
+        from jaxtyc.lsp import _state
+        from jaxtyc.types import IntermediateShape
+
+        uri = "file:///test/hover_clean.py"
+        with _state.cache_lock:
+            _state.analysis_cache[uri] = [
+                IntermediateShape(
+                    shape=(4, 8),
+                    dtype="float32",
+                    source_file="/test/hover_clean.py",
+                    source_line=5,
+                    source_col=0,
+                    named_shape=("batch", "seq"),
+                    op_name="add",
+                ),
+            ]
+            _state.error_hints_cache[uri] = []
+
+        from lsprotocol import types as lsp_types
+
+        from jaxtyc.lsp._navigation import hover
+        from jaxtyc.lsp.server import server
+
+        params = lsp_types.HoverParams(
+            text_document=lsp_types.TextDocumentIdentifier(uri=uri),
+            position=lsp_types.Position(line=4, character=0),
+        )
+        result = hover(server, params)
+        assert result is not None
+        content = result.contents.value
+        assert "divergence" not in content.lower()
+        assert "expected" not in content.lower()
+
+        with _state.cache_lock:
+            _state.analysis_cache.pop(uri, None)
+            _state.error_hints_cache.pop(uri, None)
+
+    def test_hover_divergence_with_rank_mismatch(self) -> None:
+        """Divergence from rank change shows rank info."""
+        from jaxtyc.lsp import _state
+        from jaxtyc.types import ErrorHintInfo
+        from jaxtyc.types import IntermediateShape
+
+        uri = "file:///test/hover_rank.py"
+        with _state.cache_lock:
+            _state.analysis_cache[uri] = [
+                IntermediateShape(
+                    shape=(4,),
+                    dtype="float32",
+                    source_file="/test/hover_rank.py",
+                    source_line=5,
+                    source_col=0,
+                    named_shape=("batch",),
+                    op_name="reduce_sum",
+                ),
+            ]
+            _state.error_hints_cache[uri] = [
+                ErrorHintInfo(
+                    source_line=5,
+                    message="Rank changed to 1 (expected 2) at reduce_sum",
+                    rule="rank-mismatch",
+                    function_name="project",
+                    expected_named=("batch", "seq"),
+                    actual_named=("batch",),
+                ),
+            ]
+
+        from lsprotocol import types as lsp_types
+
+        from jaxtyc.lsp._navigation import hover
+        from jaxtyc.lsp.server import server
+
+        params = lsp_types.HoverParams(
+            text_document=lsp_types.TextDocumentIdentifier(uri=uri),
+            position=lsp_types.Position(line=4, character=0),
+        )
+        result = hover(server, params)
+        assert result is not None
+        content = result.contents.value
+        assert "batch, seq" in content
+        assert "batch" in content
+
+        with _state.cache_lock:
+            _state.analysis_cache.pop(uri, None)
+            _state.error_hints_cache.pop(uri, None)
+
+
+class TestHoverTraceErrorFallback:
+    """Hover on intermediate lines should show trace error when tracing failed."""
+
+    def test_hover_trace_error_fallback(self) -> None:
+        """Hovering on a line inside a failed-trace function shows the trace error."""
+        from jaxtyc.lsp import _state
+        from jaxtyc.lsp.index import FileIndex
+        from jaxtyc.types import DimSpec
+        from jaxtyc.types import FunctionShapeSpec
+        from jaxtyc.types import ShapeSpec
+        from jaxtyc.types import TraceResult
+
+        uri = "file:///test/trace_err_hover.py"
+        spec = FunctionShapeSpec(
+            name="encode",
+            file_path="/test/trace_err_hover.py",
+            lineno=5,
+            col_offset=0,
+            end_lineno=10,
+            params={
+                "x": ShapeSpec(
+                    dims=(DimSpec(kind="named", name="batch"),),
+                    dtype="float32",
+                )
+            },
+            return_spec=ShapeSpec(
+                dims=(DimSpec(kind="named", name="batch"),),
+                dtype="float32",
+            ),
+            name_col_offset=4,
+        )
+        _state.workspace_index.update_file(
+            FileIndex(
+                file_path="/test/trace_err_hover.py",
+                uri=uri,
+                function_specs=[spec],
+                dim_locations=[],
+                call_sites=[],
+            )
+        )
+
+        # Store a failed trace result
+        tr = TraceResult(
+            function_name="encode",
+            output_shape=None,
+            output_dtype=None,
+            intermediates=[],
+            error="dot_general requires contracting dimensions to have the same shape",
+        )
+        with _state.cache_lock:
+            _state.trace_results_cache[uri] = {"encode": tr}
+            _state.analysis_cache[uri] = []  # No intermediates (trace failed)
+
+        from lsprotocol import types as lsp_types
+
+        from jaxtyc.lsp._navigation import hover
+        from jaxtyc.lsp.server import server
+
+        # Hover on line 8 (inside encode, line 5-10), no intermediates
+        params = lsp_types.HoverParams(
+            text_document=lsp_types.TextDocumentIdentifier(uri=uri),
+            position=lsp_types.Position(line=7, character=4),
+        )
+        result = hover(server, params)
+        assert result is not None
+        content = result.contents.value
+        assert "Trace error" in content
+        assert "encode" in content
+        assert "dot_general" in content
+
+        # Cleanup
+        with _state.cache_lock:
+            _state.trace_results_cache.pop(uri, None)
+            _state.analysis_cache.pop(uri, None)
+        _state.workspace_index.remove_file(uri)
+
+    def test_hover_external_call_site_shows_qualified_name(self) -> None:
+        """Hovering on an external call site (jnp.dot) shows the qualified name."""
+        from jaxtyc.lsp import _state
+        from jaxtyc.lsp.index import FileIndex
+        from jaxtyc.types import CallSite
+        from jaxtyc.types import DimSpec
+        from jaxtyc.types import FunctionShapeSpec
+        from jaxtyc.types import ShapeSpec
+
+        uri = "file:///test/ext_hover.py"
+        spec = FunctionShapeSpec(
+            name="transform",
+            file_path="/test/ext_hover.py",
+            lineno=5,
+            col_offset=0,
+            end_lineno=10,
+            params={
+                "x": ShapeSpec(
+                    dims=(DimSpec(kind="named", name="batch"),),
+                    dtype="float32",
+                )
+            },
+            return_spec=None,
+            name_col_offset=4,
+        )
+        ext_call = CallSite(
+            caller_name="transform",
+            callee_name="dot",
+            file_path="/test/ext_hover.py",
+            lineno=8,
+            col_offset=8,
+            end_col_offset=15,
+            callee_qualified_name="jnp.dot",
+        )
+        _state.workspace_index.update_file(
+            FileIndex(
+                file_path="/test/ext_hover.py",
+                uri=uri,
+                function_specs=[spec],
+                dim_locations=[],
+                call_sites=[ext_call],
+            )
+        )
+
+        from lsprotocol import types as lsp_types
+
+        from jaxtyc.lsp._navigation import hover
+        from jaxtyc.lsp.server import server
+
+        params = lsp_types.HoverParams(
+            text_document=lsp_types.TextDocumentIdentifier(uri=uri),
+            position=lsp_types.Position(line=7, character=10),
+        )
+        result = hover(server, params)
+        assert result is not None
+        content = result.contents.value
+        assert "jnp.dot" in content
+        assert "external" in content
+
+        _state.workspace_index.remove_file(uri)
+
+
+class TestCallSiteHover:
+    """Tests for call-site shape resolution on hover."""
+
+    def test_hover_on_call_shows_callee_signature(self) -> None:
+        """Hovering on encode(x) shows encode's shape signature."""
+        from jaxtyc.analyzer.dim_env import DimEnv
+        from jaxtyc.lsp import _state
+        from jaxtyc.lsp.index import FileIndex
+        from jaxtyc.types import CallSite
+        from jaxtyc.types import DimSpec
+        from jaxtyc.types import FunctionShapeSpec
+        from jaxtyc.types import ShapeSpec
+        from jaxtyc.types import TraceResult
+
+        caller_uri = "file:///test/call_hover.py"
+        callee_uri = "file:///test/callee.py"
+
+        env = DimEnv()
+
+        callee_spec = FunctionShapeSpec(
+            name="encode",
+            file_path="/test/callee.py",
+            lineno=5,
+            col_offset=0,
+            params={
+                "x": ShapeSpec(
+                    dims=(
+                        DimSpec(kind="named", name="batch"),
+                        DimSpec(kind="named", name="d_model"),
+                    ),
+                    dtype="float32",
+                )
+            },
+            return_spec=ShapeSpec(
+                dims=(
+                    DimSpec(kind="named", name="batch"),
+                    DimSpec(kind="named", name="hidden"),
+                ),
+                dtype="float32",
+            ),
+            name_col_offset=4,
+        )
+        callee_index = FileIndex(
+            file_path="/test/callee.py",
+            uri=callee_uri,
+            function_specs=[callee_spec],
+            dim_locations=[],
+            call_sites=[],
+        )
+        _state.workspace_index.update_file(callee_index)
+
+        call_site = CallSite(
+            caller_name="forward",
+            callee_name="encode",
+            file_path="/test/call_hover.py",
+            lineno=10,
+            col_offset=8,
+            end_col_offset=14,
+        )
+        caller_index = FileIndex(
+            file_path="/test/call_hover.py",
+            uri=caller_uri,
+            function_specs=[],
+            dim_locations=[],
+            call_sites=[call_site],
+        )
+        _state.workspace_index.update_file(caller_index)
+
+        batch = env.get_size("batch")
+        hidden = env.get_size("hidden")
+        tr = TraceResult(
+            function_name="encode",
+            output_shape=(batch, hidden),
+            output_dtype="float32",
+            intermediates=[],
+            error=None,
+        )
+        with _state.cache_lock:
+            _state.trace_results_cache[callee_uri] = {"encode": tr}
+            _state.dim_env_cache[callee_uri] = env
+            _state.analysis_cache[caller_uri] = []
+
+        from lsprotocol import types as lsp_types
+
+        from jaxtyc.lsp._navigation import hover
+        from jaxtyc.lsp.server import server
+
+        params = lsp_types.HoverParams(
+            text_document=lsp_types.TextDocumentIdentifier(uri=caller_uri),
+            position=lsp_types.Position(line=9, character=10),
+        )
+        result = hover(server, params)
+        assert result is not None
+        content = result.contents.value
+        assert "encode" in content
+        assert "batch" in content
+        assert "hidden" in content
+
+        # Cleanup
+        _state.workspace_index.remove_file(caller_uri)
+        _state.workspace_index.remove_file(callee_uri)
+        with _state.cache_lock:
+            _state.trace_results_cache.pop(callee_uri, None)
+            _state.dim_env_cache.pop(callee_uri, None)
+            _state.analysis_cache.pop(caller_uri, None)
+
+
+class TestCrossFileTracing:
+    """Tests for multi-file cross-function shape mismatch detection."""
+
+    def test_cross_file_mismatch_detected(self) -> None:
+        """Cross-file call where callee trace contradicts annotation."""
+        from jaxtyc.analyzer.dim_env import DimEnv
+        from jaxtyc.lsp import _state
+        from jaxtyc.lsp.index import FileIndex
+        from jaxtyc.types import CallSite
+        from jaxtyc.types import DimSpec
+        from jaxtyc.types import FunctionShapeSpec
+        from jaxtyc.types import ShapeSpec
+        from jaxtyc.types import TraceResult
+
+        callee_uri = "file:///test/xfile_utils.py"
+        caller_uri = "file:///test/xfile_train.py"
+
+        env = DimEnv()
+        batch = env.get_size("batch")
+        d_model = env.get_size("d_model")
+        hidden = env.get_size("hidden")
+
+        callee_spec = FunctionShapeSpec(
+            name="encode",
+            file_path="/test/xfile_utils.py",
+            lineno=5,
+            col_offset=0,
+            params={
+                "x": ShapeSpec(
+                    dims=(
+                        DimSpec(kind="named", name="batch"),
+                        DimSpec(kind="named", name="d_model"),
+                    ),
+                    dtype="float32",
+                )
+            },
+            return_spec=ShapeSpec(
+                dims=(
+                    DimSpec(kind="named", name="batch"),
+                    DimSpec(kind="named", name="hidden"),
+                ),
+                dtype="float32",
+            ),
+            name_col_offset=4,
+        )
+        callee_index = FileIndex(
+            file_path="/test/xfile_utils.py",
+            uri=callee_uri,
+            function_specs=[callee_spec],
+            dim_locations=[],
+            call_sites=[],
+        )
+        _state.workspace_index.update_file(callee_index)
+
+        # Callee trace returns d_model, not hidden -- mismatch!
+        tr = TraceResult(
+            function_name="encode",
+            output_shape=(batch, d_model),
+            output_dtype="float32",
+            intermediates=[],
+            error=None,
+        )
+        with _state.cache_lock:
+            _state.trace_results_cache[callee_uri] = {"encode": tr}
+            _state.dim_env_cache[callee_uri] = env
+
+        # Caller has a call site to encode
+        caller_spec = FunctionShapeSpec(
+            name="train",
+            file_path="/test/xfile_train.py",
+            lineno=10,
+            col_offset=0,
+            params={
+                "x": ShapeSpec(
+                    dims=(
+                        DimSpec(kind="named", name="batch"),
+                        DimSpec(kind="named", name="d_model"),
+                    ),
+                    dtype="float32",
+                )
+            },
+            return_spec=None,
+            name_col_offset=4,
+        )
+        call_site = CallSite(
+            caller_name="train",
+            callee_name="encode",
+            file_path="/test/xfile_train.py",
+            lineno=12,
+            col_offset=8,
+            end_col_offset=14,
+        )
+        caller_index = FileIndex(
+            file_path="/test/xfile_train.py",
+            uri=caller_uri,
+            function_specs=[caller_spec],
+            dim_locations=[],
+            call_sites=[call_site],
+        )
+        _state.workspace_index.update_file(caller_index)
+
+        from jaxtyc.lsp.server import _check_cross_file_calls
+
+        diags = _check_cross_file_calls(caller_uri, [caller_spec])
+        assert len(diags) >= 1
+        assert any(d.code == "cross-function-mismatch" for d in diags)
+
+        # Cleanup
+        _state.workspace_index.remove_file(callee_uri)
+        _state.workspace_index.remove_file(caller_uri)
+        with _state.cache_lock:
+            _state.trace_results_cache.pop(callee_uri, None)
+            _state.dim_env_cache.pop(callee_uri, None)
+
+    def test_cross_file_no_false_positive(self) -> None:
+        """No diagnostic when callee trace matches annotation."""
+        from jaxtyc.analyzer.dim_env import DimEnv
+        from jaxtyc.lsp import _state
+        from jaxtyc.lsp.index import FileIndex
+        from jaxtyc.types import CallSite
+        from jaxtyc.types import DimSpec
+        from jaxtyc.types import FunctionShapeSpec
+        from jaxtyc.types import ShapeSpec
+        from jaxtyc.types import TraceResult
+
+        callee_uri = "file:///test/xfile_ok_utils.py"
+        caller_uri = "file:///test/xfile_ok_train.py"
+
+        env = DimEnv()
+        batch = env.get_size("batch")
+        hidden = env.get_size("hidden")
+
+        callee_spec = FunctionShapeSpec(
+            name="encode",
+            file_path="/test/xfile_ok_utils.py",
+            lineno=5,
+            col_offset=0,
+            params={
+                "x": ShapeSpec(
+                    dims=(DimSpec(kind="named", name="batch"),),
+                    dtype="float32",
+                )
+            },
+            return_spec=ShapeSpec(
+                dims=(
+                    DimSpec(kind="named", name="batch"),
+                    DimSpec(kind="named", name="hidden"),
+                ),
+                dtype="float32",
+            ),
+            name_col_offset=4,
+        )
+        callee_index = FileIndex(
+            file_path="/test/xfile_ok_utils.py",
+            uri=callee_uri,
+            function_specs=[callee_spec],
+            dim_locations=[],
+            call_sites=[],
+        )
+        _state.workspace_index.update_file(callee_index)
+
+        # Matching trace
+        tr = TraceResult(
+            function_name="encode",
+            output_shape=(batch, hidden),
+            output_dtype="float32",
+            intermediates=[],
+            error=None,
+        )
+        with _state.cache_lock:
+            _state.trace_results_cache[callee_uri] = {"encode": tr}
+            _state.dim_env_cache[callee_uri] = env
+
+        caller_spec = FunctionShapeSpec(
+            name="train",
+            file_path="/test/xfile_ok_train.py",
+            lineno=10,
+            col_offset=0,
+            params={},
+            return_spec=None,
+            name_col_offset=4,
+        )
+        call_site = CallSite(
+            caller_name="train",
+            callee_name="encode",
+            file_path="/test/xfile_ok_train.py",
+            lineno=12,
+            col_offset=8,
+            end_col_offset=14,
+        )
+        caller_index = FileIndex(
+            file_path="/test/xfile_ok_train.py",
+            uri=caller_uri,
+            function_specs=[caller_spec],
+            dim_locations=[],
+            call_sites=[call_site],
+        )
+        _state.workspace_index.update_file(caller_index)
+
+        from jaxtyc.lsp.server import _check_cross_file_calls
+
+        diags = _check_cross_file_calls(caller_uri, [caller_spec])
+        assert len(diags) == 0
+
+        # Cleanup
+        _state.workspace_index.remove_file(callee_uri)
+        _state.workspace_index.remove_file(caller_uri)
+        with _state.cache_lock:
+            _state.trace_results_cache.pop(callee_uri, None)
+            _state.dim_env_cache.pop(callee_uri, None)
+
+
+class TestCallSiteNavigation:
+    """goToDefinition and goToImplementation should resolve call sites."""
+
+    def setup_method(self) -> None:
+        from jaxtyc.lsp import _state
+        from jaxtyc.lsp.index import FileIndex
+        from jaxtyc.types import CallSite
+        from jaxtyc.types import FunctionShapeSpec
+
+        self.uri = "file:///test/nav.py"
+        spec = FunctionShapeSpec(
+            name="encode",
+            file_path="/test/nav.py",
+            lineno=5,
+            col_offset=0,
+            params={},
+            return_spec=None,
+            name_col_offset=4,
+        )
+        call = CallSite(
+            caller_name="main",
+            callee_name="encode",
+            file_path="/test/nav.py",
+            lineno=15,
+            col_offset=8,
+            end_col_offset=14,
+        )
+        _state.workspace_index.update_file(
+            FileIndex(
+                file_path="/test/nav.py",
+                uri=self.uri,
+                function_specs=[spec],
+                dim_locations=[],
+                call_sites=[call],
+            )
+        )
+
+    def teardown_method(self) -> None:
+        from jaxtyc.lsp import _state
+
+        _state.workspace_index.remove_file(self.uri)
+
+    def test_go_to_definition_at_call_site(self) -> None:
+        from lsprotocol import types as lsp_types
+
+        from jaxtyc.lsp._navigation import go_to_definition
+        from jaxtyc.lsp.server import server
+
+        params = lsp_types.DefinitionParams(
+            text_document=lsp_types.TextDocumentIdentifier(uri=self.uri),
+            position=lsp_types.Position(line=14, character=10),  # line 15 -> 0-based 14
+        )
+        result = go_to_definition(server, params)
+        assert result is not None
+        loc = result[0] if isinstance(result, list) else result
+        assert loc.range.start.line == 4  # lineno 5 -> 0-based 4
+
+    def test_go_to_implementation_at_call_site(self) -> None:
+        from lsprotocol import types as lsp_types
+
+        from jaxtyc.lsp._navigation import go_to_implementation
+        from jaxtyc.lsp.server import server
+
+        params = lsp_types.ImplementationParams(
+            text_document=lsp_types.TextDocumentIdentifier(uri=self.uri),
+            position=lsp_types.Position(line=14, character=10),
+        )
+        result = go_to_implementation(server, params)
+        assert result is not None
+        loc = result[0] if isinstance(result, list) else result
+        assert loc.range.start.line == 4
+
+
+class TestDimGoToDefinition:
+    """goToDefinition should work on dimension names inside string annotations."""
+
+    def setup_method(self) -> None:
+        from jaxtyc.lsp import _state
+        from jaxtyc.lsp.index import FileIndex
+        from jaxtyc.types import DimLocation
+
+        self.uri = "file:///test/dims.py"
+        # Two occurrences of "batch" in function "encode":
+        #   first at line 5 col 22-27 (the "definition")
+        #   second at line 6 col 20-25 (a reference)
+        self.dim_def = DimLocation(
+            dim_name="batch",
+            param_name="x",
+            function_name="encode",
+            file_path="/test/dims.py",
+            lineno=5,
+            col_start=22,
+            col_end=27,
+        )
+        self.dim_ref = DimLocation(
+            dim_name="batch",
+            param_name="__return__",
+            function_name="encode",
+            file_path="/test/dims.py",
+            lineno=6,
+            col_start=20,
+            col_end=25,
+        )
+        _state.workspace_index.update_file(
+            FileIndex(
+                file_path="/test/dims.py",
+                uri=self.uri,
+                function_specs=[],
+                dim_locations=[self.dim_def, self.dim_ref],
+                call_sites=[],
+            )
+        )
+
+    def teardown_method(self) -> None:
+        from jaxtyc.lsp import _state
+
+        _state.workspace_index.remove_file(self.uri)
+
+    def test_go_to_definition_on_dim_reference(self) -> None:
+        """goToDefinition on a non-first dim occurrence should jump to first occurrence."""
+        from lsprotocol import types as lsp_types
+
+        from jaxtyc.lsp._navigation import go_to_definition
+        from jaxtyc.lsp.server import server
+
+        # Cursor on the second occurrence (line 6, col 22 = inside "batch")
+        params = lsp_types.DefinitionParams(
+            text_document=lsp_types.TextDocumentIdentifier(uri=self.uri),
+            position=lsp_types.Position(line=5, character=22),  # line 6 -> 0-based 5
+        )
+        result = go_to_definition(server, params)
+        assert result is not None
+        loc = result[0] if isinstance(result, list) else result
+        assert loc.range.start.line == 4  # line 5 -> 0-based 4
+        assert loc.range.start.character == 22
+
+    def test_go_to_definition_on_dim_at_definition(self) -> None:
+        """goToDefinition on the first dim occurrence should return its own location."""
+        from lsprotocol import types as lsp_types
+
+        from jaxtyc.lsp._navigation import go_to_definition
+        from jaxtyc.lsp.server import server
+
+        # Cursor on the first occurrence (line 5, col 24 = inside "batch")
+        params = lsp_types.DefinitionParams(
+            text_document=lsp_types.TextDocumentIdentifier(uri=self.uri),
+            position=lsp_types.Position(line=4, character=24),  # line 5 -> 0-based 4
+        )
+        result = go_to_definition(server, params)
+        assert result is not None, (
+            "goToDefinition should return the definition location even when already at it"
+        )
+        loc = result[0] if isinstance(result, list) else result
+        assert loc.range.start.line == 4
+        assert loc.range.start.character == 22
+
+    def test_go_to_implementation_on_dim_at_definition(self) -> None:
+        """goToImplementation on the first dim occurrence should return its own location."""
+        from lsprotocol import types as lsp_types
+
+        from jaxtyc.lsp._navigation import go_to_implementation
+        from jaxtyc.lsp.server import server
+
+        params = lsp_types.ImplementationParams(
+            text_document=lsp_types.TextDocumentIdentifier(uri=self.uri),
+            position=lsp_types.Position(line=4, character=24),
+        )
+        result = go_to_implementation(server, params)
+        assert result is not None, (
+            "goToImplementation should return the definition location even when already at it"
+        )
+        loc = result[0] if isinstance(result, list) else result
+        assert loc.range.start.line == 4
+        assert loc.range.start.character == 22
+
+
+class TestDimGoToDefinitionFileScoped:
+    """goToDefinition on a dim at its function-scoped definition should fall back to file-scoped."""
+
+    def setup_method(self) -> None:
+        from jaxtyc.lsp import _state
+        from jaxtyc.lsp.index import FileIndex
+        from jaxtyc.types import DimLocation
+
+        self.uri = "file:///test/scope.py"
+        # "batch" appears in two functions: encode (line 5) and decode (line 10)
+        self.dims = [
+            DimLocation(
+                dim_name="batch",
+                param_name="x",
+                function_name="encode",
+                file_path="/test/scope.py",
+                lineno=5,
+                col_start=22,
+                col_end=27,
+            ),
+            DimLocation(
+                dim_name="batch",
+                param_name="__return__",
+                function_name="encode",
+                file_path="/test/scope.py",
+                lineno=6,
+                col_start=20,
+                col_end=25,
+            ),
+            DimLocation(
+                dim_name="batch",
+                param_name="h",
+                function_name="decode",
+                file_path="/test/scope.py",
+                lineno=10,
+                col_start=22,
+                col_end=27,
+            ),
+            DimLocation(
+                dim_name="batch",
+                param_name="__return__",
+                function_name="decode",
+                file_path="/test/scope.py",
+                lineno=11,
+                col_start=20,
+                col_end=25,
+            ),
+        ]
+        _state.workspace_index.update_file(
+            FileIndex(
+                file_path="/test/scope.py",
+                uri=self.uri,
+                function_specs=[],
+                dim_locations=self.dims,
+                call_sites=[],
+            )
+        )
+
+    def teardown_method(self) -> None:
+        from jaxtyc.lsp import _state
+
+        _state.workspace_index.remove_file(self.uri)
+
+    def test_go_to_definition_cross_function_dim(self) -> None:
+        """goToDefinition on 'batch' in decode should navigate to first 'batch' in the file (encode)."""
+        from lsprotocol import types as lsp_types
+
+        from jaxtyc.lsp._navigation import go_to_definition
+        from jaxtyc.lsp.server import server
+
+        # Cursor on batch in decode (line 10, col 24)
+        params = lsp_types.DefinitionParams(
+            text_document=lsp_types.TextDocumentIdentifier(uri=self.uri),
+            position=lsp_types.Position(line=9, character=24),  # line 10 -> 0-based 9
+        )
+        result = go_to_definition(server, params)
+        assert result is not None
+        loc = result[0] if isinstance(result, list) else result
+        # Should navigate to encode's batch on line 5 (0-based 4), not decode's batch on line 10
+        assert loc.range.start.line == 4, (
+            f"Expected line 4 (first file occurrence in encode), got {loc.range.start.line}"
+        )
+
+
+class TestReferenceScopeConfig:
+    """findReferences should respect navigation.references_scope config."""
+
+    def test_file_scoped_references_excludes_other_files(self) -> None:
+        """references_scope='file' only shows same-file callers."""
+        from jaxtyc.config import JaxtycConfig
+        from jaxtyc.config import NavigationConfig
+        from jaxtyc.lsp import _state
+        from jaxtyc.lsp.index import FileIndex
+        from jaxtyc.types import CallSite
+        from jaxtyc.types import FunctionShapeSpec
+
+        orig_config = _state.config
+        try:
+            _state.config = JaxtycConfig(navigation=NavigationConfig(references_scope="file"))
+
+            spec_a = FunctionShapeSpec(
+                name="decode",
+                file_path="/a.py",
+                lineno=5,
+                col_offset=0,
+                params={},
+                return_spec=None,
+                name_col_offset=4,
+            )
+            cs_local = CallSite("pipeline", "decode", "/a.py", 15, 4, 10)
+            cs_other = CallSite("pipeline", "decode", "/b.py", 20, 4, 10)
+
+            _state.workspace_index.update_file(
+                FileIndex(
+                    file_path="/a.py",
+                    uri="file:///a.py",
+                    function_specs=[spec_a],
+                    dim_locations=[],
+                    call_sites=[cs_local],
+                )
+            )
+            _state.workspace_index.update_file(
+                FileIndex(
+                    file_path="/b.py",
+                    uri="file:///b.py",
+                    function_specs=[],
+                    dim_locations=[],
+                    call_sites=[cs_other],
+                )
+            )
+
+            from lsprotocol import types as lsp_types
+
+            from jaxtyc.lsp._navigation import find_references
+            from jaxtyc.lsp.server import server
+
+            params = lsp_types.ReferenceParams(
+                text_document=lsp_types.TextDocumentIdentifier(uri="file:///a.py"),
+                position=lsp_types.Position(line=4, character=4),
+                context=lsp_types.ReferenceContext(include_declaration=False),
+            )
+            result = find_references(server, params)
+            assert result is not None
+            assert len(result) == 1
+
+            _state.workspace_index.remove_file("file:///a.py")
+            _state.workspace_index.remove_file("file:///b.py")
+        finally:
+            _state.config = orig_config
+
+    def test_workspace_scoped_references_includes_all_files(self) -> None:
+        """references_scope='workspace' shows callers from all files."""
+        from jaxtyc.config import JaxtycConfig
+        from jaxtyc.config import NavigationConfig
+        from jaxtyc.lsp import _state
+        from jaxtyc.lsp.index import FileIndex
+        from jaxtyc.types import CallSite
+        from jaxtyc.types import FunctionShapeSpec
+
+        orig_config = _state.config
+        try:
+            _state.config = JaxtycConfig(navigation=NavigationConfig(references_scope="workspace"))
+
+            spec_a = FunctionShapeSpec(
+                name="decode",
+                file_path="/a.py",
+                lineno=5,
+                col_offset=0,
+                params={},
+                return_spec=None,
+                name_col_offset=4,
+            )
+            cs_local = CallSite("pipeline", "decode", "/a.py", 15, 4, 10)
+            cs_other = CallSite("pipeline", "decode", "/b.py", 20, 4, 10)
+
+            _state.workspace_index.update_file(
+                FileIndex(
+                    file_path="/a.py",
+                    uri="file:///a.py",
+                    function_specs=[spec_a],
+                    dim_locations=[],
+                    call_sites=[cs_local],
+                )
+            )
+            _state.workspace_index.update_file(
+                FileIndex(
+                    file_path="/b.py",
+                    uri="file:///b.py",
+                    function_specs=[],
+                    dim_locations=[],
+                    call_sites=[cs_other],
+                )
+            )
+
+            from lsprotocol import types as lsp_types
+
+            from jaxtyc.lsp._navigation import find_references
+            from jaxtyc.lsp.server import server
+
+            params = lsp_types.ReferenceParams(
+                text_document=lsp_types.TextDocumentIdentifier(uri="file:///a.py"),
+                position=lsp_types.Position(line=4, character=4),
+                context=lsp_types.ReferenceContext(include_declaration=False),
+            )
+            result = find_references(server, params)
+            assert result is not None
+            assert len(result) == 2
+
+            _state.workspace_index.remove_file("file:///a.py")
+            _state.workspace_index.remove_file("file:///b.py")
+        finally:
+            _state.config = orig_config
+
+
+class TestExternalCallsConfig:
+    def test_outgoing_calls_includes_external_when_configured(self) -> None:
+        """With include_external_calls=true, library calls appear in outgoingCalls."""
+        from jaxtyc.config import JaxtycConfig
+        from jaxtyc.config import NavigationConfig
+        from jaxtyc.lsp import _state
+        from jaxtyc.lsp.index import FileIndex
+        from jaxtyc.types import CallSite
+        from jaxtyc.types import FunctionShapeSpec
+
+        orig_config = _state.config
+        try:
+            _state.config = JaxtycConfig(navigation=NavigationConfig(include_external_calls=True))
+
+            uri = "file:///test/ext.py"
+            spec = FunctionShapeSpec(
+                name="transform",
+                file_path="/test/ext.py",
+                lineno=5,
+                col_offset=0,
+                params={},
+                return_spec=None,
+                name_col_offset=4,
+            )
+            ext_call = CallSite(
+                caller_name="transform",
+                callee_name="dot",
+                file_path="/test/ext.py",
+                lineno=7,
+                col_offset=10,
+                end_col_offset=13,
+            )
+            _state.workspace_index.update_file(
+                FileIndex(
+                    file_path="/test/ext.py",
+                    uri=uri,
+                    function_specs=[spec],
+                    dim_locations=[],
+                    call_sites=[ext_call],
+                )
+            )
+
+            from lsprotocol import types as lsp_types
+
+            from jaxtyc.lsp._navigation import outgoing_calls
+            from jaxtyc.lsp.server import server
+
+            item = lsp_types.CallHierarchyItem(
+                name="transform",
+                kind=lsp_types.SymbolKind.Function,
+                uri=uri,
+                range=lsp_types.Range(
+                    start=lsp_types.Position(line=4, character=0),
+                    end=lsp_types.Position(line=8, character=0),
+                ),
+                selection_range=lsp_types.Range(
+                    start=lsp_types.Position(line=4, character=4),
+                    end=lsp_types.Position(line=4, character=13),
+                ),
+                data={"function_name": "transform", "uri": uri},
+            )
+            params = lsp_types.CallHierarchyOutgoingCallsParams(item=item)
+            result = outgoing_calls(server, params)
+            assert result is not None
+            assert len(result) == 1
+            assert result[0].to.name == "dot"
+            assert result[0].to.detail == "(external)"
+
+            _state.workspace_index.remove_file(uri)
+        finally:
+            _state.config = orig_config
+
+    def test_outgoing_calls_external_qualified_name(self) -> None:
+        """External calls display the qualified name (e.g. jnp.dot not just dot)."""
+        from jaxtyc.config import JaxtycConfig
+        from jaxtyc.config import NavigationConfig
+        from jaxtyc.lsp import _state
+        from jaxtyc.lsp.index import FileIndex
+        from jaxtyc.types import CallSite
+        from jaxtyc.types import FunctionShapeSpec
+
+        orig_config = _state.config
+        try:
+            _state.config = JaxtycConfig(navigation=NavigationConfig(include_external_calls=True))
+
+            uri = "file:///test/qn.py"
+            spec = FunctionShapeSpec(
+                name="transform",
+                file_path="/test/qn.py",
+                lineno=5,
+                col_offset=0,
+                params={},
+                return_spec=None,
+                name_col_offset=4,
+            )
+            ext_call = CallSite(
+                caller_name="transform",
+                callee_name="dot",
+                file_path="/test/qn.py",
+                lineno=7,
+                col_offset=10,
+                end_col_offset=17,
+                callee_qualified_name="jnp.dot",
+            )
+            _state.workspace_index.update_file(
+                FileIndex(
+                    file_path="/test/qn.py",
+                    uri=uri,
+                    function_specs=[spec],
+                    dim_locations=[],
+                    call_sites=[ext_call],
+                )
+            )
+
+            from lsprotocol import types as lsp_types
+
+            from jaxtyc.lsp._navigation import outgoing_calls
+            from jaxtyc.lsp.server import server
+
+            item = lsp_types.CallHierarchyItem(
+                name="transform",
+                kind=lsp_types.SymbolKind.Function,
+                uri=uri,
+                range=lsp_types.Range(
+                    start=lsp_types.Position(line=4, character=0),
+                    end=lsp_types.Position(line=8, character=0),
+                ),
+                selection_range=lsp_types.Range(
+                    start=lsp_types.Position(line=4, character=4),
+                    end=lsp_types.Position(line=4, character=13),
+                ),
+                data={"function_name": "transform", "uri": uri},
+            )
+            params = lsp_types.CallHierarchyOutgoingCallsParams(item=item)
+            result = outgoing_calls(server, params)
+            assert result is not None
+            assert len(result) == 1
+            assert result[0].to.name == "jnp.dot"
+            assert result[0].to.detail == "(external)"
+
+            _state.workspace_index.remove_file(uri)
+        finally:
+            _state.config = orig_config
+
+    def test_outgoing_calls_excludes_external_when_disabled(self) -> None:
+        """include_external_calls=false hides external calls."""
+        from jaxtyc.config import JaxtycConfig
+        from jaxtyc.config import NavigationConfig
+        from jaxtyc.lsp import _state
+        from jaxtyc.lsp.index import FileIndex
+        from jaxtyc.types import CallSite
+        from jaxtyc.types import FunctionShapeSpec
+
+        orig_config = _state.config
+        try:
+            _state.config = JaxtycConfig(navigation=NavigationConfig(include_external_calls=False))
+
+            uri = "file:///test/ext2.py"
+            spec = FunctionShapeSpec(
+                name="transform",
+                file_path="/test/ext2.py",
+                lineno=5,
+                col_offset=0,
+                params={},
+                return_spec=None,
+                name_col_offset=4,
+            )
+            ext_call = CallSite(
+                caller_name="transform",
+                callee_name="dot",
+                file_path="/test/ext2.py",
+                lineno=7,
+                col_offset=10,
+                end_col_offset=13,
+            )
+            _state.workspace_index.update_file(
+                FileIndex(
+                    file_path="/test/ext2.py",
+                    uri=uri,
+                    function_specs=[spec],
+                    dim_locations=[],
+                    call_sites=[ext_call],
+                )
+            )
+
+            from lsprotocol import types as lsp_types
+
+            from jaxtyc.lsp._navigation import outgoing_calls
+            from jaxtyc.lsp.server import server
+
+            item = lsp_types.CallHierarchyItem(
+                name="transform",
+                kind=lsp_types.SymbolKind.Function,
+                uri=uri,
+                range=lsp_types.Range(
+                    start=lsp_types.Position(line=4, character=0),
+                    end=lsp_types.Position(line=8, character=0),
+                ),
+                selection_range=lsp_types.Range(
+                    start=lsp_types.Position(line=4, character=4),
+                    end=lsp_types.Position(line=4, character=13),
+                ),
+                data={"function_name": "transform", "uri": uri},
+            )
+            params = lsp_types.CallHierarchyOutgoingCallsParams(item=item)
+            result = outgoing_calls(server, params)
+            assert result is None
+
+            _state.workspace_index.remove_file(uri)
+        finally:
+            _state.config = orig_config
+
+
+class TestEarlyIndexBuild:
+    def test_workspace_index_populated_from_source(self) -> None:
+        """build_file_index from source populates workspace_index with navigation data."""
+        import textwrap
+
+        from jaxtyc.analyzer.annotations import extract_function_specs
+        from jaxtyc.lsp import _state
+        from jaxtyc.lsp.index import build_file_index
+
+        source = textwrap.dedent("""\
+            from jaxtyping import Array, Float
+
+            def encode(x: Float[Array, "batch d"]) -> Float[Array, "batch d"]:
+                return x
+        """)
+        uri = "file:///test/early.py"
+        file_path = "/test/early.py"
+
+        func_specs = extract_function_specs(source, file_path)
+        file_index = build_file_index(source, file_path, uri, func_specs=func_specs)
+        _state.workspace_index.update_file(file_index)
+
+        # Navigation data is available
+        assert _state.workspace_index.get_file(uri) is not None
+        fi = _state.workspace_index.get_file(uri)
+        assert len(fi.function_specs) == 1
+        assert fi.function_specs[0].name == "encode"
+        assert len(fi.dim_locations) > 0  # batch, d in param + return
+        assert len(fi.function_defs) >= 1  # at least encode
+
+        _state.workspace_index.remove_file(uri)
+
+    def test_navigation_available_before_trace_results(self) -> None:
+        """Workspace index should have specs even when no trace results exist."""
+        import textwrap
+
+        from jaxtyc.lsp import _state
+
+        source = textwrap.dedent("""\
+            from jaxtyping import Array, Float
+
+            def encode(x: Float[Array, "batch d"]) -> Float[Array, "batch d"]:
+                return x
+        """)
+        uri = "file:///test/early2.py"
+        file_path = "/test/early2.py"
+
+        from jaxtyc.analyzer.annotations import extract_function_specs
+        from jaxtyc.lsp.index import build_file_index
+
+        func_specs = extract_function_specs(source, file_path)
+        file_index = build_file_index(source, file_path, uri, func_specs=func_specs)
+        _state.workspace_index.update_file(file_index)
+
+        # Navigation works (specs, dims) but no trace data yet
+        spec = _state.workspace_index.find_function_at(uri, 3, 4)
+        assert spec is not None
+        assert spec.name == "encode"
+
+        # Just verify workspace index is populated, not empty
+        fi = _state.workspace_index.get_file(uri)
+        assert fi is not None
+        assert len(fi.dim_locations) > 0
+
+        # But trace caches should be empty (analysis hasn't run)
+        with _state.cache_lock:
+            assert uri not in _state.trace_results_cache
+
+        _state.workspace_index.remove_file(uri)

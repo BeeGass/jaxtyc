@@ -14,6 +14,7 @@ jaxtyc is started via ``sys.executable -m jaxtyc.cli.main lsp``.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import os
 import re
@@ -144,10 +145,44 @@ def _merge_completion(primary_result: Any, jaxtyc_result: Any) -> Any:
     return {"isIncomplete": False, "items": merged}
 
 
+def _location_key(item: object) -> tuple[str, int, int, int, int] | None:
+    """Extract a dedup key from a Location-shaped dict: (uri, start_line, start_char, end_line, end_char)."""
+    if not isinstance(item, dict):
+        return None
+    uri = item.get("uri")
+    rng = item.get("range")
+    if uri is None or not isinstance(rng, dict):
+        return None
+    start = rng.get("start", {})
+    end = rng.get("end", {})
+    if not isinstance(start, dict) or not isinstance(end, dict):
+        return None
+    try:
+        return (uri, start["line"], start["character"], end["line"], end["character"])
+    except (KeyError, TypeError):
+        return None
+
+
 def _merge_arrays(primary_result: object, jaxtyc_result: object) -> list | None:
     primary_arr = primary_result if isinstance(primary_result, list) else []
     jaxtyc_arr = jaxtyc_result if isinstance(jaxtyc_result, list) else []
-    merged = primary_arr + jaxtyc_arr
+    if not primary_arr:
+        return jaxtyc_arr if jaxtyc_arr else None
+    if not jaxtyc_arr:
+        return primary_arr
+    seen: set[tuple[str, int, int, int, int]] = set()
+    for item in primary_arr:
+        key = _location_key(item)
+        if key is not None:
+            seen.add(key)
+    merged = list(primary_arr)
+    for item in jaxtyc_arr:
+        key = _location_key(item)
+        if key is not None and key in seen:
+            continue
+        merged.append(item)
+        if key is not None:
+            seen.add(key)
     return merged if merged else None
 
 
@@ -309,6 +344,9 @@ async def run_mux() -> None:
     primary_proc: asyncio.subprocess.Process | None = None
     jaxtyc_proc: asyncio.subprocess.Process | None = None
     servers_started = False
+    primary_ready = asyncio.Event()
+    jaxtyc_ready = asyncio.Event()
+    primary_init_id: int | None = None
 
     # Messages buffered before servers start
     buffered_messages: list[dict] = []
@@ -324,7 +362,7 @@ async def run_mux() -> None:
             await proc.stdin.drain()
 
     async def start_servers(project_root: str | None) -> None:
-        nonlocal primary_proc, jaxtyc_proc, servers_started, jaxtyc_next_id
+        nonlocal primary_proc, jaxtyc_proc, servers_started, jaxtyc_next_id, primary_init_id
 
         cwd = project_root or os.getcwd()
 
@@ -345,9 +383,9 @@ async def run_mux() -> None:
             stderr=asyncio.subprocess.DEVNULL,
             cwd=cwd,
         )
-        servers_started = True
 
-        # Start output reader tasks
+        # Start output reader tasks BEFORE replaying buffered messages so that
+        # initialize responses from the backends are consumed by the handlers.
         asyncio.create_task(handle_primary_output())
         asyncio.create_task(handle_jaxtyc_output())
 
@@ -357,6 +395,7 @@ async def run_mux() -> None:
             if method == "initialize":
                 # Rewrite rootUri/rootPath so ty discovers the correct .venv
                 patched = _patch_root_uri(buffered, cwd)
+                primary_init_id = patched.get("id")
                 await send_to(primary_proc, patched)
                 jaxtyc_init = dict(patched)
                 jaxtyc_id = jaxtyc_next_id
@@ -372,6 +411,17 @@ async def run_mux() -> None:
                 await send_to(primary_proc, buffered)
                 await send_to(jaxtyc_proc, buffered)
         buffered_messages.clear()
+
+        # Wait for both servers to finish processing initialize before
+        # allowing normal message forwarding. This prevents -32002
+        # ServerNotInitialized errors from backends.
+        with contextlib.suppress(TimeoutError):
+            await asyncio.wait_for(
+                asyncio.gather(primary_ready.wait(), jaxtyc_ready.wait()),
+                timeout=30.0,
+            )
+
+        servers_started = True
 
     async def publish_merged_diagnostics(uri: str) -> None:
         merged = []
@@ -439,6 +489,13 @@ async def run_mux() -> None:
                 continue
 
             msg_id = msg.get("id")
+
+            # Detect the initialize response: signal readiness and swallow it
+            # (the mux already sent a synthetic initialize response to the client).
+            if msg_id is not None and msg_id == primary_init_id and not primary_ready.is_set():
+                primary_ready.set()
+                continue
+
             if msg_id is not None and msg_id in dual_requests:
                 await receive_dual(msg_id, "primary", msg)
                 continue
@@ -463,6 +520,8 @@ async def run_mux() -> None:
 
             if msg_id is not None and msg_id in jaxtyc_lifecycle_ids:
                 jaxtyc_lifecycle_ids.discard(msg_id)
+                if not jaxtyc_ready.is_set():
+                    jaxtyc_ready.set()
                 continue
 
             if msg_id is not None and msg_id in jaxtyc_dual_map:

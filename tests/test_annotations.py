@@ -493,3 +493,119 @@ class TestExtractCallSites:
         sites = extract_call_sites(source, "test.py", {"encode"})
         assert len(sites) == 1
         assert sites[0].callee_name == "encode"
+
+
+# ---------------------------------------------------------------------------
+# extract_all_function_defs
+# ---------------------------------------------------------------------------
+
+
+def test_extract_all_function_defs_includes_non_annotated() -> None:
+    from jaxtyc.analyzer.annotations import extract_all_function_defs
+
+    source = textwrap.dedent("""\
+        def helper(x):
+            return x + 1
+
+        def encode(x: Float[Array, "batch d"]) -> Float[Array, "batch d"]:
+            return helper(x)
+
+        class Model:
+            def forward(self, x):
+                return x
+    """)
+    defs = extract_all_function_defs(source, "/test.py")
+    names = [d.name for d in defs]
+    assert "helper" in names
+    assert "encode" in names
+    assert "forward" in names
+    fwd = next(d for d in defs if d.name == "forward")
+    assert fwd.is_method is True
+    assert fwd.class_name == "Model"
+
+
+def test_extract_all_function_defs_nested_not_method() -> None:
+    """Nested functions inside class methods should NOT be marked as methods."""
+    from jaxtyc.analyzer.annotations import extract_all_function_defs
+
+    source = textwrap.dedent("""\
+        class Model:
+            def forward(self, x):
+                def _local_helper(y):
+                    return y + 1
+                return _local_helper(x)
+    """)
+    defs = extract_all_function_defs(source, "/test.py")
+    fwd = next(d for d in defs if d.name == "forward")
+    assert fwd.is_method is True
+    assert fwd.class_name == "Model"
+    helper = next(d for d in defs if d.name == "_local_helper")
+    assert helper.is_method is False
+    assert helper.class_name is None
+
+
+def test_extract_call_sites_include_external() -> None:
+    """include_external=True captures calls to non-workspace functions."""
+    from jaxtyc.analyzer.annotations import extract_call_sites
+
+    source = textwrap.dedent("""\
+        import jax.numpy as jnp
+
+        def transform(x):
+            y = jnp.dot(x, x)
+            return y
+    """)
+    known = {"transform"}
+
+    # Without include_external: dot is not in known_functions, not captured
+    calls = extract_call_sites(source, "/test.py", known)
+    assert not any(c.callee_name == "dot" for c in calls)
+
+    # With include_external: dot IS captured
+    calls_ext = extract_call_sites(source, "/test.py", known, include_external=True)
+    assert any(c.callee_name == "dot" for c in calls_ext)
+    dot_call = next(c for c in calls_ext if c.callee_name == "dot")
+    assert dot_call.caller_name == "transform"
+
+
+def test_extract_call_sites_include_external_bare_name() -> None:
+    """include_external captures bare function calls too."""
+    from jaxtyc.analyzer.annotations import extract_call_sites
+
+    source = textwrap.dedent("""\
+        def process(x):
+            y = len(x)
+            return print(y)
+    """)
+    known = {"process"}
+    calls = extract_call_sites(source, "/test.py", known, include_external=True)
+    callee_names = {c.callee_name for c in calls}
+    assert "len" in callee_names
+    assert "print" in callee_names
+
+
+def test_extract_call_sites_qualified_name() -> None:
+    """Attribute calls store the full dotted path in callee_qualified_name."""
+    from jaxtyc.analyzer.annotations import extract_call_sites
+
+    source = textwrap.dedent("""\
+        import jax.numpy as jnp
+
+        def transform(x):
+            y = jnp.matmul(x, x)
+            z = jnp.lax.scan(lambda c, x: (c, x), y, y)
+            w = encode(z)
+            return w
+    """)
+    known = {"encode"}
+    calls = extract_call_sites(source, "/test.py", known, include_external=True)
+
+    matmul_call = next(c for c in calls if c.callee_name == "matmul")
+    assert matmul_call.callee_qualified_name == "jnp.matmul"
+
+    scan_call = next(c for c in calls if c.callee_name == "scan")
+    assert scan_call.callee_qualified_name == "jnp.lax.scan"
+
+    # Bare name calls have no qualified name
+    encode_call = next(c for c in calls if c.callee_name == "encode")
+    assert encode_call.callee_qualified_name is None

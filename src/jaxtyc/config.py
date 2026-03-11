@@ -61,8 +61,25 @@ class ShardingConfig:
     rules: list[str] = field(default_factory=lambda: list(_DEFAULT_SHARDING_RULES))
 
 
+@dataclass(frozen=True)
+class NavigationConfig:
+    """Configuration for LSP navigation features.
+
+    Attributes:
+        references_scope: Scope for finding references.
+            "file" searches current file only, "workspace" searches all
+            workspace files.
+        include_external_calls: Whether to include calls to/from external
+            (non-workspace) modules in navigation results.
+    """
+
+    references_scope: str = "workspace"
+    include_external_calls: bool = True
+
+
 _HINTS_KNOWN_KEYS: frozenset[str] = frozenset(HintsConfig.__dataclass_fields__.keys())
 _SHARDING_KNOWN_KEYS: frozenset[str] = frozenset(ShardingConfig.__dataclass_fields__.keys())
+_NAVIGATION_KNOWN_KEYS: frozenset[str] = frozenset(NavigationConfig.__dataclass_fields__.keys())
 
 
 @dataclass(frozen=True)
@@ -89,11 +106,13 @@ class JaxtycConfig:
     hover_compact: bool = True
     hints: HintsConfig = field(default_factory=HintsConfig)
     sharding: ShardingConfig = field(default_factory=ShardingConfig)
+    navigation: NavigationConfig = field(default_factory=NavigationConfig)
 
 
 _KNOWN_KEYS: frozenset[str] = frozenset(JaxtycConfig.__dataclass_fields__.keys()) - {
     "hints",
     "sharding",
+    "navigation",
 }
 
 
@@ -137,6 +156,7 @@ def load_config(project_root: str | Path) -> JaxtycConfig:
     # Pop nested subsections before filtering top-level keys
     hints_raw = jaxtyc_config.pop("hints", None)
     sharding_raw = jaxtyc_config.pop("sharding", None)
+    navigation_raw = jaxtyc_config.pop("navigation", None)
 
     # Filter to known top-level keys only
     filtered: dict[str, object] = {k: v for k, v in jaxtyc_config.items() if k in _KNOWN_KEYS}
@@ -147,6 +167,10 @@ def load_config(project_root: str | Path) -> JaxtycConfig:
     if isinstance(sharding_raw, dict):
         filtered["sharding"] = _build_nested_config(
             sharding_raw, ShardingConfig, _SHARDING_KNOWN_KEYS
+        )
+    if isinstance(navigation_raw, dict):
+        filtered["navigation"] = _build_nested_config(
+            navigation_raw, NavigationConfig, _NAVIGATION_KNOWN_KEYS
         )
 
     # Environment variable override for einops preference
