@@ -2,7 +2,7 @@
   "name": "jaxtyc",
   "displayName": "jaxtyc",
   "description": "Static array shape checking for JAX",
-  "version": "0.1.4",
+  "version": "0.2.0",
   "publisher": "beegass",
   "license": "MIT",
   "icon": "icon.png",
