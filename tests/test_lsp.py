@@ -584,7 +584,7 @@ class TestLSPNavigation:
         assert result["range"]["start"]["line"] == 8
         assert result["range"]["start"]["character"] == 21
 
-    def test_definition_at_first_occurrence_returns_null(self) -> None:
+    def test_definition_at_first_occurrence_returns_self(self) -> None:
         with _lsp_session("correct_attention.py") as s:
             # batch in q param: line 9 (1-based) = line 8 (0-based), col 22
             rid = s.request(
@@ -596,7 +596,10 @@ class TestLSPNavigation:
             )
         resp = _find_response(s.messages, rid)
         assert resp is not None
-        assert resp["result"] is None
+        loc = resp["result"]
+        assert loc is not None, "goToDefinition should return definition even at first occurrence"
+        assert loc["range"]["start"]["line"] == 8
+        assert loc["range"]["start"]["character"] == 21
 
     def test_references_dim(self) -> None:
         with _lsp_session("correct_attention.py") as s:
@@ -2062,3 +2065,106 @@ class TestCallSiteNavigation:
         assert result is not None
         loc = result[0] if isinstance(result, list) else result
         assert loc.range.start.line == 4
+
+
+class TestDimGoToDefinition:
+    """goToDefinition should work on dimension names inside string annotations."""
+
+    def setup_method(self) -> None:
+        from jaxtyc.lsp import _state
+        from jaxtyc.lsp.index import FileIndex
+        from jaxtyc.types import DimLocation
+
+        self.uri = "file:///test/dims.py"
+        # Two occurrences of "batch" in function "encode":
+        #   first at line 5 col 22-27 (the "definition")
+        #   second at line 6 col 20-25 (a reference)
+        self.dim_def = DimLocation(
+            dim_name="batch",
+            param_name="x",
+            function_name="encode",
+            file_path="/test/dims.py",
+            lineno=5,
+            col_start=22,
+            col_end=27,
+        )
+        self.dim_ref = DimLocation(
+            dim_name="batch",
+            param_name="__return__",
+            function_name="encode",
+            file_path="/test/dims.py",
+            lineno=6,
+            col_start=20,
+            col_end=25,
+        )
+        _state.workspace_index.update_file(
+            FileIndex(
+                file_path="/test/dims.py",
+                uri=self.uri,
+                function_specs=[],
+                dim_locations=[self.dim_def, self.dim_ref],
+                call_sites=[],
+            )
+        )
+
+    def teardown_method(self) -> None:
+        from jaxtyc.lsp import _state
+
+        _state.workspace_index.remove_file(self.uri)
+
+    def test_go_to_definition_on_dim_reference(self) -> None:
+        """goToDefinition on a non-first dim occurrence should jump to first occurrence."""
+        from lsprotocol import types as lsp_types
+
+        from jaxtyc.lsp._navigation import go_to_definition
+        from jaxtyc.lsp.server import server
+
+        # Cursor on the second occurrence (line 6, col 22 = inside "batch")
+        params = lsp_types.DefinitionParams(
+            text_document=lsp_types.TextDocumentIdentifier(uri=self.uri),
+            position=lsp_types.Position(line=5, character=22),  # line 6 -> 0-based 5
+        )
+        result = go_to_definition(server, params)
+        assert result is not None
+        loc = result[0] if isinstance(result, list) else result
+        assert loc.range.start.line == 4  # line 5 -> 0-based 4
+        assert loc.range.start.character == 22
+
+    def test_go_to_definition_on_dim_at_definition(self) -> None:
+        """goToDefinition on the first dim occurrence should return its own location."""
+        from lsprotocol import types as lsp_types
+
+        from jaxtyc.lsp._navigation import go_to_definition
+        from jaxtyc.lsp.server import server
+
+        # Cursor on the first occurrence (line 5, col 24 = inside "batch")
+        params = lsp_types.DefinitionParams(
+            text_document=lsp_types.TextDocumentIdentifier(uri=self.uri),
+            position=lsp_types.Position(line=4, character=24),  # line 5 -> 0-based 4
+        )
+        result = go_to_definition(server, params)
+        assert result is not None, (
+            "goToDefinition should return the definition location even when already at it"
+        )
+        loc = result[0] if isinstance(result, list) else result
+        assert loc.range.start.line == 4
+        assert loc.range.start.character == 22
+
+    def test_go_to_implementation_on_dim_at_definition(self) -> None:
+        """goToImplementation on the first dim occurrence should return its own location."""
+        from lsprotocol import types as lsp_types
+
+        from jaxtyc.lsp._navigation import go_to_implementation
+        from jaxtyc.lsp.server import server
+
+        params = lsp_types.ImplementationParams(
+            text_document=lsp_types.TextDocumentIdentifier(uri=self.uri),
+            position=lsp_types.Position(line=4, character=24),
+        )
+        result = go_to_implementation(server, params)
+        assert result is not None, (
+            "goToImplementation should return the definition location even when already at it"
+        )
+        loc = result[0] if isinstance(result, list) else result
+        assert loc.range.start.line == 4
+        assert loc.range.start.character == 22

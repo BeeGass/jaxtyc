@@ -333,9 +333,9 @@ def go_to_definition(
     dim = _state.workspace_index.find_dim_at(uri, line, col)
     if dim is not None:
         defn = _state.workspace_index.find_dim_definition(dim.dim_name, dim.function_name, uri)
-        if defn is not None and (defn.lineno != dim.lineno or defn.col_start != dim.col_start):
+        if defn is not None:
             return types.Location(uri=uri, range=dim_range(defn))
-        return None  # Already at definition
+        return None
 
     # Try function name
     spec = _state.workspace_index.find_function_at(uri, line, col)
@@ -508,7 +508,7 @@ def go_to_implementation(
     dim = _state.workspace_index.find_dim_at(uri, line, col)
     if dim is not None:
         defn = _state.workspace_index.find_dim_definition(dim.dim_name, dim.function_name, uri)
-        if defn is not None and (defn.lineno != dim.lineno or defn.col_start != dim.col_start):
+        if defn is not None:
             return types.Location(uri=uri, range=dim_range(defn))
         return None
 
