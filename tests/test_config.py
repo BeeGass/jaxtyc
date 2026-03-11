@@ -356,8 +356,8 @@ class TestNavigationConfig:
         from jaxtyc.config import NavigationConfig
 
         nav = NavigationConfig()
-        assert nav.references_scope == "file"
-        assert nav.include_external_calls is False
+        assert nav.references_scope == "workspace"
+        assert nav.include_external_calls is True
 
     def test_navigation_config_frozen(self) -> None:
         """NavigationConfig should be immutable."""
@@ -382,12 +382,12 @@ class TestNavigationConfig:
             pyproject = Path(tmpdir) / "pyproject.toml"
             pyproject.write_text(
                 "[tool.jaxtyc.navigation]\n"
-                'references_scope = "workspace"\n'
-                "include_external_calls = true\n"
+                'references_scope = "file"\n'
+                "include_external_calls = false\n"
             )
             cfg = load_config(tmpdir)
-            assert cfg.navigation.references_scope == "workspace"
-            assert cfg.navigation.include_external_calls is True
+            assert cfg.navigation.references_scope == "file"
+            assert cfg.navigation.include_external_calls is False
 
     def test_navigation_defaults_when_missing(self) -> None:
         """Missing [tool.jaxtyc.navigation] uses defaults."""
@@ -395,8 +395,8 @@ class TestNavigationConfig:
             pyproject = Path(tmpdir) / "pyproject.toml"
             pyproject.write_text("[tool.jaxtyc]\nseverity = 'warning'\n")
             cfg = load_config(tmpdir)
-            assert cfg.navigation.references_scope == "file"
-            assert cfg.navigation.include_external_calls is False
+            assert cfg.navigation.references_scope == "workspace"
+            assert cfg.navigation.include_external_calls is True
 
     def test_navigation_unknown_keys_ignored(self) -> None:
         """Unknown keys inside navigation subsection are silently ignored."""

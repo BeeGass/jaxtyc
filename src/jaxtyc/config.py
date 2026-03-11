@@ -73,8 +73,8 @@ class NavigationConfig:
             (non-workspace) modules in navigation results.
     """
 
-    references_scope: str = "file"
-    include_external_calls: bool = False
+    references_scope: str = "workspace"
+    include_external_calls: bool = True
 
 
 _HINTS_KNOWN_KEYS: frozenset[str] = frozenset(HintsConfig.__dataclass_fields__.keys())
