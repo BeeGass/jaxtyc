@@ -30,15 +30,21 @@ def build_file_index(
     file_path: str,
     uri: str,
     func_specs: list[FunctionShapeSpec] | None = None,
+    extra_known_names: frozenset[str] | None = None,
 ) -> FileIndex:
     """Build a complete FileIndex from source code.
 
     If func_specs is provided, reuses them instead of re-parsing.
+    If extra_known_names is provided, those names are included in call-site
+    detection alongside locally defined functions, enabling cross-file call
+    discovery.
     """
     if func_specs is None:
         func_specs = extract_function_specs(source, file_path)
     dim_locs = extract_dim_locations(source, file_path)
     known_names = {s.name for s in func_specs}
+    if extra_known_names:
+        known_names |= extra_known_names
     call_sites = extract_call_sites(source, file_path, known_names)
     return FileIndex(
         file_path=file_path,

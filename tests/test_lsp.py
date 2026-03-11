@@ -1626,3 +1626,215 @@ class TestCallSiteHover:
             _state.trace_results_cache.pop(callee_uri, None)
             _state.dim_env_cache.pop(callee_uri, None)
             _state.analysis_cache.pop(caller_uri, None)
+
+
+class TestCrossFileTracing:
+    """Tests for multi-file cross-function shape mismatch detection."""
+
+    def test_cross_file_mismatch_detected(self) -> None:
+        """Cross-file call where callee trace contradicts annotation."""
+        from jaxtyc.analyzer.dim_env import DimEnv
+        from jaxtyc.lsp import _state
+        from jaxtyc.lsp.index import FileIndex
+        from jaxtyc.types import CallSite
+        from jaxtyc.types import DimSpec
+        from jaxtyc.types import FunctionShapeSpec
+        from jaxtyc.types import ShapeSpec
+        from jaxtyc.types import TraceResult
+
+        callee_uri = "file:///test/xfile_utils.py"
+        caller_uri = "file:///test/xfile_train.py"
+
+        env = DimEnv()
+        batch = env.get_size("batch")
+        d_model = env.get_size("d_model")
+        hidden = env.get_size("hidden")
+
+        callee_spec = FunctionShapeSpec(
+            name="encode",
+            file_path="/test/xfile_utils.py",
+            lineno=5,
+            col_offset=0,
+            params={
+                "x": ShapeSpec(
+                    dims=(
+                        DimSpec(kind="named", name="batch"),
+                        DimSpec(kind="named", name="d_model"),
+                    ),
+                    dtype="float32",
+                )
+            },
+            return_spec=ShapeSpec(
+                dims=(
+                    DimSpec(kind="named", name="batch"),
+                    DimSpec(kind="named", name="hidden"),
+                ),
+                dtype="float32",
+            ),
+            name_col_offset=4,
+        )
+        callee_index = FileIndex(
+            file_path="/test/xfile_utils.py",
+            uri=callee_uri,
+            function_specs=[callee_spec],
+            dim_locations=[],
+            call_sites=[],
+        )
+        _state.workspace_index.update_file(callee_index)
+
+        # Callee trace returns d_model, not hidden -- mismatch!
+        tr = TraceResult(
+            function_name="encode",
+            output_shape=(batch, d_model),
+            output_dtype="float32",
+            intermediates=[],
+            error=None,
+        )
+        with _state.cache_lock:
+            _state.trace_results_cache[callee_uri] = {"encode": tr}
+            _state.dim_env_cache[callee_uri] = env
+
+        # Caller has a call site to encode
+        caller_spec = FunctionShapeSpec(
+            name="train",
+            file_path="/test/xfile_train.py",
+            lineno=10,
+            col_offset=0,
+            params={
+                "x": ShapeSpec(
+                    dims=(
+                        DimSpec(kind="named", name="batch"),
+                        DimSpec(kind="named", name="d_model"),
+                    ),
+                    dtype="float32",
+                )
+            },
+            return_spec=None,
+            name_col_offset=4,
+        )
+        call_site = CallSite(
+            caller_name="train",
+            callee_name="encode",
+            file_path="/test/xfile_train.py",
+            lineno=12,
+            col_offset=8,
+            end_col_offset=14,
+        )
+        caller_index = FileIndex(
+            file_path="/test/xfile_train.py",
+            uri=caller_uri,
+            function_specs=[caller_spec],
+            dim_locations=[],
+            call_sites=[call_site],
+        )
+        _state.workspace_index.update_file(caller_index)
+
+        from jaxtyc.lsp.server import _check_cross_file_calls
+
+        diags = _check_cross_file_calls(caller_uri, [caller_spec])
+        assert len(diags) >= 1
+        assert any(d.code == "cross-function-mismatch" for d in diags)
+
+        # Cleanup
+        _state.workspace_index.remove_file(callee_uri)
+        _state.workspace_index.remove_file(caller_uri)
+        with _state.cache_lock:
+            _state.trace_results_cache.pop(callee_uri, None)
+            _state.dim_env_cache.pop(callee_uri, None)
+
+    def test_cross_file_no_false_positive(self) -> None:
+        """No diagnostic when callee trace matches annotation."""
+        from jaxtyc.analyzer.dim_env import DimEnv
+        from jaxtyc.lsp import _state
+        from jaxtyc.lsp.index import FileIndex
+        from jaxtyc.types import CallSite
+        from jaxtyc.types import DimSpec
+        from jaxtyc.types import FunctionShapeSpec
+        from jaxtyc.types import ShapeSpec
+        from jaxtyc.types import TraceResult
+
+        callee_uri = "file:///test/xfile_ok_utils.py"
+        caller_uri = "file:///test/xfile_ok_train.py"
+
+        env = DimEnv()
+        batch = env.get_size("batch")
+        hidden = env.get_size("hidden")
+
+        callee_spec = FunctionShapeSpec(
+            name="encode",
+            file_path="/test/xfile_ok_utils.py",
+            lineno=5,
+            col_offset=0,
+            params={
+                "x": ShapeSpec(
+                    dims=(DimSpec(kind="named", name="batch"),),
+                    dtype="float32",
+                )
+            },
+            return_spec=ShapeSpec(
+                dims=(
+                    DimSpec(kind="named", name="batch"),
+                    DimSpec(kind="named", name="hidden"),
+                ),
+                dtype="float32",
+            ),
+            name_col_offset=4,
+        )
+        callee_index = FileIndex(
+            file_path="/test/xfile_ok_utils.py",
+            uri=callee_uri,
+            function_specs=[callee_spec],
+            dim_locations=[],
+            call_sites=[],
+        )
+        _state.workspace_index.update_file(callee_index)
+
+        # Matching trace
+        tr = TraceResult(
+            function_name="encode",
+            output_shape=(batch, hidden),
+            output_dtype="float32",
+            intermediates=[],
+            error=None,
+        )
+        with _state.cache_lock:
+            _state.trace_results_cache[callee_uri] = {"encode": tr}
+            _state.dim_env_cache[callee_uri] = env
+
+        caller_spec = FunctionShapeSpec(
+            name="train",
+            file_path="/test/xfile_ok_train.py",
+            lineno=10,
+            col_offset=0,
+            params={},
+            return_spec=None,
+            name_col_offset=4,
+        )
+        call_site = CallSite(
+            caller_name="train",
+            callee_name="encode",
+            file_path="/test/xfile_ok_train.py",
+            lineno=12,
+            col_offset=8,
+            end_col_offset=14,
+        )
+        caller_index = FileIndex(
+            file_path="/test/xfile_ok_train.py",
+            uri=caller_uri,
+            function_specs=[caller_spec],
+            dim_locations=[],
+            call_sites=[call_site],
+        )
+        _state.workspace_index.update_file(caller_index)
+
+        from jaxtyc.lsp.server import _check_cross_file_calls
+
+        diags = _check_cross_file_calls(caller_uri, [caller_spec])
+        assert len(diags) == 0
+
+        # Cleanup
+        _state.workspace_index.remove_file(callee_uri)
+        _state.workspace_index.remove_file(caller_uri)
+        with _state.cache_lock:
+            _state.trace_results_cache.pop(callee_uri, None)
+            _state.dim_env_cache.pop(callee_uri, None)

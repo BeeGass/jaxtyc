@@ -53,6 +53,118 @@ def _collect_literal_dims(func_specs: list[FunctionShapeSpec]) -> frozenset[int]
     return frozenset(reserved)
 
 
+def _check_cross_file_calls(
+    uri: str,
+    func_specs: list[FunctionShapeSpec],
+) -> list[types.Diagnostic]:
+    """Check calls from this file to functions in other already-analyzed files."""
+    from jaxtyc.analyzer.checker import check_call_site
+    from jaxtyc.analyzer.dim_env import DimEnv
+
+    file_index = _state.workspace_index.get_file(uri)
+    if file_index is None:
+        return []
+
+    local_names = {s.name for s in func_specs}
+    extra_diags: list[types.Diagnostic] = []
+
+    for call in file_index.call_sites:
+        # Skip calls to functions in the same file (already checked by pipeline)
+        if call.callee_name in local_names:
+            continue
+
+        callee_specs = _state.workspace_index.find_function_by_name(call.callee_name)
+        if not callee_specs:
+            continue
+
+        callee_spec = callee_specs[0]
+        callee_uri = _state.workspace_index.uri_for_file(callee_spec.file_path)
+        if callee_uri is None:
+            continue
+
+        with _state.cache_lock:
+            callee_traces = _state.trace_results_cache.get(callee_uri, {})
+            callee_env_obj = _state.dim_env_cache.get(callee_uri)
+
+        callee_trace = callee_traces.get(call.callee_name)
+        if callee_trace is None or not callee_trace.success:
+            continue
+        if not isinstance(callee_env_obj, DimEnv):
+            continue
+
+        # Find the caller spec for this call site
+        caller_name_short = call.caller_name.split(".")[-1]
+        caller_spec = next((s for s in func_specs if s.name == caller_name_short), None)
+        if caller_spec is None:
+            continue
+
+        cross_diags = check_call_site(call, caller_spec, callee_spec, callee_trace, callee_env_obj)
+        for diag in cross_diags:
+            severity = types.DiagnosticSeverity.Error
+            if diag.severity == "warning":
+                severity = types.DiagnosticSeverity.Warning
+            elif diag.severity == "info":
+                severity = types.DiagnosticSeverity.Information
+
+            lsp_data = None
+            if diag.data is not None:
+                lsp_data = {
+                    "expected_shape": list(diag.data.expected_shape)
+                    if diag.data.expected_shape
+                    else None,
+                    "actual_shape": list(diag.data.actual_shape)
+                    if diag.data.actual_shape
+                    else None,
+                    "expected_named": list(diag.data.expected_named)
+                    if diag.data.expected_named
+                    else None,
+                    "actual_named": list(diag.data.actual_named)
+                    if diag.data.actual_named
+                    else None,
+                    "dim_name_mapping": diag.data.dim_name_mapping,
+                    "suggested_fix": diag.data.suggested_fix,
+                    "rule": diag.data.rule,
+                }
+
+            related_info: list[types.DiagnosticRelatedInformation] | None = None
+            if diag.data is not None and diag.data.related_locations:
+                from pathlib import PurePosixPath
+
+                related_info = [
+                    types.DiagnosticRelatedInformation(
+                        location=types.Location(
+                            uri=PurePosixPath(rl.file_path).as_uri(),
+                            range=types.Range(
+                                start=types.Position(line=max(0, rl.line - 1), character=rl.col),
+                                end=types.Position(line=max(0, rl.line - 1), character=rl.end_col),
+                            ),
+                        ),
+                        message=rl.message,
+                    )
+                    for rl in diag.data.related_locations
+                ]
+
+            extra_diags.append(
+                types.Diagnostic(
+                    range=types.Range(
+                        start=types.Position(line=max(0, diag.line - 1), character=diag.col),
+                        end=types.Position(
+                            line=max(0, diag.line - 1),
+                            character=diag.col + 1,
+                        ),
+                    ),
+                    message=diag.message,
+                    severity=severity,
+                    source="jaxtyc",
+                    code=diag.rule,
+                    data=lsp_data,
+                    related_information=related_info,
+                )
+            )
+
+    return extra_diags
+
+
 def _analyze_and_publish(ls: LanguageServer, uri: str, source: str | None = None) -> None:
     """Analyze a file and publish diagnostics.
 
@@ -192,9 +304,21 @@ def _analyze_and_publish(ls: LanguageServer, uri: str, source: str | None = None
         func_specs = []
         source_text = ""
 
+    # Collect all known function names across workspace for cross-file call detection
+    all_known: set[str] = set()
+    for fi in _state.workspace_index.all_files():
+        all_known.update(s.name for s in fi.function_specs)
+    all_known.update(s.name for s in func_specs)
+
     # Build navigation index
     try:
-        file_index = build_file_index(source_text, file_path, uri, func_specs=func_specs)
+        file_index = build_file_index(
+            source_text,
+            file_path,
+            uri,
+            func_specs=func_specs,
+            extra_known_names=frozenset(all_known),
+        )
         _state.workspace_index.update_file(file_index)
     except Exception:
         logger.debug("Failed to build navigation index for %s", file_path, exc_info=True)
@@ -314,6 +438,13 @@ def _analyze_and_publish(ls: LanguageServer, uri: str, source: str | None = None
         _state.trace_results_cache[uri] = trace_results_by_name
         if hover_env is not None:
             _state.dim_env_cache[uri] = hover_env
+
+    # Cross-file checking phase
+    cross_file_diags = _check_cross_file_calls(uri, func_specs)
+    if cross_file_diags:
+        lsp_diagnostics.extend(cross_file_diags)
+        with _state.cache_lock:
+            _state.diagnostics_cache[uri] = lsp_diagnostics
 
     ls.text_document_publish_diagnostics(
         types.PublishDiagnosticsParams(
