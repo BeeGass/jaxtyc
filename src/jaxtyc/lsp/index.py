@@ -213,11 +213,13 @@ class WorkspaceIndex:
         for idx in files:
             results.extend(d for d in idx.function_defs if d.name == name)
         if preferred_uri is not None and len(results) > 1:
+            preferred_path: str | None = None
             with self._lock:
                 pf = self._files.get(preferred_uri)
                 if pf is not None:
                     preferred_path = pf.file_path
-                    results.sort(key=lambda d: d.file_path != preferred_path)
+            if preferred_path is not None:
+                results.sort(key=lambda d: d.file_path != preferred_path)
         return results
 
     def get_callees_of(self, function_name: str, uri: str) -> list[CallSite]:

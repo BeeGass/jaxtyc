@@ -339,7 +339,7 @@ def extract_all_function_defs(source: str, file_path: str) -> list[FunctionDefIn
                         class_name=class_name,
                     )
                 )
-                _visit(node.body, class_name)
+                _visit(node.body, None)
             elif isinstance(node, ast.ClassDef):
                 _visit(node.body, node.name)
 

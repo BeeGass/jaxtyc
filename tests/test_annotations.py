@@ -522,3 +522,23 @@ def test_extract_all_function_defs_includes_non_annotated() -> None:
     fwd = next(d for d in defs if d.name == "forward")
     assert fwd.is_method is True
     assert fwd.class_name == "Model"
+
+
+def test_extract_all_function_defs_nested_not_method() -> None:
+    """Nested functions inside class methods should NOT be marked as methods."""
+    from jaxtyc.analyzer.annotations import extract_all_function_defs
+
+    source = textwrap.dedent("""\
+        class Model:
+            def forward(self, x):
+                def _local_helper(y):
+                    return y + 1
+                return _local_helper(x)
+    """)
+    defs = extract_all_function_defs(source, "/test.py")
+    fwd = next(d for d in defs if d.name == "forward")
+    assert fwd.is_method is True
+    assert fwd.class_name == "Model"
+    helper = next(d for d in defs if d.name == "_local_helper")
+    assert helper.is_method is False
+    assert helper.class_name is None
