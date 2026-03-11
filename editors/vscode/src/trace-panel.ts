@@ -52,3 +52,56 @@ export function parseTraceOutput(raw: string): TraceData {
 
   return { signature, intermediates, output, error };
 }
+
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+export function renderTraceHtml(data: TraceData, cssUri: string): string {
+  const rows = data.intermediates
+    .map(
+      (i) =>
+        `<tr><td>${i.line}</td><td>${escapeHtml(i.op)}</td>` +
+        `<td><code>${escapeHtml(i.shape)}</code></td>` +
+        `<td>${escapeHtml(i.dtype)}</td></tr>`
+    )
+    .join("\n");
+
+  let outputHtml = "";
+  if (data.output) {
+    const cls = data.output.status === "MISMATCH" ? "mismatch" : "ok";
+    outputHtml = `<div class="${cls}">
+      <strong>Output:</strong> <code>${escapeHtml(data.output.shape)}</code>
+      <span class="status">[${escapeHtml(data.output.status)}]</span>
+    </div>`;
+  }
+
+  let errorHtml = "";
+  if (data.error) {
+    errorHtml = `<div class="error">Trace error: ${escapeHtml(data.error)}</div>`;
+  }
+
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <link rel="stylesheet" href="${cssUri}">
+</head>
+<body>
+  <h2>${escapeHtml(data.signature)}</h2>
+  ${
+    data.intermediates.length > 0
+      ? `<table>
+    <thead><tr><th>Line</th><th>Operation</th><th>Shape</th><th>dtype</th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`
+      : ""
+  }
+  ${outputHtml}
+  ${errorHtml}
+</body>
+</html>`;
+}
