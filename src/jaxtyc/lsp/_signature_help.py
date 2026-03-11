@@ -71,7 +71,7 @@ def signature_help(
         return None
 
     # Look up function spec
-    specs = _state.workspace_index.find_function_by_name(func_name)
+    specs = _state.workspace_index.find_function_by_name(func_name, preferred_uri=uri)
     if not specs:
         return None
 

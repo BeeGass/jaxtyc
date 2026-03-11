@@ -134,7 +134,9 @@ def hover(ls: LanguageServer, params: types.HoverParams) -> types.Hover | None:
     # Check if cursor is on a call site
     call_site = _state.workspace_index.find_call_site_at(uri, line, pos.character)
     if call_site is not None:
-        callee_specs = _state.workspace_index.find_function_by_name(call_site.callee_name)
+        callee_specs = _state.workspace_index.find_function_by_name(
+            call_site.callee_name, preferred_uri=uri
+        )
         if callee_specs:
             callee_spec = callee_specs[0]
             call_parts: list[str] = [_function_hover(callee_spec)]
@@ -544,7 +546,10 @@ def incoming_calls(
 
     results: list[types.CallHierarchyIncomingCall] = []
     for call in callers:
-        caller_specs = _state.workspace_index.find_function_by_name(call.caller_name)
+        caller_uri = _state.workspace_index.uri_for_file(call.file_path)
+        caller_specs = _state.workspace_index.find_function_by_name(
+            call.caller_name, preferred_uri=caller_uri
+        )
         if not caller_specs:
             continue
         caller_spec = caller_specs[0]
@@ -593,7 +598,10 @@ def outgoing_calls(
 
     results: list[types.CallHierarchyOutgoingCall] = []
     for call in callees:
-        callee_specs = _state.workspace_index.find_function_by_name(call.callee_name)
+        callee_uri = _state.workspace_index.uri_for_file(call.file_path)
+        callee_specs = _state.workspace_index.find_function_by_name(
+            call.callee_name, preferred_uri=callee_uri
+        )
         if not callee_specs:
             continue
         callee_spec = callee_specs[0]

@@ -147,13 +147,23 @@ class WorkspaceIndex:
             results.extend(d for d in idx.dim_locations if d.dim_name == dim_name)
         return results
 
-    def find_function_by_name(self, name: str) -> list[FunctionShapeSpec]:
+    def find_function_by_name(
+        self, name: str, preferred_uri: str | None = None
+    ) -> list[FunctionShapeSpec]:
         """Find all functions with the given name across the workspace."""
         with self._lock:
             files = list(self._files.values())
         results: list[FunctionShapeSpec] = []
         for idx in files:
             results.extend(s for s in idx.function_specs if s.name == name)
+        if preferred_uri is not None and len(results) > 1:
+            preferred_path: str | None = None
+            with self._lock:
+                pf = self._files.get(preferred_uri)
+                if pf is not None:
+                    preferred_path = pf.file_path
+            if preferred_path is not None:
+                results.sort(key=lambda s: s.file_path != preferred_path)
         return results
 
     def search_symbols(self, query: str) -> list[FunctionShapeSpec]:

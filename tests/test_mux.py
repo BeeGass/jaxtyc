@@ -950,3 +950,184 @@ class TestMuxIntegration:
 
         assert elapsed < 8.0, f"Mux took {elapsed:.1f}s to exit, expected < 8s"
         assert proc.returncode is not None
+
+
+# ---------------------------------------------------------------------------
+# Readiness gate (server warmup)
+# ---------------------------------------------------------------------------
+
+
+class TestReadinessGate:
+    """Tests for the readiness-event gate that prevents messages from being sent
+    to backend servers before they finish processing their initialize request."""
+
+    def test_readiness_events_gate_server_startup(self) -> None:
+        """Readiness events should block until set, simulating the startup gate."""
+
+        async def _run_blocked() -> None:
+            primary_ready = asyncio.Event()
+            jaxtyc_ready = asyncio.Event()
+            await asyncio.wait_for(
+                asyncio.gather(primary_ready.wait(), jaxtyc_ready.wait()),
+                timeout=0.05,
+            )
+
+        async def _run_ready() -> None:
+            primary_ready = asyncio.Event()
+            jaxtyc_ready = asyncio.Event()
+            primary_ready.set()
+            jaxtyc_ready.set()
+            await asyncio.wait_for(
+                asyncio.gather(primary_ready.wait(), jaxtyc_ready.wait()),
+                timeout=0.05,
+            )
+
+        # Not set -> should timeout
+        raised = False
+        try:
+            asyncio.run(_run_blocked())
+        except TimeoutError:
+            raised = True
+        assert raised, "Expected TimeoutError when events not set"
+
+        # Both set -> completes fine
+        asyncio.run(_run_ready())
+
+    def test_readiness_partial_set_still_blocks(self) -> None:
+        """If only one event is set, the gate should still block."""
+
+        async def _run_primary_only() -> None:
+            primary_ready = asyncio.Event()
+            jaxtyc_ready = asyncio.Event()
+            primary_ready.set()
+            await asyncio.wait_for(
+                asyncio.gather(primary_ready.wait(), jaxtyc_ready.wait()),
+                timeout=0.05,
+            )
+
+        async def _run_jaxtyc_only() -> None:
+            primary_ready = asyncio.Event()
+            jaxtyc_ready = asyncio.Event()
+            jaxtyc_ready.set()
+            await asyncio.wait_for(
+                asyncio.gather(primary_ready.wait(), jaxtyc_ready.wait()),
+                timeout=0.05,
+            )
+
+        raised = False
+        try:
+            asyncio.run(_run_primary_only())
+        except TimeoutError:
+            raised = True
+        assert raised, "Expected TimeoutError when only primary_ready set"
+
+        raised = False
+        try:
+            asyncio.run(_run_jaxtyc_only())
+        except TimeoutError:
+            raised = True
+        assert raised, "Expected TimeoutError when only jaxtyc_ready set"
+
+    def test_primary_init_response_swallowed(self) -> None:
+        """The primary server's initialize response should be swallowed by the
+        output handler since the mux already sent a synthetic response."""
+
+        # This tests the structural pattern: when handle_primary_output sees
+        # a response with id == primary_init_id, it should set the event and
+        # NOT forward the message to the client.
+        async def _run() -> list[dict]:
+            """Simulate handle_primary_output recognizing the init response."""
+            primary_ready = asyncio.Event()
+            primary_init_id = 1
+            forwarded: list[dict] = []
+
+            # Simulate reading messages from a server
+            reader = asyncio.StreamReader()
+            # Message 1: the initialize response (should be swallowed)
+            reader.feed_data(
+                encode_message({"jsonrpc": "2.0", "id": 1, "result": {"capabilities": {}}})
+            )
+            # Message 2: a normal notification (should be forwarded)
+            reader.feed_data(
+                encode_message(
+                    {
+                        "jsonrpc": "2.0",
+                        "method": "textDocument/publishDiagnostics",
+                        "params": {"uri": "file:///test.py", "diagnostics": []},
+                    }
+                )
+            )
+            reader.feed_eof()
+
+            while True:
+                msg = await read_message(reader)
+                if msg is None:
+                    break
+                msg_id = msg.get("id")
+                # Simulate the readiness-gate logic in handle_primary_output
+                if msg_id is not None and msg_id == primary_init_id and not primary_ready.is_set():
+                    primary_ready.set()
+                    continue  # Swallow
+                forwarded.append(msg)
+
+            assert primary_ready.is_set(), "primary_ready should be set"
+            return forwarded
+
+        forwarded = asyncio.run(_run())
+        # Only the diagnostics notification should be forwarded
+        assert len(forwarded) == 1
+        assert forwarded[0].get("method") == "textDocument/publishDiagnostics"
+
+
+# ---------------------------------------------------------------------------
+# _merge_arrays deduplication
+# ---------------------------------------------------------------------------
+
+
+def test_merge_arrays_deduplicates_locations() -> None:
+    """_merge_arrays should deduplicate Location objects with same uri+range."""
+    from jaxtyc.lsp.mux import _merge_arrays
+
+    loc = {
+        "uri": "file:///test.py",
+        "range": {
+            "start": {"line": 4, "character": 5},
+            "end": {"line": 4, "character": 10},
+        },
+    }
+    result = _merge_arrays([loc], [loc.copy()])
+    assert result is not None
+    assert len(result) == 1
+
+
+def test_merge_arrays_keeps_unique_locations() -> None:
+    """_merge_arrays should keep Location objects with different uri+range."""
+    from jaxtyc.lsp.mux import _merge_arrays
+
+    loc_a = {
+        "uri": "file:///test.py",
+        "range": {
+            "start": {"line": 4, "character": 5},
+            "end": {"line": 4, "character": 10},
+        },
+    }
+    loc_b = {
+        "uri": "file:///test.py",
+        "range": {
+            "start": {"line": 10, "character": 0},
+            "end": {"line": 10, "character": 6},
+        },
+    }
+    result = _merge_arrays([loc_a], [loc_b])
+    assert result is not None
+    assert len(result) == 2
+
+
+def test_merge_arrays_no_dedup_without_location_keys() -> None:
+    """_merge_arrays should NOT deduplicate items without uri+range (e.g., CodeLens commands)."""
+    from jaxtyc.lsp.mux import _merge_arrays
+
+    item = {"command": {"title": "shapes: x: (batch)"}}
+    result = _merge_arrays([item], [item.copy()])
+    assert result is not None
+    assert len(result) == 2

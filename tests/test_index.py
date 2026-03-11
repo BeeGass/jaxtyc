@@ -284,3 +284,51 @@ def test_find_call_site_at() -> None:
     # Unknown URI
     not_found = idx.find_call_site_at("file:///other.py", 10, 6)
     assert not_found is None
+
+
+def test_find_function_by_name_preferred_uri() -> None:
+    """preferred_uri should sort matching specs so the preferred file comes first."""
+    idx = WorkspaceIndex()
+    spec_a = FunctionShapeSpec(
+        name="encode",
+        file_path="/a.py",
+        lineno=5,
+        col_offset=0,
+        params={},
+        return_spec=None,
+    )
+    spec_b = FunctionShapeSpec(
+        name="encode",
+        file_path="/b.py",
+        lineno=10,
+        col_offset=0,
+        params={},
+        return_spec=None,
+    )
+    idx.update_file(
+        FileIndex(
+            file_path="/a.py",
+            uri="file:///a.py",
+            function_specs=[spec_a],
+            dim_locations=[],
+            call_sites=[],
+        )
+    )
+    idx.update_file(
+        FileIndex(
+            file_path="/b.py",
+            uri="file:///b.py",
+            function_specs=[spec_b],
+            dim_locations=[],
+            call_sites=[],
+        )
+    )
+    # Without preferred_uri, returns both
+    assert len(idx.find_function_by_name("encode")) == 2
+    # With preferred_uri, preferred file's spec comes first
+    results_a = idx.find_function_by_name("encode", preferred_uri="file:///a.py")
+    assert results_a[0].file_path == "/a.py"
+    results_b = idx.find_function_by_name("encode", preferred_uri="file:///b.py")
+    assert results_b[0].file_path == "/b.py"
+    # Unknown preferred_uri still returns all
+    assert len(idx.find_function_by_name("encode", preferred_uri="file:///c.py")) == 2
