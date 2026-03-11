@@ -18,6 +18,7 @@ from jaxtyc.analyzer.checker import check_call_site
 from jaxtyc.analyzer.checker import check_function
 from jaxtyc.analyzer.dim_env import DimEnv
 from jaxtyc.analyzer.importer import import_module_from_path
+from jaxtyc.analyzer.sharding_checker import check_sharding
 from jaxtyc.analyzer.suppressions import extract_suppressions
 from jaxtyc.analyzer.suppressions import filter_inline_suppressions
 from jaxtyc.analyzer.tracer import trace_function
@@ -181,6 +182,7 @@ def analyze_file(file_path: str) -> FileResult:
                 functions_checked += 1
                 diags = check_function(func_spec, trace, env)
                 diagnostics.extend(diags)
+                diagnostics.extend(check_sharding(trace.intermediates, func_spec, file_path))
                 continue
             if cls is not None and _is_eqx_module(cls):
                 trace = _trace_eqx_method(cls, func_spec, env)
@@ -189,6 +191,7 @@ def analyze_file(file_path: str) -> FileResult:
                 functions_checked += 1
                 diags = check_function(func_spec, trace, env)
                 diagnostics.extend(diags)
+                diagnostics.extend(check_sharding(trace.intermediates, func_spec, file_path))
                 continue
 
         trace = trace_function(fn, func_spec.params, env)
@@ -199,6 +202,10 @@ def analyze_file(file_path: str) -> FileResult:
         # Check shapes against annotations
         diags = check_function(func_spec, trace, env)
         diagnostics.extend(diags)
+
+        # Check sharding constraints
+        sharding_diags = check_sharding(trace.intermediates, func_spec, file_path)
+        diagnostics.extend(sharding_diags)
 
     # Cross-function shape propagation
 
@@ -261,31 +268,106 @@ def _is_eqx_module(cls: type) -> bool:
         return False
 
 
+_SKIP_INIT_PARAMS: frozenset[str] = frozenset({"self", "rngs", "key", "rng", "parent", "name"})
+
+
+def _collect_dim_kwargs(
+    cls: type,
+    func_spec: FunctionShapeSpec,
+    env: DimEnv,
+) -> dict[str, int]:
+    """Build constructor kwargs by combining annotation dims with constructor int params.
+
+    Two sources of dimension information:
+
+    1. **Annotation dims** — named dimensions from the method's param and return
+       annotations.  These get their prime from *env* and are used for shape
+       checking.
+    2. **Constructor int params** — ``int``-typed parameters in ``__init__`` that
+       don't appear in any annotation.  These also get primes via *env* so the
+       model can be constructed and the primes can be reverse-mapped in error
+       messages.
+
+    This ensures construction succeeds even when annotations don't reference
+    every constructor dimension (e.g. a buggy return annotation that omits
+    ``d_out``).
+    """
+    import inspect
+
+    # 1. Collect named dims from method annotations
+    annotation_dims: dict[str, int] = {}
+    specs = list(func_spec.params.values())
+    if func_spec.return_spec is not None:
+        specs.append(func_spec.return_spec)
+    if func_spec.return_specs:
+        specs.extend(func_spec.return_specs)
+    for spec in specs:
+        for dim in spec.dims:
+            if dim.kind == "named" and dim.name is not None:
+                annotation_dims.setdefault(dim.name, env.get_size(dim.name))
+
+    # 2. Inspect constructor for all int-typed params
+    try:
+        sig = inspect.signature(cls.__init__)
+    except (ValueError, TypeError):
+        return annotation_dims
+
+    result: dict[str, int] = {}
+    for pname, param in sig.parameters.items():
+        if pname in _SKIP_INIT_PARAMS:
+            continue
+        if param.kind not in (
+            param.POSITIONAL_OR_KEYWORD,
+            param.KEYWORD_ONLY,
+            param.POSITIONAL_ONLY,
+        ):
+            continue
+
+        if pname in annotation_dims:
+            # Matches an annotation dim — use its prime
+            result[pname] = annotation_dims[pname]
+        elif (
+            param.annotation is int or param.annotation == "int"
+        ) and param.default is inspect.Parameter.empty:
+            # Required int param not in annotations — assign a prime for reverse-mapping.
+            # Optional int params (with defaults) keep their defaults to avoid
+            # breaking divisibility assertions like `assert features % num_head == 0`.
+            result[pname] = env.get_size(pname)
+
+    return result
+
+
 def _trace_nnx_method(
     cls: type,
     func_spec: FunctionShapeSpec,
     env: DimEnv,
 ) -> TraceResult:
-    """Trace a Flax NNX module method using nnx.eval_shape."""
+    """Trace a Flax NNX module method using a concrete model with split/merge."""
+    import jax
     from flax import nnx
+
+    from jaxtyc.analyzer.tracer import _extract_intermediates
 
     abstract_inputs: dict[str, jax.ShapeDtypeStruct] = {}
     for pname, pspec in func_spec.params.items():
         if pspec.is_any_shape:
             continue
-        import jax
-
         shape = env.make_shape(pspec)
         dtype = _resolve_jax_dtype(pspec.dtype)
         abstract_inputs[pname] = jax.ShapeDtypeStruct(shape, dtype)
 
+    # Build constructor kwargs from dimension names in annotations.
+    # The model's internal params must match the prime-based abstract inputs
+    # so that eval_shape and make_jaxpr produce correct shapes.
+    dim_sizes = _collect_dim_kwargs(cls, func_spec, env)
+
+    # Create concrete model instance (nnx.eval_shape abstract models fail
+    # on self.kernel[...] in newer Flax versions)
     try:
-        # Create abstract module instance via nnx.eval_shape
-        abstract_model = nnx.eval_shape(lambda: cls(d_in=2, d_out=3, rngs=nnx.Rngs(0)))
+        concrete_model = cls(**dim_sizes, rngs=nnx.Rngs(0))
     except Exception:
-        # Fallback: try common constructor patterns
         try:
-            abstract_model = nnx.eval_shape(lambda: cls(rngs=nnx.Rngs(0)))
+            concrete_model = cls(rngs=nnx.Rngs(0))
         except Exception as e:
             return TraceResult(
                 function_name=func_spec.name,
@@ -295,10 +377,16 @@ def _trace_nnx_method(
                 error=f"Could not instantiate NNX module {cls.__name__}: {e}",
             )
 
-    # Trace the method with nnx.eval_shape
+    # Build pure function via split/merge for jax.eval_shape and make_jaxpr
+    graphdef, state = nnx.split(concrete_model)
+
+    def pure_fn(**kwargs: Any) -> Any:
+        model = nnx.merge(graphdef, state)
+        return getattr(model, func_spec.name)(**kwargs)
+
+    # Trace for output shape
     try:
-        method = getattr(abstract_model, func_spec.name)
-        output_struct = nnx.eval_shape(lambda: method(**abstract_inputs))
+        output_struct = jax.eval_shape(pure_fn, **abstract_inputs)
     except Exception as e:
         return TraceResult(
             function_name=func_spec.name,
@@ -313,8 +401,6 @@ def _trace_nnx_method(
         output_shape = output_struct.shape
         output_dtype = str(output_struct.dtype)
     else:
-        import jax
-
         leaves = jax.tree.leaves(output_struct)
         if leaves and hasattr(leaves[0], "shape"):
             output_shape = leaves[0].shape
@@ -323,11 +409,14 @@ def _trace_nnx_method(
             output_shape = None
             output_dtype = None
 
+    # Extract intermediates via make_jaxpr (graceful degradation)
+    intermediates = _extract_intermediates(pure_fn, abstract_inputs, env)
+
     return TraceResult(
         function_name=func_spec.name,
         output_shape=output_shape,
         output_dtype=output_dtype,
-        intermediates=[],
+        intermediates=intermediates,
         error=None,
     )
 
@@ -347,6 +436,8 @@ def _trace_eqx_method(
     """Trace an equinox module method using jax.eval_shape with a bound method."""
     import jax
 
+    from jaxtyc.analyzer.tracer import _extract_intermediates
+
     abstract_inputs: dict[str, jax.ShapeDtypeStruct] = {}
     for pname, pspec in func_spec.params.items():
         if pspec.is_any_shape:
@@ -355,13 +446,15 @@ def _trace_eqx_method(
         dtype = _resolve_jax_dtype(pspec.dtype)
         abstract_inputs[pname] = jax.ShapeDtypeStruct(shape, dtype)
 
-    # Equinox modules are pytrees — instantiate one with concrete params,
-    # then trace __call__ with jax.eval_shape passing the model as a static arg
+    # Build constructor kwargs from annotation dims so model params
+    # match the prime-based abstract inputs
+    dim_sizes = _collect_dim_kwargs(cls, func_spec, env)
+
+    # Equinox modules are pytrees — instantiate with dimension-matched params
     try:
         key = jax.random.key(0)
-        # Try common constructor patterns
         try:
-            model = cls(d_in=2, d_out=3, key=key)
+            model = cls(**dim_sizes, key=key)
         except Exception:
             try:
                 model = cls(key=key)
@@ -401,10 +494,13 @@ def _trace_eqx_method(
             output_shape = None
             output_dtype = None
 
+    # Extract intermediates via make_jaxpr (graceful degradation)
+    intermediates = _extract_intermediates(wrapper, abstract_inputs, env)
+
     return TraceResult(
         function_name=func_spec.name,
         output_shape=output_shape,
         output_dtype=output_dtype,
-        intermediates=[],
+        intermediates=intermediates,
         error=None,
     )
