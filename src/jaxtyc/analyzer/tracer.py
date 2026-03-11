@@ -11,7 +11,15 @@ from jax.typing import DTypeLike
 from jaxtyc.analyzer.dim_env import DimEnv
 from jaxtyc.types import IntermediateShape
 from jaxtyc.types import ShapeSpec
+from jaxtyc.types import ShardingInfo
 from jaxtyc.types import TraceResult
+
+_SHARDING_PRIMITIVES: frozenset[str] = frozenset(
+    {
+        "sharding_constraint",
+        "shard_map",
+    }
+)
 
 # JAX dtype string mapping
 _DTYPE_MAP: dict[str, DTypeLike] = {
@@ -52,17 +60,70 @@ def _build_abstract_input(spec: ShapeSpec, env: DimEnv) -> jax.ShapeDtypeStruct:
     return jax.ShapeDtypeStruct(shape, dtype)
 
 
-_JAX_INTERNAL_PATHS: tuple[str, ...] = (
+_INTERNAL_PATHS: tuple[str, ...] = (
     "jax/",
     "jaxlib/",
+    "flax/",
+    "equinox/",
     "site-packages/jax",
     "site-packages/jaxlib",
+    "site-packages/flax",
+    "site-packages/equinox",
 )
 
 
-def _is_jax_internal(file_name: str) -> bool:
-    """Check if a file path is from JAX internals."""
-    return any(part in file_name for part in _JAX_INTERNAL_PATHS)
+def _is_internal_frame(file_name: str) -> bool:
+    """Check if a file path is from JAX/Flax/Equinox internals."""
+    return any(part in file_name for part in _INTERNAL_PATHS)
+
+
+def _extract_sharding_info(eqn: Any, source_line: int) -> ShardingInfo | None:
+    """Extract ShardingInfo from a jaxpr equation if it is a sharding primitive."""
+    try:
+        prim_name = eqn.primitive.name
+        if prim_name == "sharding_constraint":
+            sharding_obj = eqn.params.get("sharding")
+            if sharding_obj is None:
+                return None
+            spec = getattr(sharding_obj, "spec", None)
+            if spec is None:
+                return None
+            # PartitionSpec is a tuple-like of axis names or None
+            partition_spec = tuple(spec)
+            mesh = getattr(sharding_obj, "mesh", None)
+            mesh_axis_names: tuple[str, ...] = ()
+            if mesh is not None:
+                mesh_axis_names = tuple(mesh.axis_names)
+            return ShardingInfo(
+                partition_spec=partition_spec,
+                mesh_axis_names=mesh_axis_names,
+                source_primitive="sharding_constraint",
+                source_line=source_line,
+            )
+        if prim_name == "shard_map":
+            mesh = eqn.params.get("mesh")
+            out_specs = eqn.params.get("out_names_thunk")
+            mesh_axis_names = ()
+            if mesh is not None:
+                mesh_axis_names = tuple(mesh.axis_names)
+            if callable(out_specs):
+                out_specs = out_specs()
+            if out_specs and len(out_specs) > 0:
+                first_spec = out_specs[0]
+                partition_spec = tuple(
+                    name if isinstance(name, str) else None for name in first_spec
+                )
+            else:
+                partition_spec = ()
+            return ShardingInfo(
+                partition_spec=partition_spec,
+                mesh_axis_names=mesh_axis_names,
+                source_primitive="shard_map",
+                source_line=source_line,
+            )
+    except Exception:
+        pass
+    return None
 
 
 def _extract_intermediates(
@@ -88,13 +149,20 @@ def _extract_intermediates(
             source_col = 0
             if eqn.source_info and eqn.source_info.traceback:
                 frames = eqn.source_info.traceback.frames
-                # Find the last user frame (skip JAX internals)
-                for frame in reversed(frames):
-                    if not _is_jax_internal(frame.file_name):
+                # Find the innermost user frame (skip JAX/Flax/Equinox internals).
+                # Frames are ordered innermost-first, so the first non-library frame
+                # is the user's code — before reaching jaxtyc wrapper frames.
+                for frame in frames:
+                    if not _is_internal_frame(frame.file_name):
                         source_file = frame.file_name
                         source_line = frame.line_num
                         source_col = 0  # JAX frames don't expose column
                         break
+
+            # Extract sharding info if this is a sharding primitive
+            sharding: ShardingInfo | None = None
+            if eqn.primitive.name in _SHARDING_PRIMITIVES:
+                sharding = _extract_sharding_info(eqn, source_line)
 
             for outvar in eqn.outvars:
                 if hasattr(outvar, "aval") and hasattr(outvar.aval, "shape"):
@@ -109,6 +177,7 @@ def _extract_intermediates(
                             source_col=source_col,
                             named_shape=named_shape,
                             op_name=eqn.primitive.name,
+                            sharding=sharding,
                         )
                     )
     except Exception:
