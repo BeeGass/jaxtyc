@@ -389,8 +389,11 @@ def find_references(
         locations: list[types.Location] = []
         if params.context.include_declaration:
             locations.append(types.Location(uri=uri, range=spec_selection_range(spec)))
-        # Find call sites across workspace
-        callers = _state.workspace_index.get_callers_of(spec.name, uri)
+        # Find call sites based on configured scope
+        if _state.config.navigation.references_scope == "workspace":
+            callers = _state.workspace_index.get_all_callers_of(spec.name)
+        else:
+            callers = _state.workspace_index.get_callers_of(spec.name, uri)
         for call in callers:
             call_uri = (
                 _state.workspace_index.uri_for_file(call.file_path) or f"file://{call.file_path}"
@@ -585,7 +588,10 @@ def incoming_calls(
     function_name = data.get("function_name", params.item.name)
     item_uri = data.get("uri", params.item.uri)
 
-    callers = _state.workspace_index.get_callers_of(function_name, item_uri)
+    if _state.config.navigation.references_scope == "workspace":
+        callers = _state.workspace_index.get_all_callers_of(function_name)
+    else:
+        callers = _state.workspace_index.get_callers_of(function_name, item_uri)
     if not callers:
         return None
 

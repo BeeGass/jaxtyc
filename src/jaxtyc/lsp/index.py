@@ -211,7 +211,14 @@ class WorkspaceIndex:
         return results
 
     def get_callers_of(self, function_name: str, uri: str) -> list[CallSite]:
-        """Find all call sites where the given function is called."""
+        """Find call sites for the function within a specific file."""
+        idx = self.get_file(uri)
+        if idx is None:
+            return []
+        return [c for c in idx.call_sites if c.callee_name == function_name]
+
+    def get_all_callers_of(self, function_name: str) -> list[CallSite]:
+        """Find all call sites for the function across the entire workspace."""
         with self._lock:
             files = list(self._files.values())
         results: list[CallSite] = []

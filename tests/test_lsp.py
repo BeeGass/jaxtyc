@@ -867,6 +867,8 @@ class TestNonAnnotatedCallHierarchy:
     def test_incoming_calls_includes_non_annotated_caller(self) -> None:
         from lsprotocol import types as lsp_types
 
+        from jaxtyc.config import JaxtycConfig
+        from jaxtyc.config import NavigationConfig
         from jaxtyc.lsp import _state
         from jaxtyc.lsp._navigation import incoming_calls
         from jaxtyc.lsp.index import FileIndex
@@ -902,7 +904,10 @@ class TestNonAnnotatedCallHierarchy:
             )
         )
 
+        # Cross-file incoming calls require workspace scope
+        orig_config = _state.config
         try:
+            _state.config = JaxtycConfig(navigation=NavigationConfig(references_scope="workspace"))
             item = lsp_types.CallHierarchyItem(
                 name="encode",
                 kind=lsp_types.SymbolKind.Function,
@@ -924,6 +929,7 @@ class TestNonAnnotatedCallHierarchy:
             caller_names = [r.from_.name for r in result]
             assert "main" in caller_names
         finally:
+            _state.config = orig_config
             _state.workspace_index.remove_file(uri2)
 
 
@@ -2252,3 +2258,132 @@ class TestDimGoToDefinitionFileScoped:
         assert loc.range.start.line == 4, (
             f"Expected line 4 (first file occurrence in encode), got {loc.range.start.line}"
         )
+
+
+class TestReferenceScopeConfig:
+    """findReferences should respect navigation.references_scope config."""
+
+    def test_file_scoped_references_excludes_other_files(self) -> None:
+        """Default references_scope='file' only shows same-file callers."""
+        from jaxtyc.config import JaxtycConfig
+        from jaxtyc.lsp import _state
+        from jaxtyc.lsp.index import FileIndex
+        from jaxtyc.types import CallSite
+        from jaxtyc.types import FunctionShapeSpec
+
+        orig_config = _state.config
+        try:
+            _state.config = JaxtycConfig()
+
+            spec_a = FunctionShapeSpec(
+                name="decode",
+                file_path="/a.py",
+                lineno=5,
+                col_offset=0,
+                params={},
+                return_spec=None,
+                name_col_offset=4,
+            )
+            cs_local = CallSite("pipeline", "decode", "/a.py", 15, 4, 10)
+            cs_other = CallSite("pipeline", "decode", "/b.py", 20, 4, 10)
+
+            _state.workspace_index.update_file(
+                FileIndex(
+                    file_path="/a.py",
+                    uri="file:///a.py",
+                    function_specs=[spec_a],
+                    dim_locations=[],
+                    call_sites=[cs_local],
+                )
+            )
+            _state.workspace_index.update_file(
+                FileIndex(
+                    file_path="/b.py",
+                    uri="file:///b.py",
+                    function_specs=[],
+                    dim_locations=[],
+                    call_sites=[cs_other],
+                )
+            )
+
+            from lsprotocol import types as lsp_types
+
+            from jaxtyc.lsp._navigation import find_references
+            from jaxtyc.lsp.server import server
+
+            params = lsp_types.ReferenceParams(
+                text_document=lsp_types.TextDocumentIdentifier(uri="file:///a.py"),
+                position=lsp_types.Position(line=4, character=4),
+                context=lsp_types.ReferenceContext(include_declaration=False),
+            )
+            result = find_references(server, params)
+            assert result is not None
+            assert len(result) == 1
+
+            _state.workspace_index.remove_file("file:///a.py")
+            _state.workspace_index.remove_file("file:///b.py")
+        finally:
+            _state.config = orig_config
+
+    def test_workspace_scoped_references_includes_all_files(self) -> None:
+        """references_scope='workspace' shows callers from all files."""
+        from jaxtyc.config import JaxtycConfig
+        from jaxtyc.config import NavigationConfig
+        from jaxtyc.lsp import _state
+        from jaxtyc.lsp.index import FileIndex
+        from jaxtyc.types import CallSite
+        from jaxtyc.types import FunctionShapeSpec
+
+        orig_config = _state.config
+        try:
+            _state.config = JaxtycConfig(navigation=NavigationConfig(references_scope="workspace"))
+
+            spec_a = FunctionShapeSpec(
+                name="decode",
+                file_path="/a.py",
+                lineno=5,
+                col_offset=0,
+                params={},
+                return_spec=None,
+                name_col_offset=4,
+            )
+            cs_local = CallSite("pipeline", "decode", "/a.py", 15, 4, 10)
+            cs_other = CallSite("pipeline", "decode", "/b.py", 20, 4, 10)
+
+            _state.workspace_index.update_file(
+                FileIndex(
+                    file_path="/a.py",
+                    uri="file:///a.py",
+                    function_specs=[spec_a],
+                    dim_locations=[],
+                    call_sites=[cs_local],
+                )
+            )
+            _state.workspace_index.update_file(
+                FileIndex(
+                    file_path="/b.py",
+                    uri="file:///b.py",
+                    function_specs=[],
+                    dim_locations=[],
+                    call_sites=[cs_other],
+                )
+            )
+
+            from lsprotocol import types as lsp_types
+
+            from jaxtyc.lsp._navigation import find_references
+            from jaxtyc.lsp.server import server
+
+            params = lsp_types.ReferenceParams(
+                text_document=lsp_types.TextDocumentIdentifier(uri="file:///a.py"),
+                position=lsp_types.Position(line=4, character=4),
+                context=lsp_types.ReferenceContext(include_declaration=False),
+            )
+            result = find_references(server, params)
+            assert result is not None
+            assert len(result) == 2
+
+            _state.workspace_index.remove_file("file:///a.py")
+            _state.workspace_index.remove_file("file:///b.py")
+        finally:
+            _state.config = orig_config

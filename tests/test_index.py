@@ -433,3 +433,67 @@ def test_find_dim_definition_file_scoped() -> None:
     defn_file = ws.find_dim_definition_in_file("batch", "file:///test.py")
     assert defn_file is not None
     assert defn_file.lineno == 5
+
+
+def test_get_callers_of_scoped_to_file() -> None:
+    """get_callers_of should only return call sites from the specified file."""
+    ws = WorkspaceIndex()
+    cs_a = CallSite("main_a", "decode", "/a.py", 10, 4, 10)
+    cs_b = CallSite("main_b", "decode", "/b.py", 20, 4, 10)
+    ws.update_file(
+        FileIndex(
+            file_path="/a.py",
+            uri="file:///a.py",
+            function_specs=[],
+            dim_locations=[],
+            call_sites=[cs_a],
+        )
+    )
+    ws.update_file(
+        FileIndex(
+            file_path="/b.py",
+            uri="file:///b.py",
+            function_specs=[],
+            dim_locations=[],
+            call_sites=[cs_b],
+        )
+    )
+    # File-scoped: only call sites in file A
+    callers_a = ws.get_callers_of("decode", "file:///a.py")
+    assert len(callers_a) == 1
+    assert callers_a[0].caller_name == "main_a"
+    # File-scoped: only call sites in file B
+    callers_b = ws.get_callers_of("decode", "file:///b.py")
+    assert len(callers_b) == 1
+    assert callers_b[0].caller_name == "main_b"
+    # Unknown URI returns empty
+    assert ws.get_callers_of("decode", "file:///unknown.py") == []
+
+
+def test_get_all_callers_of() -> None:
+    """get_all_callers_of returns call sites from all files."""
+    ws = WorkspaceIndex()
+    cs_a = CallSite("main_a", "decode", "/a.py", 10, 4, 10)
+    cs_b = CallSite("main_b", "decode", "/b.py", 20, 4, 10)
+    ws.update_file(
+        FileIndex(
+            file_path="/a.py",
+            uri="file:///a.py",
+            function_specs=[],
+            dim_locations=[],
+            call_sites=[cs_a],
+        )
+    )
+    ws.update_file(
+        FileIndex(
+            file_path="/b.py",
+            uri="file:///b.py",
+            function_specs=[],
+            dim_locations=[],
+            call_sites=[cs_b],
+        )
+    )
+    all_callers = ws.get_all_callers_of("decode")
+    assert len(all_callers) == 2
+    names = {c.caller_name for c in all_callers}
+    assert names == {"main_a", "main_b"}
