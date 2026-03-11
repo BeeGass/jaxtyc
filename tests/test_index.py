@@ -242,3 +242,45 @@ class TestWorkspaceIndex:
         assert len(callees) == 2
         names = {c.callee_name for c in callees}
         assert names == {"encode", "decode"}
+
+
+def test_find_call_site_at() -> None:
+    """find_call_site_at should match position within a call site range."""
+    idx = WorkspaceIndex()
+    cs = CallSite(
+        caller_name="main",
+        callee_name="encode",
+        file_path="/test.py",
+        lineno=10,
+        col_offset=4,
+        end_col_offset=10,
+    )
+    fi = FileIndex(
+        file_path="/test.py",
+        uri="file:///test.py",
+        function_specs=[],
+        dim_locations=[],
+        call_sites=[cs],
+    )
+    idx.update_file(fi)
+
+    # Inside range
+    found = idx.find_call_site_at("file:///test.py", 10, 6)
+    assert found is not None
+    assert found.callee_name == "encode"
+
+    # At start boundary
+    found = idx.find_call_site_at("file:///test.py", 10, 4)
+    assert found is not None
+
+    # At end boundary (exclusive)
+    not_found = idx.find_call_site_at("file:///test.py", 10, 10)
+    assert not_found is None
+
+    # Wrong line
+    not_found = idx.find_call_site_at("file:///test.py", 11, 6)
+    assert not_found is None
+
+    # Unknown URI
+    not_found = idx.find_call_site_at("file:///other.py", 10, 6)
+    assert not_found is None

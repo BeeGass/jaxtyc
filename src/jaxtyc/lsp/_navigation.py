@@ -131,6 +131,59 @@ def hover(ls: LanguageServer, params: types.HoverParams) -> types.Hover | None:
                     ),
                 )
 
+    # Check if cursor is on a call site
+    call_site = _state.workspace_index.find_call_site_at(uri, line, pos.character)
+    if call_site is not None:
+        callee_specs = _state.workspace_index.find_function_by_name(call_site.callee_name)
+        if callee_specs:
+            callee_spec = callee_specs[0]
+            call_parts: list[str] = [_function_hover(callee_spec)]
+
+            callee_uri = _state.workspace_index.uri_for_file(callee_spec.file_path)
+            if callee_uri is not None:
+                with _state.cache_lock:
+                    callee_traces = _state.trace_results_cache.get(callee_uri, {})
+                    callee_env_obj = _state.dim_env_cache.get(callee_uri)
+
+                callee_trace = callee_traces.get(call_site.callee_name)
+                if callee_trace is not None and callee_trace.success:
+                    if callee_trace.output_shape is not None and callee_env_obj is not None:
+                        from jaxtyc.analyzer.dim_env import DimEnv
+
+                        if isinstance(callee_env_obj, DimEnv):
+                            named = callee_env_obj.shape_to_names(callee_trace.output_shape)
+                            out_str = ", ".join(
+                                n or str(s)
+                                for n, s in zip(
+                                    named,
+                                    callee_trace.output_shape,
+                                    strict=True,
+                                )
+                            )
+                            call_parts.append(f"\n**Traced output**: `({out_str})`")
+
+                            if callee_spec.return_spec is not None:
+                                expected = callee_env_obj.make_shape(callee_spec.return_spec)
+                                if expected != callee_trace.output_shape:
+                                    exp_named = callee_env_obj.shape_to_names(expected)
+                                    exp_str = ", ".join(
+                                        n or str(s)
+                                        for n, s in zip(exp_named, expected, strict=True)
+                                    )
+                                    call_parts.append(
+                                        f"\n**Mismatch**: annotated `({exp_str})`, "
+                                        f"traced `({out_str})`"
+                                    )
+                elif callee_trace is not None and not callee_trace.success:
+                    call_parts.append(f"\n**Trace error**: {callee_trace.error}")
+
+            return types.Hover(
+                contents=types.MarkupContent(
+                    kind=types.MarkupKind.Markdown,
+                    value="\n".join(call_parts),
+                ),
+            )
+
     # Show all intermediate shapes at cursor line (Option E format)
     with _state.cache_lock:
         intermediates = _state.analysis_cache.get(uri, [])

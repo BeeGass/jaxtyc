@@ -1519,3 +1519,110 @@ class TestHoverDivergenceInfo:
         with _state.cache_lock:
             _state.analysis_cache.pop(uri, None)
             _state.error_hints_cache.pop(uri, None)
+
+
+class TestCallSiteHover:
+    """Tests for call-site shape resolution on hover."""
+
+    def test_hover_on_call_shows_callee_signature(self) -> None:
+        """Hovering on encode(x) shows encode's shape signature."""
+        from jaxtyc.analyzer.dim_env import DimEnv
+        from jaxtyc.lsp import _state
+        from jaxtyc.lsp.index import FileIndex
+        from jaxtyc.types import CallSite
+        from jaxtyc.types import DimSpec
+        from jaxtyc.types import FunctionShapeSpec
+        from jaxtyc.types import ShapeSpec
+        from jaxtyc.types import TraceResult
+
+        caller_uri = "file:///test/call_hover.py"
+        callee_uri = "file:///test/callee.py"
+
+        env = DimEnv()
+
+        callee_spec = FunctionShapeSpec(
+            name="encode",
+            file_path="/test/callee.py",
+            lineno=5,
+            col_offset=0,
+            params={
+                "x": ShapeSpec(
+                    dims=(
+                        DimSpec(kind="named", name="batch"),
+                        DimSpec(kind="named", name="d_model"),
+                    ),
+                    dtype="float32",
+                )
+            },
+            return_spec=ShapeSpec(
+                dims=(
+                    DimSpec(kind="named", name="batch"),
+                    DimSpec(kind="named", name="hidden"),
+                ),
+                dtype="float32",
+            ),
+            name_col_offset=4,
+        )
+        callee_index = FileIndex(
+            file_path="/test/callee.py",
+            uri=callee_uri,
+            function_specs=[callee_spec],
+            dim_locations=[],
+            call_sites=[],
+        )
+        _state.workspace_index.update_file(callee_index)
+
+        call_site = CallSite(
+            caller_name="forward",
+            callee_name="encode",
+            file_path="/test/call_hover.py",
+            lineno=10,
+            col_offset=8,
+            end_col_offset=14,
+        )
+        caller_index = FileIndex(
+            file_path="/test/call_hover.py",
+            uri=caller_uri,
+            function_specs=[],
+            dim_locations=[],
+            call_sites=[call_site],
+        )
+        _state.workspace_index.update_file(caller_index)
+
+        batch = env.get_size("batch")
+        hidden = env.get_size("hidden")
+        tr = TraceResult(
+            function_name="encode",
+            output_shape=(batch, hidden),
+            output_dtype="float32",
+            intermediates=[],
+            error=None,
+        )
+        with _state.cache_lock:
+            _state.trace_results_cache[callee_uri] = {"encode": tr}
+            _state.dim_env_cache[callee_uri] = env
+            _state.analysis_cache[caller_uri] = []
+
+        from lsprotocol import types as lsp_types
+
+        from jaxtyc.lsp._navigation import hover
+        from jaxtyc.lsp.server import server
+
+        params = lsp_types.HoverParams(
+            text_document=lsp_types.TextDocumentIdentifier(uri=caller_uri),
+            position=lsp_types.Position(line=9, character=10),
+        )
+        result = hover(server, params)
+        assert result is not None
+        content = result.contents.value
+        assert "encode" in content
+        assert "batch" in content
+        assert "hidden" in content
+
+        # Cleanup
+        _state.workspace_index.remove_file(caller_uri)
+        _state.workspace_index.remove_file(callee_uri)
+        with _state.cache_lock:
+            _state.trace_results_cache.pop(callee_uri, None)
+            _state.dim_env_cache.pop(callee_uri, None)
+            _state.analysis_cache.pop(caller_uri, None)

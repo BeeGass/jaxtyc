@@ -187,3 +187,13 @@ class WorkspaceIndex:
         if idx is None:
             return []
         return [c for c in idx.call_sites if c.caller_name == function_name]
+
+    def find_call_site_at(self, uri: str, line: int, col: int) -> CallSite | None:
+        """Find a call site at the given 1-based line, 0-based col."""
+        idx = self.get_file(uri)
+        if idx is None:
+            return None
+        for cs in idx.call_sites:
+            if cs.lineno == line and cs.col_offset <= col < cs.end_col_offset:
+                return cs
+        return None
