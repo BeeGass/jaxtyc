@@ -1,0 +1,59 @@
+body {
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: var(--vscode-editor-font-size, 13px);
+  color: var(--vscode-editor-foreground);
+  background: var(--vscode-editor-background);
+  padding: 16px;
+}
+
+h2 {
+  font-size: 1.1em;
+  margin: 0 0 16px;
+  color: var(--vscode-symbolIcon-functionForeground, #dcdcaa);
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 16px;
+}
+
+th, td {
+  text-align: left;
+  padding: 4px 12px;
+  border-bottom: 1px solid var(--vscode-panel-border, #333);
+}
+
+th {
+  color: var(--vscode-descriptionForeground);
+  font-weight: 600;
+}
+
+code {
+  color: var(--vscode-textPreformat-foreground, #ce9178);
+}
+
+.output {
+  padding: 8px 12px;
+  border-radius: 4px;
+  margin-top: 8px;
+}
+
+.ok {
+  background: var(--vscode-diffEditor-insertedTextBackground, rgba(0, 180, 0, 0.1));
+}
+
+.mismatch {
+  background: var(--vscode-diffEditor-removedTextBackground, rgba(255, 0, 0, 0.1));
+}
+
+.status {
+  margin-left: 8px;
+  font-weight: 600;
+}
+
+.error {
+  color: var(--vscode-errorForeground, #f44747);
+  padding: 8px 12px;
+  margin-top: 8px;
+}

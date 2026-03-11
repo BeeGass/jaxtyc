@@ -5,6 +5,50 @@ All notable changes to jaxtyc are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## v0.4.0 — 2026-03-10
+
+### Added
+
+- **VS Code extension v0.2.0** (`editors/vscode/`): Native extension with auto-discovery of Python environments, status bar, and full LSP client integration
+- **Multi-root workspace support**: Per-folder LSP clients, each discovering its own Python environment independently. Status bar reflects aggregate health across all folders
+- **Python auto-detection**: Extension discovers jaxtyc across `VIRTUAL_ENV`, workspace `.venv` directories (including worktree subdirs), `jaxtyc` on PATH, VS Code Python extension interpreter, and `python3` fallback -- validates each candidate before use
+- **Mux mode support**: `jaxtyc.mode` setting switches between `lsp` (shape checking only) and `mux` (multiplexed with ty/pyright)
+- **Status bar quick pick menu**: Click the status bar to access Restart Server, Check Current File, Trace Function, Show Output, and Open Settings
+- **Server version tooltip**: Hover over the status bar to see the connected jaxtyc server version
+- **Trace visualization**: `jaxtyc: Trace Function` command runs `jaxtyc trace` and renders results in a webview panel with shape flow table, intermediate operations, and match/mismatch status
+- **jaxtyping snippets**: 6 snippets (`jfloat`, `jint`, `jbool`, `jshaped`, `jimport`, `jignore`) for Python files
+- **Problem matcher**: Parses `jaxtyc check` output format into VS Code's Problems panel
+- **Config change watcher**: Automatically restarts servers (with 1-second debounce) when `jaxtyc.mode` or `jaxtyc.pythonPath` settings change
+- **GitHub Actions CI**: Python CI workflow (ruff, ty, pytest matrix on 3.11/3.13) and VS Code extension CI (tsc, vitest, esbuild, vsce package with artifact upload)
+- **Pre-commit hooks**: `.pre-commit-config.yaml` with ruff-check, ruff-format, and ty via prek (Rust-based pre-commit replacement)
+- **Justfile**: Development task runner with `just vscode-update` pipeline (tool install, bundle, package, install)
+- **Test suite**: 51 vitest tests (39 discovery + 12 trace-panel) covering discovery logic, candidate ordering, command building, trace parsing, HTML rendering, and edge cases
+- **Error hints (divergence detection)**: `ErrorHintInfo` type and `find_divergence_points()` in new `analyzer/divergence.py`; inline error display at the first operation whose shape deviates from the annotated return
+- **Sharding checker**: New `analyzer/sharding_checker.py` with 4 diagnostic rules: `sharding-rank-mismatch`, `sharding-axis-unknown`, `sharding-conflict`, `sharding-io-mismatch`
+- **Sharding extraction in tracer**: `_extract_sharding_info()` reads `PartitionSpec` and mesh axes from `sharding_constraint` and `shard_map` jaxpr primitives; attached to `IntermediateShape` via new `ShardingInfo` dataclass
+- **NNX/Equinox intermediate extraction**: Module tracing now returns populated `intermediates` via `_extract_intermediates` (previously returned `[]`)
+- **Dimension-aware module construction**: `_collect_dim_kwargs()` introspects constructor signatures and builds prime-based kwargs, replacing hardcoded `d_in=2, d_out=3`
+- **Compact inlay hint format**: `dtype[dim1, dim2]` with 3 dtype styles (numpy, jax, jaxtyping), last-per-line deduplication, smart positioning after variable names
+- **Sharding display in inlay hints and hover**: `P('data', None)` appended to shape; hover shows mesh axis info
+- **Error display in inlay hints**: Divergence error message appended with configurable separator (pipe or icon)
+- **`HintsConfig`**: `error_mode`, `error_location`, `error_style`, `dtype_style` under `[tool.jaxtyc.hints]`
+- **`ShardingConfig`**: `display` and `rules` under `[tool.jaxtyc.sharding]`
+- **`format_dtype()`**: Dtype abbreviation utility (numpy, jax, jaxtyping styles) covering FP8, FP4/FP6, sub-byte ints
+- New test suites: `test_divergence.py` (8), `test_sharding.py` (4), `test_sharding_checker.py` (8)
+- Extended tests: `test_types.py` (+5), `test_config.py` (+19), `test_lsp.py` (+20), `test_nnx.py` (+7), `test_integration.py` (+1)
+
+### Changed
+
+- **Editors documentation**: VS Code section updated with multi-root support, snippets, trace visualization, all new commands, full configuration table
+- **README**: Updated VS Code install instructions with justfile alternative
+- **NNX tracing**: Switched from abstract `nnx.eval_shape` to concrete model construction with `nnx.split/merge` + `jax.eval_shape`
+- **Inlay hints**: Rewritten with compact `dtype[dim1, dim2]` format, smart after-variable positioning, error/sharding display
+- **Hover intermediates**: Structured display with `dtype[dim1, dim2]` format, "final" marker, inline sharding
+- **`IntermediateShape`**: Extended with optional `sharding: ShardingInfo | None` field
+- **`JaxtycConfig`**: Extended with nested `hints: HintsConfig` and `sharding: ShardingConfig`
+- **`filter_diagnostics`**: Now additionally filters sharding diagnostics against `sharding.rules` allow-list
+- **`didClose` handler**: Also clears `error_hints_cache` and `source_cache`
+
 ## v0.3.1 — 2026-03-10
 
 ### Fixed

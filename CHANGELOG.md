@@ -5,6 +5,50 @@ All notable changes to jaxtyc are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.4.0] — 2026-03-10
+
+### Added
+
+- **Multi-root workspace support**: Per-folder LSP clients, each discovering its own Python environment independently
+- **Status bar quick pick menu**: Click the status bar for Restart Server, Check Current File, Trace Function, Show Output, Open Settings
+- **Server version tooltip**: Hover over the status bar to see the connected server version
+- **Trace visualization**: `jaxtyc: Trace Function` command with webview panel showing shape flow, intermediate operations, and match/mismatch status
+- **jaxtyping snippets**: `jfloat`, `jint`, `jbool`, `jshaped`, `jimport`, `jignore` for Python files
+- **Problem matcher**: Parses `jaxtyc check` output into VS Code's Problems panel
+- **GitHub Actions CI**: Python CI (ruff, ty, pytest 3.11/3.13 matrix) and VS Code extension CI (tsc, vitest, esbuild, vsce package)
+- **Pre-commit hooks**: `.pre-commit-config.yaml` with ruff + ty via prek
+- **Justfile**: Development task runner (`just vscode-update`, `just test-all`, etc.)
+- VS Code extension test count: 30 -> 51 (added trace-panel tests)
+- **Error hints (divergence detection)**: `ErrorHintInfo` type and `find_divergence_points()` in new `analyzer/divergence.py`; inline error display at the first operation whose shape deviates from the annotated return
+- **Sharding checker**: New `analyzer/sharding_checker.py` with 4 diagnostic rules: `sharding-rank-mismatch`, `sharding-axis-unknown`, `sharding-conflict`, `sharding-io-mismatch`
+- **Sharding extraction in tracer**: `_extract_sharding_info()` reads `PartitionSpec` and mesh axes from `sharding_constraint` and `shard_map` jaxpr primitives; attached to `IntermediateShape` via new `ShardingInfo` dataclass
+- **NNX/Equinox intermediate extraction**: `_trace_nnx_method` and `_trace_eqx_method` now return populated `intermediates` via `_extract_intermediates` (previously returned `[]`)
+- **Dimension-aware module construction**: `_collect_dim_kwargs()` introspects constructor signatures and builds prime-based kwargs, replacing hardcoded `d_in=2, d_out=3`
+- **Compact inlay hint format**: `dtype[dim1, dim2]` with 3 dtype styles (`numpy`/`jax`/`jaxtyping`), last-per-line deduplication, smart positioning after variable names
+- **Sharding display in inlay hints**: `P('data', None)` appended to shape when `ShardingInfo` present
+- **Error display in inlay hints**: Divergence error message appended after shape with configurable separator (`pipe` or `icon`)
+- **Sharding in hover**: Intermediates hover shows `P(...)` and mesh axis info inline
+- **`HintsConfig`**: `error_mode`, `error_location`, `error_style`, `dtype_style` config options under `[tool.jaxtyc.hints]`
+- **`ShardingConfig`**: `display` and `rules` config options under `[tool.jaxtyc.sharding]`
+- **`format_dtype()`**: Comprehensive dtype abbreviation utility (numpy, jax, jaxtyping styles) covering FP8, FP4/FP6, sub-byte ints
+- **LSP caches**: `error_hints_cache` and `source_cache` in `_state.py` for error hint and inlay hint positioning
+- Test fixtures: `nnx_sharded.py`, `sharded_rank_mismatch.py`
+- New test suites: `test_divergence.py` (8 tests), `test_sharding.py` (4 tests), `test_sharding_checker.py` (8 tests)
+- Extended tests: `test_types.py` (+5), `test_config.py` (+19), `test_lsp.py` (+20), `test_nnx.py` (+7), `test_integration.py` (+1)
+
+### Changed
+
+- VS Code extension version: 0.1.4 -> 0.2.0
+- Config change handler now debounces (1 second) before restarting servers
+- Extension documentation updated with multi-root, snippets, trace, all commands
+- **NNX tracing**: Switched from abstract `nnx.eval_shape` to concrete model construction with `nnx.split/merge` + `jax.eval_shape`
+- **Inlay hints**: Rewritten with compact `dtype[dim1, dim2]` format, smart after-variable positioning, and error/sharding display
+- **Hover intermediates**: Structured display with `dtype[dim1, dim2]` format, "final" marker, inline sharding info
+- **`IntermediateShape`**: Extended with optional `sharding: ShardingInfo | None` field
+- **`JaxtycConfig`**: Extended with nested `hints: HintsConfig` and `sharding: ShardingConfig`
+- **`filter_diagnostics`**: Now additionally filters sharding diagnostics against the `sharding.rules` allow-list
+- **`didClose` handler**: Also clears `error_hints_cache` and `source_cache`
+
 ## [v0.3.1] — 2026-03-10
 
 ### Fixed
@@ -124,6 +168,7 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Flax NNX and Equinox module support (auto-skips `self`/`cls` parameters)
 - CI workflow and mkdocs documentation site
 
+[v0.4.0]: https://github.com/BeeGass/jaxtyc/compare/v0.3.1...v0.4.0
 [v0.3.1]: https://github.com/BeeGass/jaxtyc/compare/v0.3.0...v0.3.1
 [v0.3.0]: https://github.com/BeeGass/jaxtyc/compare/v0.2.0...v0.3.0
 [v0.2.0]: https://github.com/BeeGass/jaxtyc/compare/v0.1.0...v0.2.0

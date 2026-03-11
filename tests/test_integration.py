@@ -74,3 +74,13 @@ class TestAnalyzeFileEndToEnd:
         assert result.functions_checked >= 1
         errors = [d for d in result.diagnostics if d.severity == "error"]
         assert any(d.rule == "cross-function-mismatch" for d in errors)
+
+    def test_pipeline_runs_sharding_checks(self) -> None:
+        """analyze_file runs sharding checker and returns sharding diagnostics."""
+        result = analyze_file(str(FIXTURES / "sharded_rank_mismatch.py"))
+        assert result.functions_checked >= 1
+        sharding_diags = [d for d in result.diagnostics if d.rule == "sharding-rank-mismatch"]
+        assert len(sharding_diags) >= 1, (
+            f"Expected sharding-rank-mismatch diagnostic, got rules: "
+            f"{[d.rule for d in result.diagnostics]}"
+        )

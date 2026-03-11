@@ -12,6 +12,10 @@ jaxtyc emits diagnostics with structured rule codes. Each diagnostic includes a 
 | `param-inconsistency` | error | Parameter annotation conflicts with resolved input shape | Ensure parameter annotations match the function signature |
 | `cross-function-mismatch` | error | Callee output shape contradicts its annotation at a call site | Fix the callee's return annotation or implementation |
 | `return-count-mismatch` | error | Tuple return element count differs from annotation | Match the number of elements in the return tuple annotation |
+| `sharding-rank-mismatch` | error | PartitionSpec length differs from array rank | Match PartitionSpec entries to array dimensions |
+| `sharding-axis-unknown` | error | PartitionSpec references a non-existent mesh axis | Use axis names defined in the Mesh |
+| `sharding-conflict` | error | Conflicting PartitionSpecs on same shape at same line | Use a single consistent PartitionSpec |
+| `sharding-io-mismatch` | warning | jit out_shardings contradict an inner sharding_constraint | Align jit output sharding with inner constraints |
 | `file-not-found` | info | File path does not exist | Check the path argument |
 | `read-error` | info | File could not be read | Check file permissions |
 | `import-error` | info | Module could not be imported | Ensure all dependencies are installed |
@@ -183,6 +187,130 @@ tuple_bug.py:5:0: error[return-count-mismatch]
   Return count mismatch in `split_heads`
     Expected: 2 elements
     Got:      3 elements
+```
+
+---
+
+## Sharding Rules (with examples)
+
+Sharding rules validate JAX sharding constraints (`PartitionSpec`, mesh axes) against traced array shapes. They fire when jaxtyc detects sharding metadata on intermediates produced by `jax.lax.with_sharding_constraint`, `shard_map`, or `jit` out_shardings.
+
+### `sharding-rank-mismatch`
+
+Fires when a `PartitionSpec` has a different number of entries than the array's rank. Each entry in `PartitionSpec` corresponds to one array dimension.
+
+```python
+import jax
+import numpy as np
+from jax.sharding import Mesh, NamedSharding, PartitionSpec as P
+from jaxtyping import Array, Float
+
+devices = np.array(jax.devices()).reshape(1, 1)
+mesh = Mesh(devices, ("data", "model"))
+
+def sharded_fn(
+    x: Float[Array, "batch seq d_model"],
+) -> Float[Array, "batch seq d_model"]:
+    # Bug: P("data", None) has 2 entries but array has rank 3
+    return jax.lax.with_sharding_constraint(x, NamedSharding(mesh, P("data", None)))
+```
+
+```
+$ jaxtyc check sharded.py
+sharded.py:14:0: error[sharding-rank-mismatch]
+  Sharding rank mismatch in `sharded_fn`:
+    PartitionSpec has 2 entries but array has rank 3
+```
+
+---
+
+### `sharding-axis-unknown`
+
+Fires when a `PartitionSpec` references an axis name that does not exist in the mesh.
+
+```python
+import jax
+import numpy as np
+from jax.sharding import Mesh, NamedSharding, PartitionSpec as P
+from jaxtyping import Array, Float
+
+devices = np.array(jax.devices()).reshape(1)
+mesh = Mesh(devices, ("data",))
+
+def sharded_fn(
+    x: Float[Array, "batch seq"],
+) -> Float[Array, "batch seq"]:
+    # Bug: "model" is not an axis name in this mesh
+    return jax.lax.with_sharding_constraint(x, NamedSharding(mesh, P("model", None)))
+```
+
+```
+$ jaxtyc check sharded.py
+sharded.py:14:0: error[sharding-axis-unknown]
+  Unknown mesh axis `model` in `sharded_fn`:
+    mesh has axes ('data',)
+```
+
+---
+
+### `sharding-conflict`
+
+Fires when multiple intermediates at the same source line and with the same shape have different `PartitionSpec` values. This indicates contradictory sharding intent.
+
+```python
+import jax
+import numpy as np
+from jax.sharding import Mesh, NamedSharding, PartitionSpec as P
+from jaxtyping import Array, Float
+
+devices = np.array(jax.devices()).reshape(1, 1)
+mesh = Mesh(devices, ("data", "model"))
+
+def conflicting(
+    x: Float[Array, "batch seq"],
+) -> Float[Array, "batch seq"]:
+    # Bug: two constraints on the same shape at the same line with different specs
+    a = jax.lax.with_sharding_constraint(x, NamedSharding(mesh, P("data", None)))
+    return jax.lax.with_sharding_constraint(a, NamedSharding(mesh, P(None, "model")))
+```
+
+```
+$ jaxtyc check sharded.py
+sharded.py:14:0: error[sharding-conflict]
+  Conflicting sharding specs in `conflicting` at line 14:
+    P('data', None), P(None, 'model')
+```
+
+---
+
+### `sharding-io-mismatch`
+
+Fires (as a warning) when a `jit` function's `out_shardings` contradict an inner `sharding_constraint` applied to the same shape. This can cause silent resharding at the jit boundary.
+
+```python
+import jax
+import numpy as np
+from jax.sharding import Mesh, NamedSharding, PartitionSpec as P
+from jaxtyping import Array, Float
+
+devices = np.array(jax.devices()).reshape(1, 1)
+mesh = Mesh(devices, ("data", "model"))
+
+@jax.jit
+def mismatch(
+    x: Float[Array, "batch seq"],
+) -> Float[Array, "batch seq"]:
+    # Inner constraint says P("data", None)
+    y = jax.lax.with_sharding_constraint(x, NamedSharding(mesh, P("data", None)))
+    return y
+# But jit out_shardings says P(None, "model")
+```
+
+```
+$ jaxtyc check sharded.py
+sharded.py:15:0: warning[sharding-io-mismatch]
+  Sharding I/O mismatch in `mismatch`:
+    jit specifies P(None, 'model') but inner constraint specifies P('data', None)
 ```
 
 ---

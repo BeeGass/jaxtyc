@@ -771,3 +771,579 @@ class TestLSPNavigation:
         assert len(result) == 2
         names = {r["to"]["name"] for r in result}
         assert names == {"encode", "decode"}
+
+
+class TestLSPInlayHints:
+    """Tests for inlay hints with error and sharding display."""
+
+    def test_inlay_hint_compact_format(self) -> None:
+        """Inlay hints use compact dtype[dim1, dim2] format."""
+        from jaxtyc.lsp import _state
+        from jaxtyc.types import IntermediateShape
+
+        uri = "file:///test/compact_hint.py"
+        with _state.cache_lock:
+            _state.analysis_cache[uri] = [
+                IntermediateShape(
+                    shape=(4, 8),
+                    dtype="float32",
+                    source_file="/test/compact_hint.py",
+                    source_line=5,
+                    source_col=0,
+                    named_shape=("batch", "seq"),
+                    op_name="add",
+                ),
+            ]
+            _state.error_hints_cache[uri] = []
+
+        from lsprotocol import types
+
+        from jaxtyc.lsp._inlay_hints import inlay_hint
+        from jaxtyc.lsp.server import server
+
+        params = types.InlayHintParams(
+            text_document=types.TextDocumentIdentifier(uri=uri),
+            range=types.Range(
+                start=types.Position(line=0, character=0),
+                end=types.Position(line=10, character=0),
+            ),
+        )
+        hints = inlay_hint(server, params)
+        assert hints is not None
+        assert len(hints) == 1
+        label = hints[0].label
+        assert isinstance(label, str)
+        # No source_cache so no prefix is added (no line classification)
+        assert label == "f32[batch, seq]", f"Expected 'f32[batch, seq]', got: {label}"
+
+        with _state.cache_lock:
+            _state.analysis_cache.pop(uri, None)
+            _state.error_hints_cache.pop(uri, None)
+
+    def test_inlay_hint_last_per_line(self) -> None:
+        """When multiple intermediates share a line, show the last one (final shape)."""
+        from jaxtyc.lsp import _state
+        from jaxtyc.types import IntermediateShape
+
+        uri = "file:///test/multi_hint.py"
+        with _state.cache_lock:
+            _state.analysis_cache[uri] = [
+                IntermediateShape(
+                    shape=(4, 8),
+                    dtype="float32",
+                    source_file="/test/multi_hint.py",
+                    source_line=5,
+                    source_col=0,
+                    named_shape=("batch", "d_in"),
+                    op_name="dot",
+                ),
+                IntermediateShape(
+                    shape=(4, 16),
+                    dtype="float32",
+                    source_file="/test/multi_hint.py",
+                    source_line=5,
+                    source_col=0,
+                    named_shape=("batch", "d_out"),
+                    op_name="add",
+                ),
+            ]
+            _state.error_hints_cache[uri] = []
+
+        from lsprotocol import types
+
+        from jaxtyc.lsp._inlay_hints import inlay_hint
+        from jaxtyc.lsp.server import server
+
+        params = types.InlayHintParams(
+            text_document=types.TextDocumentIdentifier(uri=uri),
+            range=types.Range(
+                start=types.Position(line=0, character=0),
+                end=types.Position(line=10, character=0),
+            ),
+        )
+        hints = inlay_hint(server, params)
+        assert hints is not None
+        assert len(hints) == 1
+        label = hints[0].label
+        assert isinstance(label, str)
+        # Should show the LAST intermediate (d_out, not d_in)
+        assert "d_out" in label, f"Expected last intermediate (d_out), got: {label}"
+        assert "d_in" not in label, f"Should not show first intermediate (d_in), got: {label}"
+
+        with _state.cache_lock:
+            _state.analysis_cache.pop(uri, None)
+            _state.error_hints_cache.pop(uri, None)
+
+    def test_inlay_hint_shows_error_both_mode(self) -> None:
+        """Inlay hint on error line includes shape AND error text with pipe."""
+        from jaxtyc.lsp import _state
+        from jaxtyc.types import ErrorHintInfo
+        from jaxtyc.types import IntermediateShape
+
+        uri = "file:///test/error_hint.py"
+        with _state.cache_lock:
+            _state.analysis_cache[uri] = [
+                IntermediateShape(
+                    shape=(4, 8),
+                    dtype="float32",
+                    source_file="/test/error_hint.py",
+                    source_line=5,
+                    source_col=0,
+                    named_shape=("batch", "head_dim"),
+                    op_name="dot",
+                ),
+            ]
+            _state.error_hints_cache[uri] = [
+                ErrorHintInfo(
+                    source_line=5,
+                    message="dim 1: expected seq, got head_dim",
+                    rule="shape-mismatch",
+                    function_name="fn",
+                ),
+            ]
+
+        from lsprotocol import types
+
+        from jaxtyc.lsp._inlay_hints import inlay_hint
+        from jaxtyc.lsp.server import server
+
+        params = types.InlayHintParams(
+            text_document=types.TextDocumentIdentifier(uri=uri),
+            range=types.Range(
+                start=types.Position(line=0, character=0),
+                end=types.Position(line=10, character=0),
+            ),
+        )
+        hints = inlay_hint(server, params)
+        assert hints is not None
+        assert len(hints) >= 1
+        line5_hints = [h for h in hints if h.position.line == 4]  # 0-indexed
+        assert len(line5_hints) == 1
+        label = line5_hints[0].label
+        assert isinstance(label, str)
+        assert " | " in label, f"Expected pipe separator in error hint, got: {label}"
+        # New format: "f32[batch, head_dim] | dim 1: expected seq, got head_dim"
+        assert "f32[" in label, f"Expected compact dtype format, got: {label}"
+        assert "batch" in label
+
+        with _state.cache_lock:
+            _state.analysis_cache.pop(uri, None)
+            _state.error_hints_cache.pop(uri, None)
+
+    def test_inlay_hint_no_error_when_shapes_match(self) -> None:
+        """Hints without error entries show shape-only, no pipe."""
+        from jaxtyc.lsp import _state
+        from jaxtyc.types import IntermediateShape
+
+        uri = "file:///test/clean_hint.py"
+        with _state.cache_lock:
+            _state.analysis_cache[uri] = [
+                IntermediateShape(
+                    shape=(4, 8),
+                    dtype="float32",
+                    source_file="/test/clean_hint.py",
+                    source_line=5,
+                    source_col=0,
+                    named_shape=("batch", "seq"),
+                    op_name="add",
+                ),
+            ]
+            _state.error_hints_cache[uri] = []
+
+        from lsprotocol import types
+
+        from jaxtyc.lsp._inlay_hints import inlay_hint
+        from jaxtyc.lsp.server import server
+
+        params = types.InlayHintParams(
+            text_document=types.TextDocumentIdentifier(uri=uri),
+            range=types.Range(
+                start=types.Position(line=0, character=0),
+                end=types.Position(line=10, character=0),
+            ),
+        )
+        hints = inlay_hint(server, params)
+        assert hints is not None
+        for h in hints:
+            label = h.label
+            assert isinstance(label, str)
+            assert " | " not in label, f"Clean hint should not have pipe, got: {label}"
+
+        with _state.cache_lock:
+            _state.analysis_cache.pop(uri, None)
+            _state.error_hints_cache.pop(uri, None)
+
+    def test_inlay_hint_sharding_display(self) -> None:
+        """Inlay hint on sharded line appends P(...) with pipe separator."""
+        from jaxtyc.lsp import _state
+        from jaxtyc.types import IntermediateShape
+        from jaxtyc.types import ShardingInfo
+
+        uri = "file:///test/sharded_hint.py"
+        with _state.cache_lock:
+            _state.analysis_cache[uri] = [
+                IntermediateShape(
+                    shape=(4, 8),
+                    dtype="float32",
+                    source_file="/test/sharded_hint.py",
+                    source_line=5,
+                    source_col=0,
+                    named_shape=("batch", "seq"),
+                    op_name="sharding_constraint",
+                    sharding=ShardingInfo(
+                        partition_spec=("data", None),
+                        mesh_axis_names=("data", "model"),
+                        source_primitive="sharding_constraint",
+                        source_line=5,
+                    ),
+                ),
+            ]
+            _state.error_hints_cache[uri] = []
+
+        from lsprotocol import types
+
+        from jaxtyc.lsp._inlay_hints import inlay_hint
+        from jaxtyc.lsp.server import server
+
+        params = types.InlayHintParams(
+            text_document=types.TextDocumentIdentifier(uri=uri),
+            range=types.Range(
+                start=types.Position(line=0, character=0),
+                end=types.Position(line=10, character=0),
+            ),
+        )
+        hints = inlay_hint(server, params)
+        assert hints is not None
+        assert len(hints) >= 1
+        label = hints[0].label
+        assert isinstance(label, str)
+        # New format: pipe-separated sharding
+        assert "| P(" in label, f"Expected '| P(...)' in sharded hint, got: {label}"
+
+        with _state.cache_lock:
+            _state.analysis_cache.pop(uri, None)
+            _state.error_hints_cache.pop(uri, None)
+
+
+class TestLSPHoverIntermediates:
+    """Tests for intermediate hover with Option E format."""
+
+    def test_hover_shows_all_intermediates(self) -> None:
+        """Hover at a line shows all intermediates, not just one."""
+        from jaxtyc.lsp import _state
+        from jaxtyc.types import IntermediateShape
+
+        uri = "file:///test/hover_inters.py"
+        with _state.cache_lock:
+            _state.analysis_cache[uri] = [
+                IntermediateShape(
+                    shape=(4, 8),
+                    dtype="float32",
+                    source_file="/test/hover_inters.py",
+                    source_line=5,
+                    source_col=0,
+                    named_shape=("batch", "d_in"),
+                    op_name="dot_general",
+                ),
+                IntermediateShape(
+                    shape=(4, 16),
+                    dtype="float32",
+                    source_file="/test/hover_inters.py",
+                    source_line=5,
+                    source_col=0,
+                    named_shape=("batch", "d_out"),
+                    op_name="add",
+                ),
+            ]
+
+        from lsprotocol import types
+
+        from jaxtyc.lsp._navigation import hover
+        from jaxtyc.lsp.server import server
+
+        params = types.HoverParams(
+            text_document=types.TextDocumentIdentifier(uri=uri),
+            position=types.Position(line=4, character=0),
+        )
+        result = hover(server, params)
+        assert result is not None
+        content = result.contents.value
+        # Should contain both intermediates
+        assert "dot_general" in content
+        assert "add" in content
+        # Should mark the final one
+        assert "final" in content.lower()
+        # Should use compact format
+        assert "f32[" in content
+
+        with _state.cache_lock:
+            _state.analysis_cache.pop(uri, None)
+
+    def test_hover_shows_sharding_info(self) -> None:
+        """Hover on sharded intermediate includes sharding details."""
+        from jaxtyc.lsp import _state
+        from jaxtyc.types import IntermediateShape
+        from jaxtyc.types import ShardingInfo
+
+        uri = "file:///test/hover_sharding.py"
+        with _state.cache_lock:
+            _state.analysis_cache[uri] = [
+                IntermediateShape(
+                    shape=(4, 8),
+                    dtype="float32",
+                    source_file="/test/hover_sharding.py",
+                    source_line=5,
+                    source_col=0,
+                    named_shape=("batch", "seq"),
+                    op_name="sharding_constraint",
+                    sharding=ShardingInfo(
+                        partition_spec=("data", None),
+                        mesh_axis_names=("data", "model"),
+                        source_primitive="sharding_constraint",
+                        source_line=5,
+                    ),
+                ),
+            ]
+
+        from lsprotocol import types
+
+        from jaxtyc.lsp._navigation import hover
+        from jaxtyc.lsp.server import server
+
+        params = types.HoverParams(
+            text_document=types.TextDocumentIdentifier(uri=uri),
+            position=types.Position(line=4, character=0),
+        )
+        result = hover(server, params)
+        assert result is not None
+        content = result.contents.value
+        assert "P(" in content, f"Expected sharding info in hover, got: {content}"
+        assert "data" in content
+
+        with _state.cache_lock:
+            _state.analysis_cache.pop(uri, None)
+
+    def test_hover_single_intermediate_no_final_marker(self) -> None:
+        """Single intermediate on a line should show final marker."""
+        from jaxtyc.lsp import _state
+        from jaxtyc.types import IntermediateShape
+
+        uri = "file:///test/hover_single.py"
+        with _state.cache_lock:
+            _state.analysis_cache[uri] = [
+                IntermediateShape(
+                    shape=(4, 8),
+                    dtype="float32",
+                    source_file="/test/hover_single.py",
+                    source_line=5,
+                    source_col=0,
+                    named_shape=("batch", "seq"),
+                    op_name="add",
+                ),
+            ]
+
+        from lsprotocol import types
+
+        from jaxtyc.lsp._navigation import hover
+        from jaxtyc.lsp.server import server
+
+        params = types.HoverParams(
+            text_document=types.TextDocumentIdentifier(uri=uri),
+            position=types.Position(line=4, character=0),
+        )
+        result = hover(server, params)
+        assert result is not None
+        content = result.contents.value
+        # Compact format used
+        assert "f32[" in content
+
+        with _state.cache_lock:
+            _state.analysis_cache.pop(uri, None)
+
+
+class TestInlayHintPositioning:
+    """Tests for after-variable-name hint positioning."""
+
+    def test_hint_after_variable_in_assignment(self) -> None:
+        """For `y = expr`, hint should be placed right after 'y'."""
+        from jaxtyc.lsp._inlay_hints import _find_hint_position
+
+        # "    y = self.linear(x)"
+        pos = _find_hint_position("    y = self.linear(x)")
+        assert pos == 5, f"Expected position 5 (after 'y'), got {pos}"
+
+    def test_hint_after_dotted_variable(self) -> None:
+        """For `self.out = expr`, hint after 'self.out'."""
+        from jaxtyc.lsp._inlay_hints import _find_hint_position
+
+        pos = _find_hint_position("        self.out = compute()")
+        assert pos == 16, f"Expected 16 (after 'self.out'), got {pos}"
+
+    def test_hint_after_annotated_variable(self) -> None:
+        """For `x: Array = expr`, hint after 'x' (before ':')."""
+        from jaxtyc.lsp._inlay_hints import _find_hint_position
+
+        pos = _find_hint_position("    x: Array = compute()")
+        assert pos == 5, f"Expected 5 (after 'x'), got {pos}"
+
+    def test_hint_eol_for_return(self) -> None:
+        """Return statements fall back to end-of-line."""
+        from jaxtyc.lsp._inlay_hints import _find_hint_position
+
+        pos = _find_hint_position("    return y")
+        assert pos is None
+
+    def test_hint_eol_for_bare_expression(self) -> None:
+        """Bare expressions fall back to end-of-line."""
+        from jaxtyc.lsp._inlay_hints import _find_hint_position
+
+        pos = _find_hint_position("    self.linear(x)")
+        assert pos is None
+
+    def test_hint_eol_for_tuple_unpacking(self) -> None:
+        """Tuple unpacking falls back to end-of-line."""
+        from jaxtyc.lsp._inlay_hints import _find_hint_position
+
+        pos = _find_hint_position("    a, b = func()")
+        assert pos is None
+
+    def test_hint_eol_for_augmented_assignment(self) -> None:
+        """Augmented assignment (+=) falls back to end-of-line."""
+        from jaxtyc.lsp._inlay_hints import _find_hint_position
+
+        pos = _find_hint_position("    x += 1")
+        assert pos is None
+
+    def test_hint_eol_for_comparison(self) -> None:
+        """Comparison (==) should not be mistaken for assignment."""
+        from jaxtyc.lsp._inlay_hints import _find_hint_position
+
+        pos = _find_hint_position("    if x == y:")
+        assert pos is None
+
+    def test_inlay_hint_uses_variable_position(self) -> None:
+        """Full inlay hint handler places hint after variable name when source is available."""
+        from jaxtyc.lsp import _state
+        from jaxtyc.types import IntermediateShape
+
+        uri = "file:///test/var_pos.py"
+        with _state.cache_lock:
+            _state.analysis_cache[uri] = [
+                IntermediateShape(
+                    shape=(4, 8),
+                    dtype="float32",
+                    source_file="/test/var_pos.py",
+                    source_line=5,
+                    source_col=0,
+                    named_shape=("batch", "d_out"),
+                    op_name="add",
+                ),
+            ]
+            _state.error_hints_cache[uri] = []
+            # Cache the source text so the handler can detect assignment
+            _state.source_cache[uri] = "line1\nline2\nline3\nline4\n    y = self.linear(x)\nline6\n"
+
+        from lsprotocol import types
+
+        from jaxtyc.lsp._inlay_hints import inlay_hint
+        from jaxtyc.lsp.server import server
+
+        params = types.InlayHintParams(
+            text_document=types.TextDocumentIdentifier(uri=uri),
+            range=types.Range(
+                start=types.Position(line=0, character=0),
+                end=types.Position(line=10, character=0),
+            ),
+        )
+        hints = inlay_hint(server, params)
+        assert hints is not None
+        assert len(hints) == 1
+        # Hint should be at character 5 (right after "y"), not 999
+        assert hints[0].position.character == 5, (
+            f"Expected character=5 (after 'y'), got {hints[0].position.character}"
+        )
+        # Assignment hints get ": " prefix
+        label = hints[0].label
+        assert isinstance(label, str)
+        assert label.startswith(": "), f"Expected ': ' prefix for assignment hint, got: {label}"
+
+        with _state.cache_lock:
+            _state.analysis_cache.pop(uri, None)
+            _state.error_hints_cache.pop(uri, None)
+            _state.source_cache.pop(uri, None)
+
+    def test_inlay_hint_eol_fallback_for_return(self) -> None:
+        """Hint falls back to end-of-line for return statements."""
+        from jaxtyc.lsp import _state
+        from jaxtyc.types import IntermediateShape
+
+        uri = "file:///test/return_pos.py"
+        with _state.cache_lock:
+            _state.analysis_cache[uri] = [
+                IntermediateShape(
+                    shape=(4, 8),
+                    dtype="float32",
+                    source_file="/test/return_pos.py",
+                    source_line=5,
+                    source_col=0,
+                    named_shape=("batch", "d_out"),
+                    op_name="add",
+                ),
+            ]
+            _state.error_hints_cache[uri] = []
+            _state.source_cache[uri] = "line1\nline2\nline3\nline4\n    return y\nline6\n"
+
+        from lsprotocol import types
+
+        from jaxtyc.lsp._inlay_hints import inlay_hint
+        from jaxtyc.lsp.server import server
+
+        params = types.InlayHintParams(
+            text_document=types.TextDocumentIdentifier(uri=uri),
+            range=types.Range(
+                start=types.Position(line=0, character=0),
+                end=types.Position(line=10, character=0),
+            ),
+        )
+        hints = inlay_hint(server, params)
+        assert hints is not None
+        assert len(hints) == 1
+        # Should fall back to end-of-line
+        assert hints[0].position.character == 999, (
+            f"Expected character=999 (end-of-line), got {hints[0].position.character}"
+        )
+        # Return hints get " -> " prefix (leading space for separation from last character)
+        label = hints[0].label
+        assert isinstance(label, str)
+        assert label.startswith(" -> "), f"Expected ' -> ' prefix for return hint, got: {label}"
+
+        with _state.cache_lock:
+            _state.analysis_cache.pop(uri, None)
+            _state.error_hints_cache.pop(uri, None)
+            _state.source_cache.pop(uri, None)
+
+
+class TestLSPErrorHintsState:
+    """Tests for error_hints_cache in LSP state."""
+
+    def test_error_hints_cache_exists(self) -> None:
+        """_state module should have error_hints_cache dict."""
+        from jaxtyc.lsp import _state
+
+        assert hasattr(_state, "error_hints_cache")
+        assert isinstance(_state.error_hints_cache, dict)
+
+    def test_error_hints_cache_cleared_on_close(self) -> None:
+        """Closing a document should clear its error_hints_cache entry."""
+        with _lsp_session("wrong_transpose.py") as s:
+            # Close the document
+            s._proc.stdin.write(
+                _lsp_message(
+                    "textDocument/didClose",
+                    {"textDocument": {"uri": s.uri}},
+                )
+            )
+            s._proc.stdin.flush()
+            time.sleep(0.5)
+        # If we get here without error, the close handler processed without
+        # crashing on the error_hints_cache key

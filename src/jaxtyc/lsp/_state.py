@@ -7,6 +7,7 @@ from typing import Any
 
 from jaxtyc.config import JaxtycConfig
 from jaxtyc.lsp.index import WorkspaceIndex
+from jaxtyc.types import ErrorHintInfo
 from jaxtyc.types import IntermediateShape
 
 # Cached analysis results per URI
@@ -20,6 +21,12 @@ diagnostics_cache: dict[str, list[Any]] = {}
 
 # DimEnv cache per URI for hover enhancement
 dim_env_cache: dict[str, object] = {}
+
+# Error hints cache per URI: line -> ErrorHintInfo for divergence display
+error_hints_cache: dict[str, list[ErrorHintInfo]] = {}
+
+# Source text cache per URI for inlay hint positioning
+source_cache: dict[str, str] = {}
 
 # Lock protecting multi-cache updates
 cache_lock: threading.Lock = threading.Lock()

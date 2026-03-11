@@ -8,8 +8,11 @@
 
 - **Zero runtime cost** -- uses `jax.eval_shape` only; no arrays allocated, no computation executed
 - **Prime-based symbolic shapes** -- each dimension name maps to a unique prime (>= 101), so `d_in != d_out` is guaranteed (no accidental size collisions)
-- **10 diagnostic rules** -- shape/rank mismatch, cross-function shape propagation, parameter consistency, tuple return checking, trace errors, and more
+- **14 diagnostic rules** -- shape/rank mismatch, cross-function shape propagation, parameter consistency, tuple return checking, sharding validation (rank, axis, conflict, io-mismatch), trace errors, and more
+- **Error hints** -- inline inlay hints showing where a shape first diverges from the expected annotation, with configurable display style
+- **Sharding awareness** -- extracts `PartitionSpec` and mesh info from `sharding_constraint` / `shard_map` primitives, displays in inlay hints and hover, validates with 4 sharding-specific diagnostic rules
 - **Inline suppressions** -- `# jaxtyc: ignore` and `# jaxtyc: ignore[rule-name]` to suppress diagnostics per-line
+- **[VS Code extension](editors/editors.md)** -- install and go; auto-discovers your Python environment, all LSP features work out of the box
 - **LSP server** -- diagnostics, hover, CodeLens, go-to-definition, references, rename, code actions, completion, semantic tokens, inlay hints, signature help, linked editing, folding, call hierarchy, and config hot-reload
 - **LSP multiplexer** -- `jaxtyc mux` runs ty/pyright alongside jaxtyc behind a single stdio pipe, merging results transparently
 - **CLI with 4 output formats** -- `full` (human-readable), `concise` (one line per error), `json` (machine-readable), `github` (inline PR annotations)

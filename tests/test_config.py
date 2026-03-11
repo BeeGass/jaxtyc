@@ -5,7 +5,9 @@ from __future__ import annotations
 import tempfile
 from pathlib import Path
 
+from jaxtyc.config import HintsConfig
 from jaxtyc.config import JaxtycConfig
+from jaxtyc.config import ShardingConfig
 from jaxtyc.config import filter_diagnostics
 from jaxtyc.config import load_config
 from jaxtyc.types import Diagnostic
@@ -139,3 +141,210 @@ class TestFilterDiagnostics:
         assert len(result) == 1
         assert result[0].severity == "error"
         assert result[0].rule == "shape-mismatch"
+
+
+class TestHintsConfig:
+    def test_hints_config_defaults(self) -> None:
+        """HintsConfig has correct defaults."""
+        cfg = HintsConfig()
+        assert cfg.error_mode == "both"
+        assert cfg.error_location == "divergence"
+        assert cfg.error_style == "pipe"
+        assert cfg.dtype_style == "numpy"
+
+    def test_hints_config_frozen(self) -> None:
+        """HintsConfig should be immutable."""
+        import pytest
+
+        cfg = HintsConfig()
+        with pytest.raises(AttributeError):
+            cfg.error_mode = "replace"  # type: ignore[misc]
+
+    def test_dtype_style_configurable(self) -> None:
+        """dtype_style can be set to jax or jaxtyping."""
+        cfg_jax = HintsConfig(dtype_style="jax")
+        assert cfg_jax.dtype_style == "jax"
+        cfg_jt = HintsConfig(dtype_style="jaxtyping")
+        assert cfg_jt.dtype_style == "jaxtyping"
+
+
+class TestDtypeFormat:
+    def test_abbreviate_dtype_numpy_style(self) -> None:
+        """numpy style abbreviates common dtypes."""
+        from jaxtyc.lsp._util import format_dtype
+
+        assert format_dtype("float32", "numpy") == "f32"
+        assert format_dtype("float64", "numpy") == "f64"
+        assert format_dtype("float16", "numpy") == "f16"
+        assert format_dtype("bfloat16", "numpy") == "bf16"
+        assert format_dtype("int32", "numpy") == "i32"
+        assert format_dtype("int64", "numpy") == "i64"
+        assert format_dtype("int8", "numpy") == "i8"
+        assert format_dtype("uint8", "numpy") == "u8"
+        assert format_dtype("bool", "numpy") == "bool"
+        assert format_dtype("complex64", "numpy") == "c64"
+
+    def test_format_dtype_jax_style(self) -> None:
+        """jax style returns dtypes as-is."""
+        from jaxtyc.lsp._util import format_dtype
+
+        assert format_dtype("float32", "jax") == "float32"
+        assert format_dtype("bfloat16", "jax") == "bfloat16"
+
+    def test_format_dtype_jaxtyping_style(self) -> None:
+        """jaxtyping style capitalizes dtype names."""
+        from jaxtyc.lsp._util import format_dtype
+
+        assert format_dtype("float32", "jaxtyping") == "Float32"
+        assert format_dtype("bfloat16", "jaxtyping") == "BFloat16"
+        assert format_dtype("int32", "jaxtyping") == "Int32"
+        assert format_dtype("bool", "jaxtyping") == "Bool"
+
+    def test_format_dtype_fp8_numpy(self) -> None:
+        """FP8 variants get abbreviated in numpy style."""
+        from jaxtyc.lsp._util import format_dtype
+
+        assert format_dtype("float8_e4m3fn", "numpy") == "f8e4m3fn"
+        assert format_dtype("float8_e5m2", "numpy") == "f8e5m2"
+        assert format_dtype("float8_e4m3fnuz", "numpy") == "f8e4m3fnuz"
+        assert format_dtype("float8_e5m2fnuz", "numpy") == "f8e5m2fnuz"
+        assert format_dtype("float8_e4m3b11fnuz", "numpy") == "f8e4m3b11fnuz"
+        assert format_dtype("float8_e4m3", "numpy") == "f8e4m3"
+        assert format_dtype("float8_e3m4", "numpy") == "f8e3m4"
+        assert format_dtype("float8_e8m0fnu", "numpy") == "f8e8m0fnu"
+
+    def test_format_dtype_fp4_fp6_numpy(self) -> None:
+        """FP4 and FP6 variants get abbreviated in numpy style."""
+        from jaxtyc.lsp._util import format_dtype
+
+        assert format_dtype("float4_e2m1fn", "numpy") == "f4e2m1fn"
+        assert format_dtype("float6_e2m3fn", "numpy") == "f6e2m3fn"
+        assert format_dtype("float6_e3m2fn", "numpy") == "f6e3m2fn"
+
+    def test_format_dtype_sub_byte_int_numpy(self) -> None:
+        """Sub-byte integer types get abbreviated in numpy style."""
+        from jaxtyc.lsp._util import format_dtype
+
+        assert format_dtype("int2", "numpy") == "i2"
+        assert format_dtype("int4", "numpy") == "i4"
+        assert format_dtype("uint2", "numpy") == "u2"
+        assert format_dtype("uint4", "numpy") == "u4"
+
+    def test_format_dtype_fp8_jaxtyping(self) -> None:
+        """FP8 variants get capitalized in jaxtyping style."""
+        from jaxtyc.lsp._util import format_dtype
+
+        assert format_dtype("float8_e4m3fn", "jaxtyping") == "Float8E4M3FN"
+        assert format_dtype("float8_e5m2", "jaxtyping") == "Float8E5M2"
+        assert format_dtype("float8_e4m3fnuz", "jaxtyping") == "Float8E4M3FNUZ"
+
+    def test_format_dtype_unknown_passes_through(self) -> None:
+        """Unknown dtype strings pass through unchanged."""
+        from jaxtyc.lsp._util import format_dtype
+
+        assert format_dtype("weird_type", "numpy") == "weird_type"
+        assert format_dtype("weird_type", "jax") == "weird_type"
+
+
+class TestShardingConfig:
+    def test_sharding_config_defaults(self) -> None:
+        """ShardingConfig has correct defaults."""
+        cfg = ShardingConfig()
+        assert cfg.display == "append"
+        assert len(cfg.rules) == 4
+
+    def test_sharding_config_frozen(self) -> None:
+        """ShardingConfig should be immutable."""
+        import pytest
+
+        cfg = ShardingConfig()
+        with pytest.raises(AttributeError):
+            cfg.display = "off"  # type: ignore[misc]
+
+
+class TestNestedConfig:
+    def test_jaxtyc_config_has_nested(self) -> None:
+        """JaxtycConfig includes hints and sharding sub-configs."""
+        cfg = JaxtycConfig()
+        assert isinstance(cfg.hints, HintsConfig)
+        assert isinstance(cfg.sharding, ShardingConfig)
+
+    def test_load_hints_subsection(self) -> None:
+        """load_config reads [tool.jaxtyc.hints] from pyproject.toml."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            pyproject = Path(tmpdir) / "pyproject.toml"
+            pyproject.write_text('[tool.jaxtyc.hints]\nerror_mode = "replace"\n')
+            cfg = load_config(tmpdir)
+            assert cfg.hints.error_mode == "replace"
+            assert cfg.hints.error_location == "divergence"  # default preserved
+
+    def test_load_dtype_style_from_toml(self) -> None:
+        """load_config reads dtype_style from [tool.jaxtyc.hints]."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            pyproject = Path(tmpdir) / "pyproject.toml"
+            pyproject.write_text('[tool.jaxtyc.hints]\ndtype_style = "jaxtyping"\n')
+            cfg = load_config(tmpdir)
+            assert cfg.hints.dtype_style == "jaxtyping"
+
+    def test_load_sharding_subsection(self) -> None:
+        """load_config reads [tool.jaxtyc.sharding] from pyproject.toml."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            pyproject = Path(tmpdir) / "pyproject.toml"
+            pyproject.write_text(
+                '[tool.jaxtyc.sharding]\ndisplay = "off"\nrules = ["sharding-rank-mismatch"]\n'
+            )
+            cfg = load_config(tmpdir)
+            assert cfg.sharding.display == "off"
+            assert cfg.sharding.rules == ["sharding-rank-mismatch"]
+
+    def test_nested_defaults_when_missing(self) -> None:
+        """Missing subsections use defaults."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            pyproject = Path(tmpdir) / "pyproject.toml"
+            pyproject.write_text("[tool.jaxtyc]\nseverity = 'warning'\n")
+            cfg = load_config(tmpdir)
+            assert cfg.hints.error_mode == "both"
+            assert cfg.sharding.display == "append"
+
+    def test_unknown_nested_keys_ignored(self) -> None:
+        """Unknown keys inside subsections are silently ignored."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            pyproject = Path(tmpdir) / "pyproject.toml"
+            pyproject.write_text('[tool.jaxtyc.hints]\nbogus_key = true\nerror_mode = "replace"\n')
+            cfg = load_config(tmpdir)
+            assert cfg.hints.error_mode == "replace"
+
+    def test_filter_diagnostics_sharding_allowlist(self) -> None:
+        """Sharding rules not in config.sharding.rules are filtered out."""
+        diags = [
+            Diagnostic(
+                file="f.py",
+                line=1,
+                col=0,
+                severity="error",
+                message="x",
+                rule="sharding-rank-mismatch",
+            ),
+            Diagnostic(
+                file="f.py",
+                line=2,
+                col=0,
+                severity="error",
+                message="y",
+                rule="sharding-axis-unknown",
+            ),
+            Diagnostic(
+                file="f.py",
+                line=3,
+                col=0,
+                severity="error",
+                message="z",
+                rule="shape-mismatch",
+            ),
+        ]
+        cfg = JaxtycConfig(sharding=ShardingConfig(rules=["sharding-rank-mismatch"]))
+        result = filter_diagnostics(diags, cfg)
+        rules = [d.rule for d in result]
+        assert "sharding-rank-mismatch" in rules
+        assert "sharding-axis-unknown" not in rules  # filtered by allowlist
+        assert "shape-mismatch" in rules  # non-sharding rules unaffected

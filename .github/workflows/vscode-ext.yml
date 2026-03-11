@@ -1,0 +1,46 @@
+name: VS Code Extension
+
+on:
+  push:
+    paths:
+      - "editors/vscode/**"
+      - ".github/workflows/vscode-ext.yml"
+  pull_request:
+    paths:
+      - "editors/vscode/**"
+
+defaults:
+  run:
+    working-directory: editors/vscode
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: editors/vscode/package-lock.json
+
+      - run: npm ci
+
+      - name: TypeScript compile check
+        run: npx tsc --noEmit
+
+      - name: Run tests
+        run: npm test
+
+      - name: Bundle
+        run: npm run bundle
+
+      - name: Package .vsix
+        run: npx @vscode/vsce package --allow-missing-repository
+
+      - name: Upload .vsix artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: jaxtyc-vsix
+          path: editors/vscode/*.vsix

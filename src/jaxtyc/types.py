@@ -123,6 +123,46 @@ class Diagnostic:
 
 
 @dataclass(frozen=True)
+class ShardingInfo:
+    """Sharding information extracted from a JAX primitive.
+
+    Attributes:
+        partition_spec: Tuple of axis names or None per dimension,
+            matching ``jax.sharding.PartitionSpec`` entries.
+        mesh_axis_names: Tuple of mesh axis names (e.g. ("data", "model")).
+        source_primitive: Name of the primitive that introduced sharding
+            (e.g. "sharding_constraint", "shard_map", "jit").
+        source_line: 1-based line number where the sharding was introduced.
+    """
+
+    partition_spec: tuple[str | None, ...]
+    mesh_axis_names: tuple[str, ...]
+    source_primitive: str
+    source_line: int = 0
+
+
+@dataclass(frozen=True)
+class ErrorHintInfo:
+    """Information for displaying error hints at divergence points.
+
+    Attributes:
+        source_line: 1-based line number where the divergence was detected.
+        message: Human-readable description of the shape error.
+        rule: Diagnostic rule code (e.g. "shape-mismatch", "rank-mismatch").
+        function_name: Name of the function containing the divergence.
+        expected_named: Expected shape as dimension name strings.
+        actual_named: Actual shape as dimension name strings.
+    """
+
+    source_line: int
+    message: str
+    rule: str
+    function_name: str
+    expected_named: tuple[str, ...] | None = None
+    actual_named: tuple[str, ...] | None = None
+
+
+@dataclass(frozen=True)
 class IntermediateShape:
     """Shape of an intermediate value at a specific source location.
 
@@ -137,6 +177,8 @@ class IntermediateShape:
             possible; entries are None for unrecognised sizes.
         op_name: Name of the JAX primitive that produced this value
             (e.g. "dot_general", "add").
+        sharding: Optional sharding information if this intermediate was
+            produced by a sharding primitive.
     """
 
     shape: tuple[int, ...]
@@ -146,6 +188,7 @@ class IntermediateShape:
     source_col: int
     named_shape: NamedShape
     op_name: str
+    sharding: ShardingInfo | None = None
 
 
 @dataclass(frozen=True)
