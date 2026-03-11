@@ -57,6 +57,7 @@ Override with the `jaxtyc.pythonPath` setting if needed.
 | `jaxtyc.hints.errorMode` | `both` | `both` shows shape and error, `replace` shows only error |
 | `jaxtyc.hints.errorLocation` | `divergence` | Where to place error hints: `divergence`, `annotation`, `return`, `both` |
 | `jaxtyc.hints.errorStyle` | `pipe` | Separator style: `pipe` uses ` \| `, `icon` uses warning triangle |
+| `jaxtyc.hints.dtypeStyle` | `numpy` | Dtype display: `numpy` (f32, bf16), `jax` (float32, bfloat16), `jaxtyping` (Float32, BFloat16) |
 | `jaxtyc.sharding.display` | `append` | Sharding display: `append`, `constrained_only`, `off` |
 | `jaxtyc.sharding.rules` | all enabled | Allow-list of sharding diagnostic rules |
 

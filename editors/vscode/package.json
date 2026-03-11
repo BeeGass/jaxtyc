@@ -2,7 +2,7 @@
   "name": "jaxtyc",
   "displayName": "jaxtyc",
   "description": "Static array shape checking for JAX",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "publisher": "beegass",
   "license": "MIT",
   "icon": "icon.png",
@@ -96,6 +96,16 @@
           "default": "pipe",
           "markdownDescription": "Separator style between shape and error text. `pipe` uses ` | `, `icon` uses a warning triangle."
         },
+        "jaxtyc.hints.dtypeStyle": {
+          "type": "string",
+          "enum": [
+            "numpy",
+            "jax",
+            "jaxtyping"
+          ],
+          "default": "numpy",
+          "markdownDescription": "How to display dtypes in inlay hints. `numpy` uses abbreviations (f32, bf16, i32), `jax` uses full names (float32, bfloat16), `jaxtyping` uses capitalized names (Float32, BFloat16)."
+        },
         "jaxtyc.sharding.display": {
           "type": "string",
           "enum": [
@@ -145,6 +155,11 @@
         "title": "jaxtyc: Trace Function"
       }
     ],
+    "configurationDefaults": {
+      "[python]": {
+        "editor.inlayHints.enabled": "onUnlessPressed"
+      }
+    },
     "snippets": [
       {
         "language": "python",

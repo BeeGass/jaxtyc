@@ -16,6 +16,13 @@ import {
   ServerCommand,
   statusText,
 } from "./discovery";
+import {
+  dispose as disposeDecorations,
+  handleInlayHints,
+  initDecorationTypes,
+  onDocumentClose,
+  onEditorChange,
+} from "./shape-decorations";
 import { parseTraceOutput, renderTraceHtml } from "./trace-panel";
 
 const clients = new Map<string, LanguageClient>();
@@ -109,6 +116,16 @@ async function startClientForFolder(
     ],
     outputChannel,
     workspaceFolder: folder,
+    middleware: {
+      provideInlayHints: async (document, range, token, next) => {
+        const hints = await next(document, range, token);
+        if (hints && hints.length > 0) {
+          // Convert to colored decorations, suppress default rendering
+          return handleInlayHints(document, hints as any);
+        }
+        return hints;
+      },
+    },
   };
 
   const client = new LanguageClient(
@@ -173,6 +190,8 @@ export async function activate(
   statusBarItem.tooltip = "jaxtyc shape checker";
   statusBarItem.command = "jaxtyc.showMenu";
 
+  initDecorationTypes();
+
   for (const folder of vscode.workspace.workspaceFolders ?? []) {
     await startClientForFolder(folder);
   }
@@ -186,6 +205,27 @@ export async function activate(
         await startClientForFolder(added);
       }
       updateStatusBar();
+    })
+  );
+
+  // Reinitialize decoration colors when the user switches themes
+  context.subscriptions.push(
+    vscode.window.onDidChangeActiveColorTheme(() => {
+      initDecorationTypes();
+    })
+  );
+
+  // Re-apply decorations when the active editor changes
+  context.subscriptions.push(
+    vscode.window.onDidChangeActiveTextEditor((editor) => {
+      onEditorChange(editor);
+    })
+  );
+
+  // Clear decoration cache when a document is closed
+  context.subscriptions.push(
+    vscode.workspace.onDidCloseTextDocument((doc) => {
+      onDocumentClose(doc.uri.toString());
     })
   );
 
@@ -360,5 +400,6 @@ export async function activate(
 }
 
 export async function deactivate(): Promise<void> {
+  disposeDecorations();
   await stopAllClients();
 }
