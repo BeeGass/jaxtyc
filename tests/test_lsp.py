@@ -1681,6 +1681,144 @@ class TestHoverDivergenceInfo:
             _state.error_hints_cache.pop(uri, None)
 
 
+class TestHoverTraceErrorFallback:
+    """Hover on intermediate lines should show trace error when tracing failed."""
+
+    def test_hover_trace_error_fallback(self) -> None:
+        """Hovering on a line inside a failed-trace function shows the trace error."""
+        from jaxtyc.lsp import _state
+        from jaxtyc.lsp.index import FileIndex
+        from jaxtyc.types import DimSpec
+        from jaxtyc.types import FunctionShapeSpec
+        from jaxtyc.types import ShapeSpec
+        from jaxtyc.types import TraceResult
+
+        uri = "file:///test/trace_err_hover.py"
+        spec = FunctionShapeSpec(
+            name="encode",
+            file_path="/test/trace_err_hover.py",
+            lineno=5,
+            col_offset=0,
+            end_lineno=10,
+            params={
+                "x": ShapeSpec(
+                    dims=(DimSpec(kind="named", name="batch"),),
+                    dtype="float32",
+                )
+            },
+            return_spec=ShapeSpec(
+                dims=(DimSpec(kind="named", name="batch"),),
+                dtype="float32",
+            ),
+            name_col_offset=4,
+        )
+        _state.workspace_index.update_file(
+            FileIndex(
+                file_path="/test/trace_err_hover.py",
+                uri=uri,
+                function_specs=[spec],
+                dim_locations=[],
+                call_sites=[],
+            )
+        )
+
+        # Store a failed trace result
+        tr = TraceResult(
+            function_name="encode",
+            output_shape=None,
+            output_dtype=None,
+            intermediates=[],
+            error="dot_general requires contracting dimensions to have the same shape",
+        )
+        with _state.cache_lock:
+            _state.trace_results_cache[uri] = {"encode": tr}
+            _state.analysis_cache[uri] = []  # No intermediates (trace failed)
+
+        from lsprotocol import types as lsp_types
+
+        from jaxtyc.lsp._navigation import hover
+        from jaxtyc.lsp.server import server
+
+        # Hover on line 8 (inside encode, line 5-10), no intermediates
+        params = lsp_types.HoverParams(
+            text_document=lsp_types.TextDocumentIdentifier(uri=uri),
+            position=lsp_types.Position(line=7, character=4),
+        )
+        result = hover(server, params)
+        assert result is not None
+        content = result.contents.value
+        assert "Trace error" in content
+        assert "encode" in content
+        assert "dot_general" in content
+
+        # Cleanup
+        with _state.cache_lock:
+            _state.trace_results_cache.pop(uri, None)
+            _state.analysis_cache.pop(uri, None)
+        _state.workspace_index.remove_file(uri)
+
+    def test_hover_external_call_site_shows_qualified_name(self) -> None:
+        """Hovering on an external call site (jnp.dot) shows the qualified name."""
+        from jaxtyc.lsp import _state
+        from jaxtyc.lsp.index import FileIndex
+        from jaxtyc.types import CallSite
+        from jaxtyc.types import DimSpec
+        from jaxtyc.types import FunctionShapeSpec
+        from jaxtyc.types import ShapeSpec
+
+        uri = "file:///test/ext_hover.py"
+        spec = FunctionShapeSpec(
+            name="transform",
+            file_path="/test/ext_hover.py",
+            lineno=5,
+            col_offset=0,
+            end_lineno=10,
+            params={
+                "x": ShapeSpec(
+                    dims=(DimSpec(kind="named", name="batch"),),
+                    dtype="float32",
+                )
+            },
+            return_spec=None,
+            name_col_offset=4,
+        )
+        ext_call = CallSite(
+            caller_name="transform",
+            callee_name="dot",
+            file_path="/test/ext_hover.py",
+            lineno=8,
+            col_offset=8,
+            end_col_offset=15,
+            callee_qualified_name="jnp.dot",
+        )
+        _state.workspace_index.update_file(
+            FileIndex(
+                file_path="/test/ext_hover.py",
+                uri=uri,
+                function_specs=[spec],
+                dim_locations=[],
+                call_sites=[ext_call],
+            )
+        )
+
+        from lsprotocol import types as lsp_types
+
+        from jaxtyc.lsp._navigation import hover
+        from jaxtyc.lsp.server import server
+
+        params = lsp_types.HoverParams(
+            text_document=lsp_types.TextDocumentIdentifier(uri=uri),
+            position=lsp_types.Position(line=7, character=10),
+        )
+        result = hover(server, params)
+        assert result is not None
+        content = result.contents.value
+        assert "jnp.dot" in content
+        assert "external" in content
+
+        _state.workspace_index.remove_file(uri)
+
+
 class TestCallSiteHover:
     """Tests for call-site shape resolution on hover."""
 
@@ -2264,8 +2402,9 @@ class TestReferenceScopeConfig:
     """findReferences should respect navigation.references_scope config."""
 
     def test_file_scoped_references_excludes_other_files(self) -> None:
-        """Default references_scope='file' only shows same-file callers."""
+        """references_scope='file' only shows same-file callers."""
         from jaxtyc.config import JaxtycConfig
+        from jaxtyc.config import NavigationConfig
         from jaxtyc.lsp import _state
         from jaxtyc.lsp.index import FileIndex
         from jaxtyc.types import CallSite
@@ -2273,7 +2412,7 @@ class TestReferenceScopeConfig:
 
         orig_config = _state.config
         try:
-            _state.config = JaxtycConfig()
+            _state.config = JaxtycConfig(navigation=NavigationConfig(references_scope="file"))
 
             spec_a = FunctionShapeSpec(
                 name="decode",
@@ -2461,9 +2600,10 @@ class TestExternalCallsConfig:
         finally:
             _state.config = orig_config
 
-    def test_outgoing_calls_excludes_external_by_default(self) -> None:
-        """Default config (include_external_calls=false) hides external calls."""
+    def test_outgoing_calls_external_qualified_name(self) -> None:
+        """External calls display the qualified name (e.g. jnp.dot not just dot)."""
         from jaxtyc.config import JaxtycConfig
+        from jaxtyc.config import NavigationConfig
         from jaxtyc.lsp import _state
         from jaxtyc.lsp.index import FileIndex
         from jaxtyc.types import CallSite
@@ -2471,7 +2611,79 @@ class TestExternalCallsConfig:
 
         orig_config = _state.config
         try:
-            _state.config = JaxtycConfig()
+            _state.config = JaxtycConfig(navigation=NavigationConfig(include_external_calls=True))
+
+            uri = "file:///test/qn.py"
+            spec = FunctionShapeSpec(
+                name="transform",
+                file_path="/test/qn.py",
+                lineno=5,
+                col_offset=0,
+                params={},
+                return_spec=None,
+                name_col_offset=4,
+            )
+            ext_call = CallSite(
+                caller_name="transform",
+                callee_name="dot",
+                file_path="/test/qn.py",
+                lineno=7,
+                col_offset=10,
+                end_col_offset=17,
+                callee_qualified_name="jnp.dot",
+            )
+            _state.workspace_index.update_file(
+                FileIndex(
+                    file_path="/test/qn.py",
+                    uri=uri,
+                    function_specs=[spec],
+                    dim_locations=[],
+                    call_sites=[ext_call],
+                )
+            )
+
+            from lsprotocol import types as lsp_types
+
+            from jaxtyc.lsp._navigation import outgoing_calls
+            from jaxtyc.lsp.server import server
+
+            item = lsp_types.CallHierarchyItem(
+                name="transform",
+                kind=lsp_types.SymbolKind.Function,
+                uri=uri,
+                range=lsp_types.Range(
+                    start=lsp_types.Position(line=4, character=0),
+                    end=lsp_types.Position(line=8, character=0),
+                ),
+                selection_range=lsp_types.Range(
+                    start=lsp_types.Position(line=4, character=4),
+                    end=lsp_types.Position(line=4, character=13),
+                ),
+                data={"function_name": "transform", "uri": uri},
+            )
+            params = lsp_types.CallHierarchyOutgoingCallsParams(item=item)
+            result = outgoing_calls(server, params)
+            assert result is not None
+            assert len(result) == 1
+            assert result[0].to.name == "jnp.dot"
+            assert result[0].to.detail == "(external)"
+
+            _state.workspace_index.remove_file(uri)
+        finally:
+            _state.config = orig_config
+
+    def test_outgoing_calls_excludes_external_when_disabled(self) -> None:
+        """include_external_calls=false hides external calls."""
+        from jaxtyc.config import JaxtycConfig
+        from jaxtyc.config import NavigationConfig
+        from jaxtyc.lsp import _state
+        from jaxtyc.lsp.index import FileIndex
+        from jaxtyc.types import CallSite
+        from jaxtyc.types import FunctionShapeSpec
+
+        orig_config = _state.config
+        try:
+            _state.config = JaxtycConfig(navigation=NavigationConfig(include_external_calls=False))
 
             uri = "file:///test/ext2.py"
             spec = FunctionShapeSpec(

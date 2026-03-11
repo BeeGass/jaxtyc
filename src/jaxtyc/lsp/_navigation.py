@@ -186,15 +186,35 @@ def hover(ls: LanguageServer, params: types.HoverParams) -> types.Hover | None:
                 ),
             )
 
+        # External call site — callee not in workspace
+        display = call_site.callee_qualified_name or call_site.callee_name
+        return types.Hover(
+            contents=types.MarkupContent(
+                kind=types.MarkupKind.Markdown,
+                value=f"**`{display}`** (external)",
+            ),
+        )
+
     # Show all intermediate shapes at cursor line (Option E format)
     with _state.cache_lock:
         intermediates = _state.analysis_cache.get(uri, [])
-    if not intermediates:
-        return None
 
-    matching = [i for i in intermediates if i.source_line == line]
+    matching = [i for i in intermediates if i.source_line == line] if intermediates else []
 
     if not matching:
+        # Fallback: show trace error if cursor is inside a function that failed tracing
+        func_containing = _state.workspace_index.find_function_containing(uri, line)
+        if func_containing is not None:
+            with _state.cache_lock:
+                traces = _state.trace_results_cache.get(uri, {})
+            trace = traces.get(func_containing.name)
+            if trace is not None and not trace.success:
+                return types.Hover(
+                    contents=types.MarkupContent(
+                        kind=types.MarkupKind.Markdown,
+                        value=f"**Trace error in `{func_containing.name}`**: {trace.error}",
+                    ),
+                )
         return None
 
     dtype_style = _state.config.hints.dtype_style
@@ -737,7 +757,7 @@ def outgoing_calls(
                 results.append(
                     types.CallHierarchyOutgoingCall(
                         to=types.CallHierarchyItem(
-                            name=call.callee_name,
+                            name=call.callee_qualified_name or call.callee_name,
                             kind=types.SymbolKind.Function,
                             uri=item_uri,
                             range=types.Range(
