@@ -283,6 +283,24 @@ class CallSite:
 
 
 @dataclass(frozen=True)
+class FunctionDefInfo:
+    """Lightweight function definition for navigation (no shape data).
+
+    Stored for ALL function definitions, not just jaxtyping-annotated ones.
+    Used by the call hierarchy to resolve non-annotated callees/callers.
+    """
+
+    name: str
+    file_path: str
+    lineno: int
+    col_offset: int
+    end_lineno: int = 0
+    name_col_offset: int = 0
+    is_method: bool = False
+    class_name: str | None = None
+
+
+@dataclass(frozen=True)
 class FileResult:
     """Result of analyzing all functions in a file.
 

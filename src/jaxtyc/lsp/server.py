@@ -66,6 +66,8 @@ def _check_cross_file_calls(
         return []
 
     local_names = {s.name for s in func_specs}
+    if file_index is not None:
+        local_names |= {d.name for d in file_index.function_defs}
     extra_diags: list[types.Diagnostic] = []
 
     for call in file_index.call_sites:
@@ -308,6 +310,7 @@ def _analyze_and_publish(ls: LanguageServer, uri: str, source: str | None = None
     all_known: set[str] = set()
     for fi in _state.workspace_index.all_files():
         all_known.update(s.name for s in fi.function_specs)
+        all_known.update(d.name for d in fi.function_defs)
     all_known.update(s.name for s in func_specs)
 
     # Build navigation index

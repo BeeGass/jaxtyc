@@ -286,6 +286,28 @@ def test_find_call_site_at() -> None:
     assert not_found is None
 
 
+def test_find_function_def_by_name() -> None:
+    from jaxtyc.types import FunctionDefInfo
+
+    idx = WorkspaceIndex()
+    fdef = FunctionDefInfo(
+        name="helper", file_path="/a.py", lineno=3, col_offset=0, name_col_offset=4
+    )
+    idx.update_file(
+        FileIndex(
+            file_path="/a.py",
+            uri="file:///a.py",
+            function_specs=[],
+            dim_locations=[],
+            call_sites=[],
+            function_defs=[fdef],
+        )
+    )
+    results = idx.find_function_def_by_name("helper")
+    assert len(results) == 1
+    assert results[0].name == "helper"
+
+
 def test_find_function_by_name_preferred_uri() -> None:
     """preferred_uri should sort matching specs so the preferred file comes first."""
     idx = WorkspaceIndex()

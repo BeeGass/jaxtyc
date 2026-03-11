@@ -493,3 +493,32 @@ class TestExtractCallSites:
         sites = extract_call_sites(source, "test.py", {"encode"})
         assert len(sites) == 1
         assert sites[0].callee_name == "encode"
+
+
+# ---------------------------------------------------------------------------
+# extract_all_function_defs
+# ---------------------------------------------------------------------------
+
+
+def test_extract_all_function_defs_includes_non_annotated() -> None:
+    from jaxtyc.analyzer.annotations import extract_all_function_defs
+
+    source = textwrap.dedent("""\
+        def helper(x):
+            return x + 1
+
+        def encode(x: Float[Array, "batch d"]) -> Float[Array, "batch d"]:
+            return helper(x)
+
+        class Model:
+            def forward(self, x):
+                return x
+    """)
+    defs = extract_all_function_defs(source, "/test.py")
+    names = [d.name for d in defs]
+    assert "helper" in names
+    assert "encode" in names
+    assert "forward" in names
+    fwd = next(d for d in defs if d.name == "forward")
+    assert fwd.is_method is True
+    assert fwd.class_name == "Model"

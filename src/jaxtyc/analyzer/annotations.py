@@ -8,6 +8,7 @@ import re
 from jaxtyc.types import CallSite
 from jaxtyc.types import DimLocation
 from jaxtyc.types import DimSpec
+from jaxtyc.types import FunctionDefInfo
 from jaxtyc.types import FunctionShapeSpec
 from jaxtyc.types import ShapeSpec
 
@@ -311,6 +312,39 @@ def _extract_calls_from_body(
                     end_col_offset=col_end,
                 )
             )
+
+
+def extract_all_function_defs(source: str, file_path: str) -> list[FunctionDefInfo]:
+    """Extract name and location for every function definition in source."""
+    try:
+        tree = ast.parse(source, filename=file_path)
+    except SyntaxError:
+        return []
+
+    results: list[FunctionDefInfo] = []
+
+    def _visit(body: list[ast.stmt], class_name: str | None) -> None:
+        for node in body:
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                keyword_len = 10 if isinstance(node, ast.AsyncFunctionDef) else 4
+                results.append(
+                    FunctionDefInfo(
+                        name=node.name,
+                        file_path=file_path,
+                        lineno=node.lineno,
+                        col_offset=node.col_offset,
+                        end_lineno=node.end_lineno or node.lineno,
+                        name_col_offset=node.col_offset + keyword_len,
+                        is_method=class_name is not None,
+                        class_name=class_name,
+                    )
+                )
+                _visit(node.body, class_name)
+            elif isinstance(node, ast.ClassDef):
+                _visit(node.body, node.name)
+
+    _visit(tree.body, None)
+    return results
 
 
 def extract_dim_locations(source: str, file_path: str) -> list[DimLocation]:

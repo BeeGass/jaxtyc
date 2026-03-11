@@ -6,11 +6,13 @@ import threading
 from dataclasses import dataclass
 from dataclasses import field
 
+from jaxtyc.analyzer.annotations import extract_all_function_defs
 from jaxtyc.analyzer.annotations import extract_call_sites
 from jaxtyc.analyzer.annotations import extract_dim_locations
 from jaxtyc.analyzer.annotations import extract_function_specs
 from jaxtyc.types import CallSite
 from jaxtyc.types import DimLocation
+from jaxtyc.types import FunctionDefInfo
 from jaxtyc.types import FunctionShapeSpec
 
 
@@ -23,6 +25,7 @@ class FileIndex:
     function_specs: list[FunctionShapeSpec]
     dim_locations: list[DimLocation]
     call_sites: list[CallSite] = field(default_factory=list)
+    function_defs: list[FunctionDefInfo] = field(default_factory=list)
 
 
 def build_file_index(
@@ -42,7 +45,9 @@ def build_file_index(
     if func_specs is None:
         func_specs = extract_function_specs(source, file_path)
     dim_locs = extract_dim_locations(source, file_path)
-    known_names = {s.name for s in func_specs}
+    func_defs = extract_all_function_defs(source, file_path)
+    # known_names includes ALL workspace functions, not just annotated
+    known_names = {d.name for d in func_defs} | {s.name for s in func_specs}
     if extra_known_names:
         known_names |= extra_known_names
     call_sites = extract_call_sites(source, file_path, known_names)
@@ -52,6 +57,7 @@ def build_file_index(
         function_specs=func_specs,
         dim_locations=dim_locs,
         call_sites=call_sites,
+        function_defs=func_defs,
     )
 
 
@@ -196,6 +202,23 @@ class WorkspaceIndex:
                 if fi.file_path == file_path:
                     return fi.uri
         return None
+
+    def find_function_def_by_name(
+        self, name: str, preferred_uri: str | None = None
+    ) -> list[FunctionDefInfo]:
+        """Find all function definitions with the given name across the workspace."""
+        with self._lock:
+            files = list(self._files.values())
+        results: list[FunctionDefInfo] = []
+        for idx in files:
+            results.extend(d for d in idx.function_defs if d.name == name)
+        if preferred_uri is not None and len(results) > 1:
+            with self._lock:
+                pf = self._files.get(preferred_uri)
+                if pf is not None:
+                    preferred_path = pf.file_path
+                    results.sort(key=lambda d: d.file_path != preferred_path)
+        return results
 
     def get_callees_of(self, function_name: str, uri: str) -> list[CallSite]:
         """Find all functions called by the given function."""
