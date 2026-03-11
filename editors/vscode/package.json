@@ -1,0 +1,142 @@
+{
+  "name": "jaxtyc",
+  "displayName": "jaxtyc",
+  "description": "Static array shape checking for JAX",
+  "version": "0.1.4",
+  "publisher": "beegass",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/BeeGass/jaxtyc"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Linters"
+  ],
+  "activationEvents": [
+    "onLanguage:python"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "configuration": {
+      "title": "jaxtyc",
+      "properties": {
+        "jaxtyc.mode": {
+          "type": "string",
+          "enum": [
+            "lsp",
+            "mux"
+          ],
+          "default": "lsp",
+          "markdownDescription": "Server mode: `lsp` for shape checking only, `mux` to multiplex with ty/pyright"
+        },
+        "jaxtyc.pythonPath": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Path to Python interpreter with jaxtyc installed. Leave empty to auto-detect (`VIRTUAL_ENV` -> `.venv/` -> `jaxtyc` on PATH -> VS Code Python interpreter -> `python3`)"
+        },
+        "jaxtyc.args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Extra CLI arguments passed to the server"
+        },
+        "jaxtyc.hints.errorMode": {
+          "type": "string",
+          "enum": [
+            "both",
+            "replace"
+          ],
+          "default": "both",
+          "markdownDescription": "How to display error info in inlay hints. `both` shows shape AND error, `replace` shows only the error message."
+        },
+        "jaxtyc.hints.errorLocation": {
+          "type": "string",
+          "enum": [
+            "divergence",
+            "annotation",
+            "return",
+            "both"
+          ],
+          "default": "divergence",
+          "markdownDescription": "Where to place error hints. `divergence` at first divergence point, `annotation` at the return annotation, `return` at the return statement."
+        },
+        "jaxtyc.hints.errorStyle": {
+          "type": "string",
+          "enum": [
+            "pipe",
+            "icon"
+          ],
+          "default": "pipe",
+          "markdownDescription": "Separator style between shape and error text. `pipe` uses ` | `, `icon` uses a warning triangle."
+        },
+        "jaxtyc.sharding.display": {
+          "type": "string",
+          "enum": [
+            "append",
+            "constrained_only",
+            "off"
+          ],
+          "default": "append",
+          "markdownDescription": "How to show sharding info in inlay hints. `append` shows P(...) after dtype, `constrained_only` only for sharding constraints, `off` disables."
+        },
+        "jaxtyc.sharding.rules": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "sharding-rank-mismatch",
+              "sharding-axis-unknown",
+              "sharding-conflict",
+              "sharding-io-mismatch"
+            ]
+          },
+          "default": [
+            "sharding-rank-mismatch",
+            "sharding-axis-unknown",
+            "sharding-conflict",
+            "sharding-io-mismatch"
+          ],
+          "markdownDescription": "Allow-list of sharding diagnostic rules to enable."
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "jaxtyc.restartServer",
+        "title": "jaxtyc: Restart Server"
+      },
+      {
+        "command": "jaxtyc.checkFile",
+        "title": "jaxtyc: Check Current File"
+      },
+      {
+        "command": "jaxtyc.showMenu",
+        "title": "jaxtyc: Show Menu"
+      }
+    ]
+  },
+  "scripts": {
+    "test": "vitest run",
+    "compile": "tsc -p .",
+    "bundle": "esbuild src/extension.ts --bundle --outfile=out/extension.js --external:vscode --format=cjs --platform=node",
+    "watch": "tsc -watch -p .",
+    "package": "npm run bundle && npx @vscode/vsce package"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^3.0.0",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.4.0",
+    "vitest": "^4.0.18"
+  }
+}

@@ -121,6 +121,10 @@ async function startClientForFolder(
     await client.start();
     clients.set(folderUri, client);
     folderStatuses.set(folderUri, "running");
+    const serverVersion = client.initializeResult?.serverInfo?.version;
+    if (serverVersion) {
+      statusBarItem.tooltip = `jaxtyc ${serverVersion} — shape checker`;
+    }
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err);
     outputChannel.appendLine(`[${folder.name}] Failed: ${detail}`);
@@ -166,6 +170,7 @@ export async function activate(
     vscode.StatusBarAlignment.Left
   );
   statusBarItem.tooltip = "jaxtyc shape checker";
+  statusBarItem.command = "jaxtyc.showMenu";
 
   for (const folder of vscode.workspace.workspaceFolders ?? []) {
     await startClientForFolder(folder);
@@ -180,6 +185,33 @@ export async function activate(
         await startClientForFolder(added);
       }
       updateStatusBar();
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("jaxtyc.showMenu", async () => {
+      const items: { label: string; action: string }[] = [
+        { label: "$(refresh) Restart Server", action: "restart" },
+        { label: "$(file-code) Check Current File", action: "check" },
+        { label: "$(output) Show Output", action: "output" },
+        { label: "$(gear) Open Settings", action: "settings" },
+      ];
+      const pick = await vscode.window.showQuickPick(items, {
+        placeHolder: "jaxtyc",
+      });
+      if (!pick) return;
+      if (pick.action === "output") {
+        outputChannel.show();
+      } else if (pick.action === "settings") {
+        vscode.commands.executeCommand(
+          "workbench.action.openSettings",
+          "jaxtyc"
+        );
+      } else if (pick.action === "restart") {
+        vscode.commands.executeCommand("jaxtyc.restartServer");
+      } else if (pick.action === "check") {
+        vscode.commands.executeCommand("jaxtyc.checkFile");
+      }
     })
   );
 
