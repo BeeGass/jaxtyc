@@ -342,6 +342,20 @@ def go_to_definition(
     if spec is not None:
         return types.Location(uri=uri, range=spec_selection_range(spec))
 
+    # Try call site -- resolve callee name to its definition
+    call_site = _state.workspace_index.find_call_site_at(uri, line, col)
+    if call_site is not None:
+        callee_specs = _state.workspace_index.find_function_by_name(
+            call_site.callee_name, preferred_uri=uri
+        )
+        if callee_specs:
+            cs_spec = callee_specs[0]
+            spec_uri = (
+                _state.workspace_index.uri_for_file(cs_spec.file_path)
+                or f"file://{cs_spec.file_path}"
+            )
+            return types.Location(uri=spec_uri, range=spec_selection_range(cs_spec))
+
     return None
 
 
@@ -502,6 +516,20 @@ def go_to_implementation(
     if spec is not None:
         return types.Location(uri=uri, range=spec_selection_range(spec))
 
+    # Try call site -- resolve callee name to its definition
+    call_site = _state.workspace_index.find_call_site_at(uri, line, col)
+    if call_site is not None:
+        callee_specs = _state.workspace_index.find_function_by_name(
+            call_site.callee_name, preferred_uri=uri
+        )
+        if callee_specs:
+            cs_spec = callee_specs[0]
+            spec_uri = (
+                _state.workspace_index.uri_for_file(cs_spec.file_path)
+                or f"file://{cs_spec.file_path}"
+            )
+            return types.Location(uri=spec_uri, range=spec_selection_range(cs_spec))
+
     return None
 
 
@@ -550,26 +578,68 @@ def incoming_calls(
         caller_specs = _state.workspace_index.find_function_by_name(
             call.caller_name, preferred_uri=caller_uri
         )
-        if not caller_specs:
+        if caller_specs:
+            caller_spec = caller_specs[0]
+            caller_uri = f"file://{caller_spec.file_path}"
+            call_line = max(0, call.lineno - 1)
+            results.append(
+                types.CallHierarchyIncomingCall(
+                    from_=types.CallHierarchyItem(
+                        name=caller_spec.name,
+                        kind=types.SymbolKind.Method
+                        if caller_spec.is_method
+                        else types.SymbolKind.Function,
+                        uri=caller_uri,
+                        range=spec_range(caller_spec),
+                        selection_range=spec_selection_range(caller_spec),
+                        detail=shape_summary(caller_spec),
+                        data={
+                            "function_name": caller_spec.name,
+                            "class_name": caller_spec.class_name,
+                            "uri": caller_uri,
+                        },
+                    ),
+                    from_ranges=[
+                        types.Range(
+                            start=types.Position(line=call_line, character=call.col_offset),
+                            end=types.Position(line=call_line, character=call.end_col_offset),
+                        )
+                    ],
+                )
+            )
             continue
-        caller_spec = caller_specs[0]
-        caller_uri = f"file://{caller_spec.file_path}"
+
+        # Fallback: non-annotated workspace function
+        caller_defs = _state.workspace_index.find_function_def_by_name(
+            call.caller_name, preferred_uri=caller_uri
+        )
+        if not caller_defs:
+            continue
+        fdef = caller_defs[0]
+        fdef_uri = _state.workspace_index.uri_for_file(fdef.file_path) or f"file://{fdef.file_path}"
         call_line = max(0, call.lineno - 1)
+        fdef_line = max(0, fdef.lineno - 1)
         results.append(
             types.CallHierarchyIncomingCall(
                 from_=types.CallHierarchyItem(
-                    name=caller_spec.name,
-                    kind=types.SymbolKind.Method
-                    if caller_spec.is_method
-                    else types.SymbolKind.Function,
-                    uri=caller_uri,
-                    range=spec_range(caller_spec),
-                    selection_range=spec_selection_range(caller_spec),
-                    detail=shape_summary(caller_spec),
+                    name=fdef.name,
+                    kind=types.SymbolKind.Method if fdef.is_method else types.SymbolKind.Function,
+                    uri=fdef_uri,
+                    range=types.Range(
+                        start=types.Position(line=fdef_line, character=fdef.col_offset),
+                        end=types.Position(line=max(0, fdef.end_lineno - 1), character=0),
+                    ),
+                    selection_range=types.Range(
+                        start=types.Position(line=fdef_line, character=fdef.name_col_offset),
+                        end=types.Position(
+                            line=fdef_line,
+                            character=fdef.name_col_offset + len(fdef.name),
+                        ),
+                    ),
                     data={
-                        "function_name": caller_spec.name,
-                        "class_name": caller_spec.class_name,
-                        "uri": caller_uri,
+                        "function_name": fdef.name,
+                        "class_name": fdef.class_name,
+                        "uri": fdef_uri,
                     },
                 ),
                 from_ranges=[
@@ -602,26 +672,68 @@ def outgoing_calls(
         callee_specs = _state.workspace_index.find_function_by_name(
             call.callee_name, preferred_uri=callee_uri
         )
-        if not callee_specs:
+        if callee_specs:
+            callee_spec = callee_specs[0]
+            callee_uri = f"file://{callee_spec.file_path}"
+            call_line = max(0, call.lineno - 1)
+            results.append(
+                types.CallHierarchyOutgoingCall(
+                    to=types.CallHierarchyItem(
+                        name=callee_spec.name,
+                        kind=types.SymbolKind.Method
+                        if callee_spec.is_method
+                        else types.SymbolKind.Function,
+                        uri=callee_uri,
+                        range=spec_range(callee_spec),
+                        selection_range=spec_selection_range(callee_spec),
+                        detail=shape_summary(callee_spec),
+                        data={
+                            "function_name": callee_spec.name,
+                            "class_name": callee_spec.class_name,
+                            "uri": callee_uri,
+                        },
+                    ),
+                    from_ranges=[
+                        types.Range(
+                            start=types.Position(line=call_line, character=call.col_offset),
+                            end=types.Position(line=call_line, character=call.end_col_offset),
+                        )
+                    ],
+                )
+            )
             continue
-        callee_spec = callee_specs[0]
-        callee_uri = f"file://{callee_spec.file_path}"
+
+        # Fallback: non-annotated workspace function
+        callee_defs = _state.workspace_index.find_function_def_by_name(
+            call.callee_name, preferred_uri=callee_uri
+        )
+        if not callee_defs:
+            continue
+        fdef = callee_defs[0]
+        fdef_uri = _state.workspace_index.uri_for_file(fdef.file_path) or f"file://{fdef.file_path}"
         call_line = max(0, call.lineno - 1)
+        fdef_line = max(0, fdef.lineno - 1)
         results.append(
             types.CallHierarchyOutgoingCall(
                 to=types.CallHierarchyItem(
-                    name=callee_spec.name,
-                    kind=types.SymbolKind.Method
-                    if callee_spec.is_method
-                    else types.SymbolKind.Function,
-                    uri=callee_uri,
-                    range=spec_range(callee_spec),
-                    selection_range=spec_selection_range(callee_spec),
-                    detail=shape_summary(callee_spec),
+                    name=fdef.name,
+                    kind=types.SymbolKind.Method if fdef.is_method else types.SymbolKind.Function,
+                    uri=fdef_uri,
+                    range=types.Range(
+                        start=types.Position(line=fdef_line, character=fdef.col_offset),
+                        end=types.Position(line=max(0, fdef.end_lineno - 1), character=0),
+                    ),
+                    selection_range=types.Range(
+                        start=types.Position(line=fdef_line, character=fdef.name_col_offset),
+                        end=types.Position(
+                            line=fdef_line,
+                            character=fdef.name_col_offset + len(fdef.name),
+                        ),
+                    ),
                     data={
-                        "function_name": callee_spec.name,
-                        "class_name": callee_spec.class_name,
-                        "uri": callee_uri,
+                        "function_name": fdef.name,
+                        "class_name": fdef.class_name,
+                        "uri": fdef_uri,
                     },
                 ),
                 from_ranges=[

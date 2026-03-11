@@ -773,6 +773,157 @@ class TestLSPNavigation:
         assert names == {"encode", "decode"}
 
 
+class TestNonAnnotatedCallHierarchy:
+    """outgoingCalls should include non-annotated workspace functions."""
+
+    def setup_method(self) -> None:
+        from jaxtyc.lsp import _state
+        from jaxtyc.lsp.index import FileIndex
+        from jaxtyc.types import CallSite
+        from jaxtyc.types import FunctionDefInfo
+        from jaxtyc.types import FunctionShapeSpec
+
+        self.uri = "file:///test/calls.py"
+        spec = FunctionShapeSpec(
+            name="encode",
+            file_path="/test/calls.py",
+            lineno=10,
+            col_offset=0,
+            params={},
+            return_spec=None,
+            name_col_offset=4,
+        )
+        helper_def = FunctionDefInfo(
+            name="normalize",
+            file_path="/test/calls.py",
+            lineno=3,
+            col_offset=0,
+            end_lineno=5,
+            name_col_offset=4,
+        )
+        call = CallSite(
+            caller_name="encode",
+            callee_name="normalize",
+            file_path="/test/calls.py",
+            lineno=12,
+            col_offset=15,
+            end_col_offset=24,
+        )
+        _state.workspace_index.update_file(
+            FileIndex(
+                file_path="/test/calls.py",
+                uri=self.uri,
+                function_specs=[spec],
+                dim_locations=[],
+                call_sites=[call],
+                function_defs=[
+                    helper_def,
+                    FunctionDefInfo(
+                        name="encode",
+                        file_path="/test/calls.py",
+                        lineno=10,
+                        col_offset=0,
+                        end_lineno=15,
+                        name_col_offset=4,
+                    ),
+                ],
+            )
+        )
+
+    def teardown_method(self) -> None:
+        from jaxtyc.lsp import _state
+
+        _state.workspace_index.remove_file(self.uri)
+
+    def test_outgoing_calls_includes_non_annotated_callee(self) -> None:
+        from lsprotocol import types as lsp_types
+
+        from jaxtyc.lsp._navigation import outgoing_calls
+        from jaxtyc.lsp.server import server
+
+        item = lsp_types.CallHierarchyItem(
+            name="encode",
+            kind=lsp_types.SymbolKind.Function,
+            uri=self.uri,
+            range=lsp_types.Range(
+                start=lsp_types.Position(line=9, character=0),
+                end=lsp_types.Position(line=14, character=0),
+            ),
+            selection_range=lsp_types.Range(
+                start=lsp_types.Position(line=9, character=4),
+                end=lsp_types.Position(line=9, character=10),
+            ),
+            data={"function_name": "encode", "uri": self.uri},
+        )
+        params = lsp_types.CallHierarchyOutgoingCallsParams(item=item)
+        result = outgoing_calls(server, params)
+        assert result is not None
+        assert len(result) == 1
+        assert result[0].to.name == "normalize"
+
+    def test_incoming_calls_includes_non_annotated_caller(self) -> None:
+        from lsprotocol import types as lsp_types
+
+        from jaxtyc.lsp import _state
+        from jaxtyc.lsp._navigation import incoming_calls
+        from jaxtyc.lsp.index import FileIndex
+        from jaxtyc.lsp.server import server
+        from jaxtyc.types import CallSite
+        from jaxtyc.types import FunctionDefInfo
+
+        uri2 = "file:///test/caller.py"
+        main_def = FunctionDefInfo(
+            name="main",
+            file_path="/test/caller.py",
+            lineno=1,
+            col_offset=0,
+            end_lineno=4,
+            name_col_offset=4,
+        )
+        call = CallSite(
+            caller_name="main",
+            callee_name="encode",
+            file_path="/test/caller.py",
+            lineno=3,
+            col_offset=8,
+            end_col_offset=14,
+        )
+        _state.workspace_index.update_file(
+            FileIndex(
+                file_path="/test/caller.py",
+                uri=uri2,
+                function_specs=[],
+                dim_locations=[],
+                call_sites=[call],
+                function_defs=[main_def],
+            )
+        )
+
+        try:
+            item = lsp_types.CallHierarchyItem(
+                name="encode",
+                kind=lsp_types.SymbolKind.Function,
+                uri=self.uri,
+                range=lsp_types.Range(
+                    start=lsp_types.Position(line=9, character=0),
+                    end=lsp_types.Position(line=14, character=0),
+                ),
+                selection_range=lsp_types.Range(
+                    start=lsp_types.Position(line=9, character=4),
+                    end=lsp_types.Position(line=9, character=10),
+                ),
+                data={"function_name": "encode", "uri": self.uri},
+            )
+            params = lsp_types.CallHierarchyIncomingCallsParams(item=item)
+            result = incoming_calls(server, params)
+            assert result is not None
+            # Should find "main" as a caller even though it has no FunctionShapeSpec
+            caller_names = [r.from_.name for r in result]
+            assert "main" in caller_names
+        finally:
+            _state.workspace_index.remove_file(uri2)
+
+
 class TestLSPInlayHints:
     """Tests for inlay hints with error and sharding display."""
 
@@ -1838,3 +1989,76 @@ class TestCrossFileTracing:
         with _state.cache_lock:
             _state.trace_results_cache.pop(callee_uri, None)
             _state.dim_env_cache.pop(callee_uri, None)
+
+
+class TestCallSiteNavigation:
+    """goToDefinition and goToImplementation should resolve call sites."""
+
+    def setup_method(self) -> None:
+        from jaxtyc.lsp import _state
+        from jaxtyc.lsp.index import FileIndex
+        from jaxtyc.types import CallSite
+        from jaxtyc.types import FunctionShapeSpec
+
+        self.uri = "file:///test/nav.py"
+        spec = FunctionShapeSpec(
+            name="encode",
+            file_path="/test/nav.py",
+            lineno=5,
+            col_offset=0,
+            params={},
+            return_spec=None,
+            name_col_offset=4,
+        )
+        call = CallSite(
+            caller_name="main",
+            callee_name="encode",
+            file_path="/test/nav.py",
+            lineno=15,
+            col_offset=8,
+            end_col_offset=14,
+        )
+        _state.workspace_index.update_file(
+            FileIndex(
+                file_path="/test/nav.py",
+                uri=self.uri,
+                function_specs=[spec],
+                dim_locations=[],
+                call_sites=[call],
+            )
+        )
+
+    def teardown_method(self) -> None:
+        from jaxtyc.lsp import _state
+
+        _state.workspace_index.remove_file(self.uri)
+
+    def test_go_to_definition_at_call_site(self) -> None:
+        from lsprotocol import types as lsp_types
+
+        from jaxtyc.lsp._navigation import go_to_definition
+        from jaxtyc.lsp.server import server
+
+        params = lsp_types.DefinitionParams(
+            text_document=lsp_types.TextDocumentIdentifier(uri=self.uri),
+            position=lsp_types.Position(line=14, character=10),  # line 15 -> 0-based 14
+        )
+        result = go_to_definition(server, params)
+        assert result is not None
+        loc = result[0] if isinstance(result, list) else result
+        assert loc.range.start.line == 4  # lineno 5 -> 0-based 4
+
+    def test_go_to_implementation_at_call_site(self) -> None:
+        from lsprotocol import types as lsp_types
+
+        from jaxtyc.lsp._navigation import go_to_implementation
+        from jaxtyc.lsp.server import server
+
+        params = lsp_types.ImplementationParams(
+            text_document=lsp_types.TextDocumentIdentifier(uri=self.uri),
+            position=lsp_types.Position(line=14, character=10),
+        )
+        result = go_to_implementation(server, params)
+        assert result is not None
+        loc = result[0] if isinstance(result, list) else result
+        assert loc.range.start.line == 4
