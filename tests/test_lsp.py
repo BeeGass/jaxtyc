@@ -2387,3 +2387,143 @@ class TestReferenceScopeConfig:
             _state.workspace_index.remove_file("file:///b.py")
         finally:
             _state.config = orig_config
+
+
+class TestExternalCallsConfig:
+    def test_outgoing_calls_includes_external_when_configured(self) -> None:
+        """With include_external_calls=true, library calls appear in outgoingCalls."""
+        from jaxtyc.config import JaxtycConfig
+        from jaxtyc.config import NavigationConfig
+        from jaxtyc.lsp import _state
+        from jaxtyc.lsp.index import FileIndex
+        from jaxtyc.types import CallSite
+        from jaxtyc.types import FunctionShapeSpec
+
+        orig_config = _state.config
+        try:
+            _state.config = JaxtycConfig(navigation=NavigationConfig(include_external_calls=True))
+
+            uri = "file:///test/ext.py"
+            spec = FunctionShapeSpec(
+                name="transform",
+                file_path="/test/ext.py",
+                lineno=5,
+                col_offset=0,
+                params={},
+                return_spec=None,
+                name_col_offset=4,
+            )
+            ext_call = CallSite(
+                caller_name="transform",
+                callee_name="dot",
+                file_path="/test/ext.py",
+                lineno=7,
+                col_offset=10,
+                end_col_offset=13,
+            )
+            _state.workspace_index.update_file(
+                FileIndex(
+                    file_path="/test/ext.py",
+                    uri=uri,
+                    function_specs=[spec],
+                    dim_locations=[],
+                    call_sites=[ext_call],
+                )
+            )
+
+            from lsprotocol import types as lsp_types
+
+            from jaxtyc.lsp._navigation import outgoing_calls
+            from jaxtyc.lsp.server import server
+
+            item = lsp_types.CallHierarchyItem(
+                name="transform",
+                kind=lsp_types.SymbolKind.Function,
+                uri=uri,
+                range=lsp_types.Range(
+                    start=lsp_types.Position(line=4, character=0),
+                    end=lsp_types.Position(line=8, character=0),
+                ),
+                selection_range=lsp_types.Range(
+                    start=lsp_types.Position(line=4, character=4),
+                    end=lsp_types.Position(line=4, character=13),
+                ),
+                data={"function_name": "transform", "uri": uri},
+            )
+            params = lsp_types.CallHierarchyOutgoingCallsParams(item=item)
+            result = outgoing_calls(server, params)
+            assert result is not None
+            assert len(result) == 1
+            assert result[0].to.name == "dot"
+            assert result[0].to.detail == "(external)"
+
+            _state.workspace_index.remove_file(uri)
+        finally:
+            _state.config = orig_config
+
+    def test_outgoing_calls_excludes_external_by_default(self) -> None:
+        """Default config (include_external_calls=false) hides external calls."""
+        from jaxtyc.config import JaxtycConfig
+        from jaxtyc.lsp import _state
+        from jaxtyc.lsp.index import FileIndex
+        from jaxtyc.types import CallSite
+        from jaxtyc.types import FunctionShapeSpec
+
+        orig_config = _state.config
+        try:
+            _state.config = JaxtycConfig()
+
+            uri = "file:///test/ext2.py"
+            spec = FunctionShapeSpec(
+                name="transform",
+                file_path="/test/ext2.py",
+                lineno=5,
+                col_offset=0,
+                params={},
+                return_spec=None,
+                name_col_offset=4,
+            )
+            ext_call = CallSite(
+                caller_name="transform",
+                callee_name="dot",
+                file_path="/test/ext2.py",
+                lineno=7,
+                col_offset=10,
+                end_col_offset=13,
+            )
+            _state.workspace_index.update_file(
+                FileIndex(
+                    file_path="/test/ext2.py",
+                    uri=uri,
+                    function_specs=[spec],
+                    dim_locations=[],
+                    call_sites=[ext_call],
+                )
+            )
+
+            from lsprotocol import types as lsp_types
+
+            from jaxtyc.lsp._navigation import outgoing_calls
+            from jaxtyc.lsp.server import server
+
+            item = lsp_types.CallHierarchyItem(
+                name="transform",
+                kind=lsp_types.SymbolKind.Function,
+                uri=uri,
+                range=lsp_types.Range(
+                    start=lsp_types.Position(line=4, character=0),
+                    end=lsp_types.Position(line=8, character=0),
+                ),
+                selection_range=lsp_types.Range(
+                    start=lsp_types.Position(line=4, character=4),
+                    end=lsp_types.Position(line=4, character=13),
+                ),
+                data={"function_name": "transform", "uri": uri},
+            )
+            params = lsp_types.CallHierarchyOutgoingCallsParams(item=item)
+            result = outgoing_calls(server, params)
+            assert result is None
+
+            _state.workspace_index.remove_file(uri)
+        finally:
+            _state.config = orig_config

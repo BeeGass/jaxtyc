@@ -731,6 +731,33 @@ def outgoing_calls(
             call.callee_name, preferred_uri=callee_uri
         )
         if not callee_defs:
+            # External/library call -- no workspace definition found
+            if _state.config.navigation.include_external_calls:
+                call_line = max(0, call.lineno - 1)
+                results.append(
+                    types.CallHierarchyOutgoingCall(
+                        to=types.CallHierarchyItem(
+                            name=call.callee_name,
+                            kind=types.SymbolKind.Function,
+                            uri=item_uri,
+                            range=types.Range(
+                                start=types.Position(line=call_line, character=call.col_offset),
+                                end=types.Position(line=call_line, character=call.end_col_offset),
+                            ),
+                            selection_range=types.Range(
+                                start=types.Position(line=call_line, character=call.col_offset),
+                                end=types.Position(line=call_line, character=call.end_col_offset),
+                            ),
+                            detail="(external)",
+                        ),
+                        from_ranges=[
+                            types.Range(
+                                start=types.Position(line=call_line, character=call.col_offset),
+                                end=types.Position(line=call_line, character=call.end_col_offset),
+                            )
+                        ],
+                    )
+                )
             continue
         fdef = callee_defs[0]
         fdef_uri = _state.workspace_index.uri_for_file(fdef.file_path) or f"file://{fdef.file_path}"

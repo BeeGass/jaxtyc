@@ -542,3 +542,43 @@ def test_extract_all_function_defs_nested_not_method() -> None:
     helper = next(d for d in defs if d.name == "_local_helper")
     assert helper.is_method is False
     assert helper.class_name is None
+
+
+def test_extract_call_sites_include_external() -> None:
+    """include_external=True captures calls to non-workspace functions."""
+    from jaxtyc.analyzer.annotations import extract_call_sites
+
+    source = textwrap.dedent("""\
+        import jax.numpy as jnp
+
+        def transform(x):
+            y = jnp.dot(x, x)
+            return y
+    """)
+    known = {"transform"}
+
+    # Without include_external: dot is not in known_functions, not captured
+    calls = extract_call_sites(source, "/test.py", known)
+    assert not any(c.callee_name == "dot" for c in calls)
+
+    # With include_external: dot IS captured
+    calls_ext = extract_call_sites(source, "/test.py", known, include_external=True)
+    assert any(c.callee_name == "dot" for c in calls_ext)
+    dot_call = next(c for c in calls_ext if c.callee_name == "dot")
+    assert dot_call.caller_name == "transform"
+
+
+def test_extract_call_sites_include_external_bare_name() -> None:
+    """include_external captures bare function calls too."""
+    from jaxtyc.analyzer.annotations import extract_call_sites
+
+    source = textwrap.dedent("""\
+        def process(x):
+            y = len(x)
+            return print(y)
+    """)
+    known = {"process"}
+    calls = extract_call_sites(source, "/test.py", known, include_external=True)
+    callee_names = {c.callee_name for c in calls}
+    assert "len" in callee_names
+    assert "print" in callee_names

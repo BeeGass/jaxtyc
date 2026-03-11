@@ -245,11 +245,15 @@ def extract_call_sites(
     source: str,
     file_path: str,
     known_functions: set[str],
+    include_external: bool = False,
 ) -> list[CallSite]:
     """Extract call sites between shape-annotated functions.
 
     Walks function bodies for ast.Call nodes and matches callee names
     against the set of known shape-annotated function names.
+
+    When *include_external* is True, calls to functions **not** in
+    *known_functions* are also recorded (e.g. library/external calls).
     """
     try:
         tree = ast.parse(source, filename=file_path)
@@ -257,7 +261,14 @@ def extract_call_sites(
         return []
 
     results: list[CallSite] = []
-    _visit_body_for_calls(tree.body, file_path, known_functions, results, class_name=None)
+    _visit_body_for_calls(
+        tree.body,
+        file_path,
+        known_functions,
+        results,
+        class_name=None,
+        include_external=include_external,
+    )
     return results
 
 
@@ -267,15 +278,28 @@ def _visit_body_for_calls(
     known_functions: set[str],
     results: list[CallSite],
     class_name: str | None,
+    include_external: bool = False,
 ) -> None:
     """Walk statements extracting call sites from function bodies."""
     for node in body:
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             caller = f"{class_name}.{node.name}" if class_name else node.name
-            _extract_calls_from_body(node.body, caller, file_path, known_functions, results)
+            _extract_calls_from_body(
+                node.body,
+                caller,
+                file_path,
+                known_functions,
+                results,
+                include_external=include_external,
+            )
         elif isinstance(node, ast.ClassDef):
             _visit_body_for_calls(
-                node.body, file_path, known_functions, results, class_name=node.name
+                node.body,
+                file_path,
+                known_functions,
+                results,
+                class_name=node.name,
+                include_external=include_external,
             )
 
 
@@ -285,6 +309,7 @@ def _extract_calls_from_body(
     file_path: str,
     known_functions: set[str],
     results: list[CallSite],
+    include_external: bool = False,
 ) -> None:
     """Walk a function body extracting calls to known functions."""
     for node in ast.walk(ast.Module(body=body, type_ignores=[])):
@@ -301,7 +326,7 @@ def _extract_calls_from_body(
             callee_name = node.func.attr
             col_start = node.func.col_offset
             col_end = node.func.end_col_offset or (col_start + len(callee_name))
-        if callee_name and callee_name in known_functions:
+        if callee_name and (callee_name in known_functions or include_external):
             results.append(
                 CallSite(
                     caller_name=caller_name,

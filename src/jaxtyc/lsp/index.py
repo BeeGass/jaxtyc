@@ -34,6 +34,7 @@ def build_file_index(
     uri: str,
     func_specs: list[FunctionShapeSpec] | None = None,
     extra_known_names: frozenset[str] | None = None,
+    include_external_calls: bool = False,
 ) -> FileIndex:
     """Build a complete FileIndex from source code.
 
@@ -50,7 +51,9 @@ def build_file_index(
     known_names = {d.name for d in func_defs} | {s.name for s in func_specs}
     if extra_known_names:
         known_names |= extra_known_names
-    call_sites = extract_call_sites(source, file_path, known_names)
+    call_sites = extract_call_sites(
+        source, file_path, known_names, include_external=include_external_calls
+    )
     return FileIndex(
         file_path=file_path,
         uri=uri,

@@ -321,6 +321,7 @@ def _analyze_and_publish(ls: LanguageServer, uri: str, source: str | None = None
             uri,
             func_specs=func_specs,
             extra_known_names=frozenset(all_known),
+            include_external_calls=_state.config.navigation.include_external_calls,
         )
         _state.workspace_index.update_file(file_index)
     except Exception:
