@@ -225,11 +225,68 @@ def _analyze_and_publish(ls: LanguageServer, uri: str, source: str | None = None
     except Exception:
         hover_env = None
 
+    # Build error hints via divergence detection
+    from jaxtyc.analyzer.divergence import find_divergence_points
+    from jaxtyc.types import ErrorHintInfo
+
+    error_hints: list[ErrorHintInfo] = []
+    if hover_env is not None:
+        trace_by_name = {t.function_name: t for t in result.trace_results}
+        for spec in func_specs:
+            trace = trace_by_name.get(spec.name)
+            if trace is None or not trace.success:
+                continue
+            try:
+                hints = find_divergence_points(spec, trace, hover_env)
+                error_hints.extend(hints)
+            except Exception:
+                logger.debug("Failed to find divergence points for %s", spec.name, exc_info=True)
+
+    # Synthesize return-line intermediates for functions whose trace succeeded
+    # but produced no jaxpr-based intermediates (identity/passthrough functions,
+    # or functions where make_jaxpr failed).  This ensures inlay hints appear
+    # on the return line showing the resolved output shape.
+    if hover_env is not None and source_text:
+        import re
+
+        _return_re = re.compile(r"^\s*return\b")
+        source_lines = source_text.splitlines()
+        covered_lines = {i.source_line for i in all_intermediates}
+        trace_by_name_synth = {t.function_name: t for t in result.trace_results}
+
+        for spec in func_specs:
+            trace = trace_by_name_synth.get(spec.name)
+            if trace is None or not trace.success or trace.output_shape is None:
+                continue
+            # Find return lines within this function's body
+            start = spec.lineno  # 1-based def line
+            end = spec.end_lineno if spec.end_lineno > 0 else len(source_lines)
+            for line_idx in range(start, min(end, len(source_lines))):
+                line_num = line_idx + 1  # 1-based
+                if line_num in covered_lines:
+                    continue
+                if _return_re.match(source_lines[line_idx]):
+                    named = hover_env.shape_to_names(trace.output_shape)
+                    all_intermediates.append(
+                        IntermediateShape(
+                            shape=trace.output_shape,
+                            dtype=trace.output_dtype or "float32",
+                            source_file=file_path,
+                            source_line=line_num,
+                            source_col=0,
+                            named_shape=named,
+                            op_name="return",
+                        )
+                    )
+                    covered_lines.add(line_num)
+
     # Batch-write all caches atomically
     with _state.cache_lock:
         _state.diagnostics_cache[uri] = lsp_diagnostics
         _state.analysis_cache[uri] = all_intermediates
         _state.codelens_cache[uri] = lenses
+        _state.error_hints_cache[uri] = error_hints
+        _state.source_cache[uri] = source_text
         if hover_env is not None:
             _state.dim_env_cache[uri] = hover_env
 

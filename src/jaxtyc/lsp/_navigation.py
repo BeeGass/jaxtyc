@@ -9,6 +9,7 @@ from pygls.lsp.server import LanguageServer
 
 from jaxtyc.lsp import _state
 from jaxtyc.lsp._util import dim_range
+from jaxtyc.lsp._util import format_dtype
 from jaxtyc.lsp._util import shape_summary
 from jaxtyc.lsp._util import spec_range
 from jaxtyc.lsp._util import spec_selection_range
@@ -101,7 +102,10 @@ def hover(ls: LanguageServer, params: types.HoverParams) -> types.Hover | None:
         )
 
     # Check if cursor is on a parameter name or function name in a shape-annotated function
-    doc = ls.workspace.get_text_document(uri)
+    try:
+        doc = ls.workspace.get_text_document(uri)
+    except RuntimeError:
+        doc = None
     if doc is not None and pos.line < len(doc.lines):
         line_text = doc.lines[pos.line]
         word = _word_at(line_text, pos.character)
@@ -127,7 +131,7 @@ def hover(ls: LanguageServer, params: types.HoverParams) -> types.Hover | None:
                     ),
                 )
 
-    # Show intermediate shapes at cursor line
+    # Show all intermediate shapes at cursor line (Option E format)
     with _state.cache_lock:
         intermediates = _state.analysis_cache.get(uri, [])
     if not intermediates:
@@ -138,11 +142,25 @@ def hover(ls: LanguageServer, params: types.HoverParams) -> types.Hover | None:
     if not matching:
         return None
 
-    # Build hover content
-    lines: list[str] = []
-    for inter in matching:
+    dtype_style = _state.config.hints.dtype_style
+
+    # Build hover content with full intermediate chain
+    lines: list[str] = [f"**Intermediates at line {line}:**"]
+    for idx, inter in enumerate(matching):
         named = ", ".join(n or str(s) for n, s in zip(inter.named_shape, inter.shape, strict=True))
-        lines.append(f"`{inter.op_name}`: ({named})  `{inter.dtype}`")
+        dtype = format_dtype(inter.dtype, dtype_style)
+        entry = f"`{inter.op_name}` \u2192 `{dtype}[{named}]`"
+        if idx == len(matching) - 1:
+            entry += " \u2190 *final*"
+        lines.append(entry)
+
+        # Show sharding info inline if present
+        if inter.sharding is not None:
+            parts = ", ".join(
+                repr(a) if a is not None else "None" for a in inter.sharding.partition_spec
+            )
+            mesh_parts = ", ".join(repr(a) for a in inter.sharding.mesh_axis_names)
+            lines.append(f"  Sharding: `P({parts})` | mesh(`{mesh_parts}`)")
 
     content = "\n\n".join(lines)
 
