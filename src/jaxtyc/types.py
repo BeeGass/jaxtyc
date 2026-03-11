@@ -280,6 +280,7 @@ class CallSite:
     lineno: int
     col_offset: int
     end_col_offset: int
+    callee_qualified_name: str | None = None
 
 
 @dataclass(frozen=True)

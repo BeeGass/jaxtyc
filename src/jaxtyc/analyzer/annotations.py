@@ -303,6 +303,18 @@ def _visit_body_for_calls(
             )
 
 
+def _dotted_name(node: ast.Attribute) -> str:
+    """Build a dotted name from an ast.Attribute chain (e.g. jnp.lax.scan)."""
+    parts = [node.attr]
+    current: ast.expr = node.value
+    while isinstance(current, ast.Attribute):
+        parts.append(current.attr)
+        current = current.value
+    if isinstance(current, ast.Name):
+        parts.append(current.id)
+    return ".".join(reversed(parts))
+
+
 def _extract_calls_from_body(
     body: list[ast.stmt],
     caller_name: str,
@@ -316,6 +328,7 @@ def _extract_calls_from_body(
         if not isinstance(node, ast.Call):
             continue
         callee_name: str | None = None
+        qualified: str | None = None
         col_start = 0
         col_end = 0
         if isinstance(node.func, ast.Name):
@@ -324,6 +337,7 @@ def _extract_calls_from_body(
             col_end = node.func.end_col_offset or (col_start + len(callee_name))
         elif isinstance(node.func, ast.Attribute):
             callee_name = node.func.attr
+            qualified = _dotted_name(node.func)
             col_start = node.func.col_offset
             col_end = node.func.end_col_offset or (col_start + len(callee_name))
         if callee_name and (callee_name in known_functions or include_external):
@@ -335,6 +349,7 @@ def _extract_calls_from_body(
                     lineno=node.lineno,
                     col_offset=col_start,
                     end_col_offset=col_end,
+                    callee_qualified_name=qualified,
                 )
             )
 

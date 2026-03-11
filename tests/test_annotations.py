@@ -582,3 +582,30 @@ def test_extract_call_sites_include_external_bare_name() -> None:
     callee_names = {c.callee_name for c in calls}
     assert "len" in callee_names
     assert "print" in callee_names
+
+
+def test_extract_call_sites_qualified_name() -> None:
+    """Attribute calls store the full dotted path in callee_qualified_name."""
+    from jaxtyc.analyzer.annotations import extract_call_sites
+
+    source = textwrap.dedent("""\
+        import jax.numpy as jnp
+
+        def transform(x):
+            y = jnp.matmul(x, x)
+            z = jnp.lax.scan(lambda c, x: (c, x), y, y)
+            w = encode(z)
+            return w
+    """)
+    known = {"encode"}
+    calls = extract_call_sites(source, "/test.py", known, include_external=True)
+
+    matmul_call = next(c for c in calls if c.callee_name == "matmul")
+    assert matmul_call.callee_qualified_name == "jnp.matmul"
+
+    scan_call = next(c for c in calls if c.callee_name == "scan")
+    assert scan_call.callee_qualified_name == "jnp.lax.scan"
+
+    # Bare name calls have no qualified name
+    encode_call = next(c for c in calls if c.callee_name == "encode")
+    assert encode_call.callee_qualified_name is None
