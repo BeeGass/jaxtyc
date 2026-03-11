@@ -9,6 +9,7 @@ from jaxtyc.config import JaxtycConfig
 from jaxtyc.lsp.index import WorkspaceIndex
 from jaxtyc.types import ErrorHintInfo
 from jaxtyc.types import IntermediateShape
+from jaxtyc.types import TraceResult
 
 # Cached analysis results per URI
 analysis_cache: dict[str, list[IntermediateShape]] = {}
@@ -27,6 +28,9 @@ error_hints_cache: dict[str, list[ErrorHintInfo]] = {}
 
 # Source text cache per URI for inlay hint positioning
 source_cache: dict[str, str] = {}
+
+# Trace results cache per URI: function name -> TraceResult
+trace_results_cache: dict[str, dict[str, TraceResult]] = {}
 
 # Lock protecting multi-cache updates
 cache_lock: threading.Lock = threading.Lock()

@@ -280,6 +280,9 @@ def _analyze_and_publish(ls: LanguageServer, uri: str, source: str | None = None
                     )
                     covered_lines.add(line_num)
 
+    # Build trace results index for cross-file and call-site features
+    trace_results_by_name = {t.function_name: t for t in result.trace_results}
+
     # Batch-write all caches atomically
     with _state.cache_lock:
         _state.diagnostics_cache[uri] = lsp_diagnostics
@@ -287,6 +290,7 @@ def _analyze_and_publish(ls: LanguageServer, uri: str, source: str | None = None
         _state.codelens_cache[uri] = lenses
         _state.error_hints_cache[uri] = error_hints
         _state.source_cache[uri] = source_text
+        _state.trace_results_cache[uri] = trace_results_by_name
         if hover_env is not None:
             _state.dim_env_cache[uri] = hover_env
 

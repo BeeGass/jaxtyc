@@ -1347,3 +1347,33 @@ class TestLSPErrorHintsState:
             time.sleep(0.5)
         # If we get here without error, the close handler processed without
         # crashing on the error_hints_cache key
+
+
+class TestTraceResultsCache:
+    """Tests for trace_results_cache in LSP state."""
+
+    def test_trace_results_cache_exists(self) -> None:
+        """_state module should have trace_results_cache dict."""
+        from jaxtyc.lsp import _state
+
+        assert hasattr(_state, "trace_results_cache")
+        assert isinstance(_state.trace_results_cache, dict)
+
+    def test_trace_results_populated_after_analysis(self) -> None:
+        """After analysis, trace_results_cache should contain function traces."""
+        from jaxtyc.lsp import _state
+        from jaxtyc.types import TraceResult
+
+        uri = "file:///test/trace_cache_test.py"
+        tr = TraceResult(
+            function_name="test_fn",
+            output_shape=(4, 8),
+            output_dtype="float32",
+            intermediates=[],
+            error=None,
+        )
+        with _state.cache_lock:
+            _state.trace_results_cache[uri] = {"test_fn": tr}
+        assert _state.trace_results_cache[uri]["test_fn"].output_shape == (4, 8)
+        with _state.cache_lock:
+            _state.trace_results_cache.pop(uri, None)
