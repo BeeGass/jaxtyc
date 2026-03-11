@@ -4,3 +4,4 @@ tsconfig.json
 *.ts
 !out/**
 !snippets/**
+!media/**
