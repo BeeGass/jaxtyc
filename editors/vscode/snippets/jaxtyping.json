@@ -1,0 +1,32 @@
+{
+  "Float Array Annotation": {
+    "prefix": "jfloat",
+    "body": "Float[Array, \"${1:batch} ${2:seq} ${3:dim}\"]",
+    "description": "jaxtyping Float[Array, ...] annotation"
+  },
+  "Int Array Annotation": {
+    "prefix": "jint",
+    "body": "Int[Array, \"${1:batch} ${2:seq}\"]",
+    "description": "jaxtyping Int[Array, ...] annotation"
+  },
+  "Bool Array Annotation": {
+    "prefix": "jbool",
+    "body": "Bool[Array, \"${1:batch} ${2:seq}\"]",
+    "description": "jaxtyping Bool[Array, ...] annotation"
+  },
+  "Shaped Array Annotation": {
+    "prefix": "jshaped",
+    "body": "Shaped[Array, \"${1:*dims}\"]",
+    "description": "jaxtyping Shaped[Array, ...] annotation"
+  },
+  "jaxtyping Import": {
+    "prefix": "jimport",
+    "body": "from jaxtyping import Array, Float, Int",
+    "description": "Common jaxtyping imports"
+  },
+  "Suppress jaxtyc": {
+    "prefix": "jignore",
+    "body": "# jaxtyc: ignore${1:[${2:rule-name}]}",
+    "description": "jaxtyc inline suppression comment"
+  }
+}

@@ -119,6 +119,28 @@
         "command": "jaxtyc.showMenu",
         "title": "jaxtyc: Show Menu"
       }
+    ],
+    "snippets": [
+      {
+        "language": "python",
+        "path": "./snippets/jaxtyping.json"
+      }
+    ],
+    "problemMatchers": [
+      {
+        "name": "jaxtyc",
+        "owner": "jaxtyc",
+        "fileLocation": ["relative", "${workspaceFolder}"],
+        "pattern": {
+          "regexp": "^(.+):(\\d+):(\\d+): (error|warning)\\[(.+?)\\]$",
+          "file": 1,
+          "line": 2,
+          "column": 3,
+          "severity": 4,
+          "code": 5,
+          "message": 0
+        }
+      }
     ]
   },
   "scripts": {
