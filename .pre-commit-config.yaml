@@ -1,0 +1,25 @@
+# See https://pre-commit.com for more information
+# See https://github.com/astral-sh/ruff-pre-commit for ruff hooks
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.5
+    hooks:
+      # Run ruff linter
+      - id: ruff-check
+        args: [--fix]
+      # Run ruff formatter
+      - id: ruff-format
+
+  # ty has no official pre-commit repo; run via uv as a local hook.
+  # --exit-zero: 167 pre-existing ty diagnostics (jaxtyping DSL, nullable
+  # subprocess pipes in tests, dict unpacking). Remove --exit-zero once the
+  # baseline reaches zero; use --error-on-warning to enforce strictly.
+  - repo: local
+    hooks:
+      - id: ty
+        name: ty type checker
+        entry: uv run ty check --exit-zero
+        language: system
+        types: [python]
+        pass_filenames: false
+        verbose: true
