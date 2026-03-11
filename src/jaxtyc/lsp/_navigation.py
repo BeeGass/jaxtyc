@@ -162,6 +162,20 @@ def hover(ls: LanguageServer, params: types.HoverParams) -> types.Hover | None:
             mesh_parts = ", ".join(repr(a) for a in inter.sharding.mesh_axis_names)
             lines.append(f"  Sharding: `P({parts})` | mesh(`{mesh_parts}`)")
 
+    # Check for divergence error at this line
+    with _state.cache_lock:
+        error_hints = _state.error_hints_cache.get(uri, [])
+    divergence = [eh for eh in error_hints if eh.source_line == line]
+    if divergence:
+        eh = divergence[0]
+        lines.append("")
+        lines.append("**Shape divergence detected:**")
+        if eh.expected_named is not None:
+            lines.append(f"- Expected: `({', '.join(eh.expected_named)})`")
+        if eh.actual_named is not None:
+            lines.append(f"- Actual: `({', '.join(eh.actual_named)})`")
+        lines.append(f"- {eh.message}")
+
     content = "\n\n".join(lines)
 
     return types.Hover(

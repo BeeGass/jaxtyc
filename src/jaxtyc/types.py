@@ -77,6 +77,25 @@ class FunctionShapeSpec:
 
 
 @dataclass(frozen=True)
+class RelatedLocation:
+    """A related source location for a diagnostic.
+
+    Attributes:
+        file_path: Absolute path to the related source file.
+        line: 1-based line number.
+        col: 0-based column offset of the start.
+        end_col: 0-based column offset one past the end.
+        message: Human-readable description of the relationship.
+    """
+
+    file_path: str
+    line: int
+    col: int
+    end_col: int
+    message: str
+
+
+@dataclass(frozen=True)
 class DiagnosticData:
     """Structured data attached to diagnostics for programmatic consumption.
 
@@ -88,6 +107,7 @@ class DiagnosticData:
         dim_name_mapping: Map of dimension names to their prime sizes.
         suggested_fix: Human-readable description of what to fix.
         rule: Diagnostic rule code.
+        related_locations: Related source locations for clickable links.
     """
 
     expected_shape: tuple[int, ...] | None = None
@@ -97,6 +117,7 @@ class DiagnosticData:
     dim_name_mapping: dict[str, int] | None = None
     suggested_fix: str | None = None
     rule: str = ""
+    related_locations: tuple[RelatedLocation, ...] = ()
 
 
 @dataclass(frozen=True)

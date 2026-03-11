@@ -1377,3 +1377,145 @@ class TestTraceResultsCache:
         assert _state.trace_results_cache[uri]["test_fn"].output_shape == (4, 8)
         with _state.cache_lock:
             _state.trace_results_cache.pop(uri, None)
+
+
+class TestHoverDivergenceInfo:
+    """Tests for divergence-aware hover in LSP navigation."""
+
+    def test_hover_on_error_line_shows_divergence(self) -> None:
+        """Hover on a line with a divergence error shows expected vs actual."""
+        from jaxtyc.lsp import _state
+        from jaxtyc.types import ErrorHintInfo
+        from jaxtyc.types import IntermediateShape
+
+        uri = "file:///test/hover_diverge.py"
+        with _state.cache_lock:
+            _state.analysis_cache[uri] = [
+                IntermediateShape(
+                    shape=(4, 16),
+                    dtype="float32",
+                    source_file="/test/hover_diverge.py",
+                    source_line=5,
+                    source_col=0,
+                    named_shape=("batch", "d_out"),
+                    op_name="dot_general",
+                ),
+            ]
+            _state.error_hints_cache[uri] = [
+                ErrorHintInfo(
+                    source_line=5,
+                    message="dim 1: expected d_model, got d_out",
+                    rule="shape-mismatch",
+                    function_name="forward",
+                    expected_named=("batch", "d_model"),
+                    actual_named=("batch", "d_out"),
+                ),
+            ]
+
+        from lsprotocol import types as lsp_types
+
+        from jaxtyc.lsp._navigation import hover
+        from jaxtyc.lsp.server import server
+
+        params = lsp_types.HoverParams(
+            text_document=lsp_types.TextDocumentIdentifier(uri=uri),
+            position=lsp_types.Position(line=4, character=0),
+        )
+        result = hover(server, params)
+        assert result is not None
+        content = result.contents.value
+        assert "dot_general" in content
+        assert "d_model" in content
+        assert "d_out" in content
+
+        with _state.cache_lock:
+            _state.analysis_cache.pop(uri, None)
+            _state.error_hints_cache.pop(uri, None)
+
+    def test_hover_no_divergence_when_clean(self) -> None:
+        """Hover on a clean line should not show divergence info."""
+        from jaxtyc.lsp import _state
+        from jaxtyc.types import IntermediateShape
+
+        uri = "file:///test/hover_clean.py"
+        with _state.cache_lock:
+            _state.analysis_cache[uri] = [
+                IntermediateShape(
+                    shape=(4, 8),
+                    dtype="float32",
+                    source_file="/test/hover_clean.py",
+                    source_line=5,
+                    source_col=0,
+                    named_shape=("batch", "seq"),
+                    op_name="add",
+                ),
+            ]
+            _state.error_hints_cache[uri] = []
+
+        from lsprotocol import types as lsp_types
+
+        from jaxtyc.lsp._navigation import hover
+        from jaxtyc.lsp.server import server
+
+        params = lsp_types.HoverParams(
+            text_document=lsp_types.TextDocumentIdentifier(uri=uri),
+            position=lsp_types.Position(line=4, character=0),
+        )
+        result = hover(server, params)
+        assert result is not None
+        content = result.contents.value
+        assert "divergence" not in content.lower()
+        assert "expected" not in content.lower()
+
+        with _state.cache_lock:
+            _state.analysis_cache.pop(uri, None)
+            _state.error_hints_cache.pop(uri, None)
+
+    def test_hover_divergence_with_rank_mismatch(self) -> None:
+        """Divergence from rank change shows rank info."""
+        from jaxtyc.lsp import _state
+        from jaxtyc.types import ErrorHintInfo
+        from jaxtyc.types import IntermediateShape
+
+        uri = "file:///test/hover_rank.py"
+        with _state.cache_lock:
+            _state.analysis_cache[uri] = [
+                IntermediateShape(
+                    shape=(4,),
+                    dtype="float32",
+                    source_file="/test/hover_rank.py",
+                    source_line=5,
+                    source_col=0,
+                    named_shape=("batch",),
+                    op_name="reduce_sum",
+                ),
+            ]
+            _state.error_hints_cache[uri] = [
+                ErrorHintInfo(
+                    source_line=5,
+                    message="Rank changed to 1 (expected 2) at reduce_sum",
+                    rule="rank-mismatch",
+                    function_name="project",
+                    expected_named=("batch", "seq"),
+                    actual_named=("batch",),
+                ),
+            ]
+
+        from lsprotocol import types as lsp_types
+
+        from jaxtyc.lsp._navigation import hover
+        from jaxtyc.lsp.server import server
+
+        params = lsp_types.HoverParams(
+            text_document=lsp_types.TextDocumentIdentifier(uri=uri),
+            position=lsp_types.Position(line=4, character=0),
+        )
+        result = hover(server, params)
+        assert result is not None
+        content = result.contents.value
+        assert "batch, seq" in content
+        assert "batch" in content
+
+        with _state.cache_lock:
+            _state.analysis_cache.pop(uri, None)
+            _state.error_hints_cache.pop(uri, None)

@@ -393,3 +393,78 @@ class TestCheckCallSite:
         )
         diagnostics = check_call_site(call, caller_spec, callee_spec, callee_trace, env)
         assert len(diagnostics) == 0
+
+
+def test_shape_mismatch_has_related_locations() -> None:
+    """Shape mismatch diagnostics should include related_locations."""
+    env = DimEnv()
+    spec = FunctionShapeSpec(
+        name="bad_fn",
+        file_path="/test.py",
+        lineno=5,
+        col_offset=0,
+        params={"x": _named("batch", "d_model")},
+        return_spec=_named("batch", "d_model"),
+        name_col_offset=4,
+    )
+    trace = TraceResult(
+        function_name="bad_fn",
+        output_shape=(env.get_size("batch"), env.get_size("d_out")),
+        output_dtype="float32",
+        intermediates=[],
+        error=None,
+    )
+    diags = check_function(spec, trace, env)
+    shape_diags = [d for d in diags if d.rule == "shape-mismatch"]
+    assert len(shape_diags) >= 1
+    assert shape_diags[0].data is not None
+    assert len(shape_diags[0].data.related_locations) >= 1
+    rl = shape_diags[0].data.related_locations[0]
+    assert rl.file_path == "/test.py"
+    assert rl.line == 5
+
+
+def test_cross_function_mismatch_has_related_locations() -> None:
+    """Cross-function mismatch should link to callee definition."""
+    env = DimEnv()
+    callee = FunctionShapeSpec(
+        name="encode",
+        file_path="/callee.py",
+        lineno=5,
+        col_offset=0,
+        params={"x": _named("batch")},
+        return_spec=_named("batch", "hidden"),
+        name_col_offset=4,
+    )
+    trace = TraceResult(
+        function_name="encode",
+        output_shape=(env.get_size("batch"), env.get_size("d_model")),
+        output_dtype="float32",
+        intermediates=[],
+        error=None,
+    )
+    caller = FunctionShapeSpec(
+        name="main",
+        file_path="/caller.py",
+        lineno=10,
+        col_offset=0,
+        params={},
+        return_spec=None,
+        name_col_offset=4,
+    )
+    call = CallSite(
+        caller_name="main",
+        callee_name="encode",
+        file_path="/caller.py",
+        lineno=12,
+        col_offset=4,
+        end_col_offset=10,
+    )
+    diags = check_call_site(call, caller, callee, trace, env)
+    assert len(diags) >= 1
+    assert diags[0].data is not None
+    assert len(diags[0].data.related_locations) >= 1
+    rl = diags[0].data.related_locations[0]
+    assert rl.file_path == "/callee.py"
+    assert rl.line == 5
+    assert "encode" in rl.message

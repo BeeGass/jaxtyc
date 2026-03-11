@@ -144,6 +144,26 @@ def _analyze_and_publish(ls: LanguageServer, uri: str, source: str | None = None
                 "rule": diag.data.rule,
             }
 
+        related_info: list[types.DiagnosticRelatedInformation] | None = None
+        if diag.data is not None and diag.data.related_locations:
+            from pathlib import PurePosixPath
+
+            related_info = []
+            for rl in diag.data.related_locations:
+                rl_uri = PurePosixPath(rl.file_path).as_uri()
+                related_info.append(
+                    types.DiagnosticRelatedInformation(
+                        location=types.Location(
+                            uri=rl_uri,
+                            range=types.Range(
+                                start=types.Position(line=max(0, rl.line - 1), character=rl.col),
+                                end=types.Position(line=max(0, rl.line - 1), character=rl.end_col),
+                            ),
+                        ),
+                        message=rl.message,
+                    )
+                )
+
         lsp_diagnostics.append(
             types.Diagnostic(
                 range=types.Range(
@@ -155,6 +175,7 @@ def _analyze_and_publish(ls: LanguageServer, uri: str, source: str | None = None
                 source="jaxtyc",
                 code=diag.rule,
                 data=lsp_data,
+                related_information=related_info,
             )
         )
 
