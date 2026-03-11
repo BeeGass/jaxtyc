@@ -4,10 +4,12 @@ from __future__ import annotations
 
 from jaxtyc.types import Diagnostic
 from jaxtyc.types import DimSpec
+from jaxtyc.types import ErrorHintInfo
 from jaxtyc.types import FileResult
 from jaxtyc.types import FunctionShapeSpec
 from jaxtyc.types import IntermediateShape
 from jaxtyc.types import ShapeSpec
+from jaxtyc.types import ShardingInfo
 from jaxtyc.types import TraceResult
 
 
@@ -177,6 +179,90 @@ class TestIntermediateShape:
         assert inter.shape == (2, 3, 5)
         assert inter.named_shape == ("batch", "seq", "d_model")
         assert inter.op_name == "dot_general"
+
+
+class TestShardingInfo:
+    def test_sharding_info_frozen(self) -> None:
+        info = ShardingInfo(
+            partition_spec=("data", None, None),
+            mesh_axis_names=("data", "model"),
+            source_primitive="sharding_constraint",
+        )
+        assert info.partition_spec == ("data", None, None)
+        assert info.source_line == 0  # default
+
+    def test_sharding_info_with_line(self) -> None:
+        info = ShardingInfo(
+            partition_spec=("data",),
+            mesh_axis_names=("data",),
+            source_primitive="jit",
+            source_line=42,
+        )
+        assert info.source_line == 42
+
+    def test_sharding_info_immutable(self) -> None:
+        import pytest
+
+        info = ShardingInfo(
+            partition_spec=("data",),
+            mesh_axis_names=("data",),
+            source_primitive="jit",
+        )
+        with pytest.raises(AttributeError):
+            info.source_primitive = "other"  # type: ignore[misc]
+
+
+class TestErrorHintInfo:
+    def test_error_hint_info_frozen(self) -> None:
+        info = ErrorHintInfo(
+            source_line=10,
+            message="expected dim 1: seq, got head_dim",
+            rule="shape-mismatch",
+            function_name="forward",
+        )
+        assert info.source_line == 10
+        assert info.expected_named is None  # default
+        assert info.actual_named is None  # default
+
+    def test_error_hint_info_with_shapes(self) -> None:
+        info = ErrorHintInfo(
+            source_line=5,
+            message="rank mismatch",
+            rule="rank-mismatch",
+            function_name="encode",
+            expected_named=("batch", "seq"),
+            actual_named=("batch",),
+        )
+        assert info.expected_named == ("batch", "seq")
+        assert info.actual_named == ("batch",)
+
+
+class TestIntermediateShapeSharding:
+    def test_intermediate_shape_with_sharding(self) -> None:
+        inter = IntermediateShape(
+            shape=(4, 8),
+            dtype="float32",
+            source_file="f.py",
+            source_line=5,
+            source_col=0,
+            named_shape=("batch", "seq"),
+            op_name="add",
+            sharding=ShardingInfo(("data", None), ("data",), "sharding_constraint"),
+        )
+        assert inter.sharding is not None
+        assert inter.sharding.partition_spec == ("data", None)
+
+    def test_intermediate_shape_sharding_default_none(self) -> None:
+        inter = IntermediateShape(
+            shape=(4,),
+            dtype="float32",
+            source_file="f.py",
+            source_line=1,
+            source_col=0,
+            named_shape=("batch",),
+            op_name="add",
+        )
+        assert inter.sharding is None
 
 
 class TestFileResult:
