@@ -57,6 +57,23 @@ rules = ["sharding-rank-mismatch", "sharding-axis-unknown"]
 
 ---
 
+## Navigation configuration
+
+The `[tool.jaxtyc.navigation]` section controls LSP navigation features like find references, call hierarchy, and cross-file symbol resolution.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `references_scope` | `"workspace"` \| `"file"` | `"workspace"` | Scope for finding references and incoming calls. `workspace` searches all indexed files; `file` limits to the current file. |
+| `include_external_calls` | `bool` | `true` | Whether to include calls to external/library functions (e.g. `jnp.matmul`) in outgoing calls and hover. External calls display with their qualified name. |
+
+```toml
+[tool.jaxtyc.navigation]
+references_scope = "file"         # restrict to current file only
+include_external_calls = false    # hide library calls from call hierarchy
+```
+
+---
+
 ## Full example
 
 ```toml
@@ -74,6 +91,10 @@ dtype_style = "numpy"
 [tool.jaxtyc.sharding]
 display = "append"
 rules = ["sharding-rank-mismatch", "sharding-axis-unknown", "sharding-conflict", "sharding-io-mismatch"]
+
+[tool.jaxtyc.navigation]
+references_scope = "workspace"
+include_external_calls = true
 ```
 
 ---
