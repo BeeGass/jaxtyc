@@ -251,7 +251,7 @@ class TestShardingConfig:
         """ShardingConfig has correct defaults."""
         cfg = ShardingConfig()
         assert cfg.display == "append"
-        assert len(cfg.rules) == 7
+        assert len(cfg.rules) == 8
 
     def test_sharding_config_frozen(self) -> None:
         """ShardingConfig should be immutable."""
