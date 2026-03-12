@@ -21,6 +21,7 @@ _DEFAULT_SHARDING_RULES: list[str] = [
     "sharding-propagation-mismatch",
     "sharding-annotation-incomplete",
     "sharding-dim-conflict",
+    "sharding-mesh-undefined",
 ]
 
 

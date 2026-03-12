@@ -259,6 +259,70 @@ class TestShardedTracing:
         else:
             assert result.success  # direct sharded trace worked
 
+
+class TestAxisRulesResolution:
+    def test_logical_axis_resolved_to_physical(self) -> None:
+        """Trace with mesh_axis='dp', axis_rules={'dp': 'data'}, mesh={'data': 4}."""
+        env = DimEnv()
+        params = {
+            "x": ShapeSpec(
+                dims=(
+                    DimSpec("named", "batch", mesh_axis="dp"),
+                    DimSpec("named", "seq", mesh_axis=None),
+                ),
+                dtype="float32",
+            ),
+        }
+        result = trace_function(
+            lambda x: x,
+            params,
+            env,
+            mesh_config={"data": 4},
+            axis_rules={"dp": "data"},
+        )
+        assert result.success, f"Trace failed: {result.error}"
+
+    def test_physical_axis_passthrough(self) -> None:
+        """mesh_axis='data' passes through when axis_rules maps 'dp' to 'data'."""
+        env = DimEnv()
+        params = {
+            "x": ShapeSpec(
+                dims=(
+                    DimSpec("named", "batch", mesh_axis="data"),
+                    DimSpec("named", "seq", mesh_axis=None),
+                ),
+                dtype="float32",
+            ),
+        }
+        result = trace_function(
+            lambda x: x,
+            params,
+            env,
+            mesh_config={"data": 4},
+            axis_rules={"dp": "data"},
+        )
+        assert result.success
+
+    def test_no_axis_rules_uses_direct_name(self) -> None:
+        """Without axis_rules, mesh_axis is used as-is."""
+        env = DimEnv()
+        params = {
+            "x": ShapeSpec(
+                dims=(DimSpec("named", "batch", mesh_axis="data"),),
+                dtype="float32",
+            ),
+        }
+        result = trace_function(
+            lambda x: x,
+            params,
+            env,
+            mesh_config={"data": 4},
+            axis_rules=None,
+        )
+        assert result.success
+
+
+class TestShardedTracingMisc:
     def test_mesh_config_without_sharded_specs(self) -> None:
         """mesh_config provided but specs have no mesh_axis — no sharding."""
 

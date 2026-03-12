@@ -22,6 +22,7 @@ from jaxtyc.analyzer.importer import import_module_from_path
 from jaxtyc.analyzer.mesh_resolver import MeshInfo
 from jaxtyc.analyzer.mesh_resolver import resolve_mesh
 from jaxtyc.analyzer.sharding_checker import check_annotation_sharding
+from jaxtyc.analyzer.sharding_checker import check_mesh_axes
 from jaxtyc.analyzer.sharding_checker import check_sharding
 from jaxtyc.analyzer.sharding_checker import check_sharding_propagation
 from jaxtyc.analyzer.suppressions import extract_suppressions
@@ -116,6 +117,7 @@ def analyze_file(file_path: str) -> FileResult:
         mesh_info = MeshInfo()
 
     mesh_config = mesh_info.mesh or None
+    axis_rules = dict(mesh_info.axis_rules) if mesh_info.axis_rules else {}
 
     # Import module to get live function objects
     try:
@@ -195,6 +197,11 @@ def analyze_file(file_path: str) -> FileResult:
         annotation_sharding_diags = check_annotation_sharding(func_spec, file_path)
         diagnostics.extend(annotation_sharding_diags)
 
+        # Check mesh axis references
+        if mesh_config:
+            mesh_diags = check_mesh_axes(func_spec, file_path, mesh_config, axis_rules)
+            diagnostics.extend(mesh_diags)
+
         # If annotation-level sharding has errors, skip sharded tracing to avoid
         # confusing trace-error from conflicting concrete sizes. Fall back to
         # unsharded tracing so shape checks still run.
@@ -202,7 +209,9 @@ def analyze_file(file_path: str) -> FileResult:
         if annotation_sharding_diags and mesh_config:
             effective_mesh = None
 
-        trace = trace_function(fn, func_spec.params, env, mesh_config=effective_mesh)
+        trace = trace_function(
+            fn, func_spec.params, env, mesh_config=effective_mesh, axis_rules=axis_rules
+        )
 
         # Emit warning if sharded tracing fell back to unsharded
         if trace.sharding_fallback_reason is not None:

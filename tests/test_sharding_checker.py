@@ -14,9 +14,17 @@ from jaxtyc.types import ShapeSpec
 from jaxtyc.types import ShardingInfo
 
 
-def _make_func_spec() -> FunctionShapeSpec:
+def _make_func_spec(
+    params: dict[str, ShapeSpec] | None = None,
+    return_spec: ShapeSpec | None = None,
+) -> FunctionShapeSpec:
     return FunctionShapeSpec(
-        name="fn", file_path="f.py", lineno=1, col_offset=0, params={}, return_spec=None
+        name="fn",
+        file_path="f.py",
+        lineno=1,
+        col_offset=0,
+        params=params or {},
+        return_spec=return_spec,
     )
 
 
@@ -351,6 +359,66 @@ class TestAnnotationIncomplete:
         )
         diags = check_annotation_sharding(func_spec, "f.py", strict=False)
         assert not any(d.rule == "sharding-annotation-incomplete" for d in diags)
+
+
+class TestCheckMeshAxes:
+    def test_undefined_axis_emits_diagnostic(self) -> None:
+        from jaxtyc.analyzer.sharding_checker import check_mesh_axes
+
+        func_spec = _make_func_spec(
+            params={
+                "x": ShapeSpec(
+                    dims=(DimSpec("named", "batch", mesh_axis="dp"),),
+                    dtype="float32",
+                )
+            },
+        )
+        result = check_mesh_axes(func_spec, "f.py", {"data": 4}, {})
+        assert len(result) == 1
+        assert result[0].rule == "sharding-mesh-undefined"
+        assert "dp" in result[0].message
+
+    def test_physical_axis_in_mesh_no_diagnostic(self) -> None:
+        from jaxtyc.analyzer.sharding_checker import check_mesh_axes
+
+        func_spec = _make_func_spec(
+            params={
+                "x": ShapeSpec(
+                    dims=(DimSpec("named", "batch", mesh_axis="data"),),
+                    dtype="float32",
+                )
+            },
+        )
+        result = check_mesh_axes(func_spec, "f.py", {"data": 4}, {})
+        assert result == []
+
+    def test_logical_axis_in_rules_no_diagnostic(self) -> None:
+        from jaxtyc.analyzer.sharding_checker import check_mesh_axes
+
+        func_spec = _make_func_spec(
+            params={
+                "x": ShapeSpec(
+                    dims=(DimSpec("named", "batch", mesh_axis="dp"),),
+                    dtype="float32",
+                )
+            },
+        )
+        result = check_mesh_axes(func_spec, "f.py", {"data": 4}, {"dp": "data"})
+        assert result == []
+
+    def test_none_mesh_axis_no_diagnostic(self) -> None:
+        from jaxtyc.analyzer.sharding_checker import check_mesh_axes
+
+        func_spec = _make_func_spec(
+            params={
+                "x": ShapeSpec(
+                    dims=(DimSpec("named", "batch", mesh_axis=None),),
+                    dtype="float32",
+                )
+            },
+        )
+        result = check_mesh_axes(func_spec, "f.py", {"data": 4}, {})
+        assert result == []
 
 
 class TestDimConflict:

@@ -183,6 +183,62 @@ def check_sharding_propagation(
     ]
 
 
+def check_mesh_axes(
+    func_spec: FunctionShapeSpec,
+    file_path: str,
+    mesh_config: dict[str, int],
+    axis_rules: dict[str, str],
+) -> list[Diagnostic]:
+    """Check that all mesh_axis references resolve to known axes.
+
+    A mesh_axis is "known" if it appears as a key in mesh_config (physical axis)
+    OR as a key in axis_rules (logical axis that maps to a physical one).
+
+    Args:
+        func_spec: Function spec with param and return annotations.
+        file_path: File path for diagnostics.
+        mesh_config: Physical mesh axis name -> device count.
+        axis_rules: Logical axis name -> physical axis name.
+
+    Returns:
+        List of sharding-mesh-undefined diagnostics.
+    """
+    diagnostics: list[Diagnostic] = []
+    known_axes = set(mesh_config.keys()) | set(axis_rules.keys())
+
+    all_specs: list[ShapeSpec] = list(func_spec.params.values())
+    if func_spec.return_spec is not None:
+        all_specs.append(func_spec.return_spec)
+    if func_spec.return_specs:
+        all_specs.extend(func_spec.return_specs)
+
+    seen: set[str] = set()
+    for spec in all_specs:
+        for dim in spec.dims:
+            if (
+                dim.mesh_axis is not None
+                and dim.mesh_axis not in known_axes
+                and dim.mesh_axis not in seen
+            ):
+                seen.add(dim.mesh_axis)
+                diagnostics.append(
+                    Diagnostic(
+                        file=file_path,
+                        line=func_spec.lineno,
+                        col=func_spec.col_offset,
+                        severity="error",
+                        message=(
+                            f"Undefined mesh axis `{dim.mesh_axis}` on dim "
+                            f"`{dim.name or '_'}` in `{func_spec.name}`: "
+                            f"not found in mesh axes {sorted(mesh_config.keys())} "
+                            f"or axis_rules {sorted(axis_rules.keys())}"
+                        ),
+                        rule="sharding-mesh-undefined",
+                    )
+                )
+    return diagnostics
+
+
 def check_annotation_sharding(
     func_spec: FunctionShapeSpec,
     file_path: str,

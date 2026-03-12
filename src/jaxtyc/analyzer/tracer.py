@@ -210,6 +210,7 @@ def _build_sharded_abstract_input(
     spec: ShapeSpec,
     env: DimEnv,
     mesh_config: dict[str, int],
+    axis_rules: dict[str, str] | None = None,
 ) -> jax.ShapeDtypeStruct:
     """Build a ShapeDtypeStruct with NamedSharding for a sharded spec.
 
@@ -224,6 +225,9 @@ def _build_sharded_abstract_input(
 
     for dim in spec.dims:
         axis = dim.mesh_axis
+        # Resolve logical -> physical axis name
+        if axis is not None and axis_rules:
+            axis = axis_rules.get(axis, axis)
         pspec_entries.append(axis)
 
         if dim.kind == "named":
@@ -346,6 +350,7 @@ def trace_function(
     params: dict[str, ShapeSpec],
     env: DimEnv,
     mesh_config: dict[str, int] | None = None,
+    axis_rules: dict[str, str] | None = None,
 ) -> TraceResult:
     """Trace a function using jax.eval_shape to get output shapes.
 
@@ -354,6 +359,7 @@ def trace_function(
         params: Map of parameter name to ShapeSpec (from jaxtyping annotations).
         env: DimEnv for symbolic sizing.
         mesh_config: Optional mesh axis name -> size mapping for sharded tracing.
+        axis_rules: Optional logical -> physical axis name mapping.
 
     Returns:
         TraceResult with output shape, intermediates, and any errors.
@@ -373,6 +379,7 @@ def trace_function(
                 spec,
                 env,
                 mesh_config,  # type: ignore[arg-type]
+                axis_rules,
             )
         else:
             abstract_inputs[name] = _build_abstract_input(spec, env)
