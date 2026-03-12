@@ -26,6 +26,8 @@ class DimSpec:
     kind: Literal["named", "fixed", "variadic", "anonymous", "ellipsis"]
     name: str | None = None
     size: int | None = None
+    mesh_axis: str | None = None
+    sharding_annotated: bool = False
 
 
 @dataclass(frozen=True)
@@ -44,6 +46,11 @@ class ShapeSpec:
     dtype: str
     is_scalar: bool = False
     is_any_shape: bool = False
+
+    @property
+    def has_sharding(self) -> bool:
+        """True if any dimension has a mesh_axis annotation."""
+        return any(d.mesh_axis is not None for d in self.dims)
 
 
 @dataclass(frozen=True)
@@ -232,6 +239,7 @@ class TraceResult:
     input_shapes: dict[str, tuple[int, ...]] = field(default_factory=dict)
     output_shapes: list[tuple[int, ...]] | None = None
     output_dtypes: list[str] | None = None
+    output_sharding: object | None = None
 
     @property
     def success(self) -> bool:

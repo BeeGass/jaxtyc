@@ -18,6 +18,9 @@ _DEFAULT_SHARDING_RULES: list[str] = [
     "sharding-axis-unknown",
     "sharding-conflict",
     "sharding-io-mismatch",
+    "sharding-propagation-mismatch",
+    "sharding-annotation-incomplete",
+    "sharding-dim-conflict",
 ]
 
 
@@ -59,6 +62,9 @@ class ShardingConfig:
 
     display: str = "append"
     rules: list[str] = field(default_factory=lambda: list(_DEFAULT_SHARDING_RULES))
+    mesh: dict[str, int] = field(default_factory=dict)
+    axis_rules: dict[str, str] = field(default_factory=dict)
+    strict_annotation: bool = True
 
 
 @dataclass(frozen=True)
