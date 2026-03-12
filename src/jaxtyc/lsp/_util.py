@@ -58,6 +58,65 @@ def dim_label(d: DimSpec) -> str:
     return base
 
 
+def format_named_shape(
+    named_shape: tuple[str | None, ...],
+    shape: tuple[object, ...],
+) -> list[str]:
+    """Format named_shape for display, collapsing synthetic dim names.
+
+    Display rules:
+    - ``_ellipsis_0, _ellipsis_1`` -> ``...(size0, size1)`` with concrete sizes
+    - ``_var_batch_0, _var_batch_1`` -> ``*batch`` (original variadic name)
+    - ``_anon_N`` -> ``_``
+    - ``None`` -> concrete size as string
+    - named dims -> name as-is
+
+    Args:
+        named_shape: Dimension names from the tracer (may contain synthetic names).
+        shape: Corresponding concrete shape tuple.
+
+    Returns:
+        List of display-ready dimension labels.
+    """
+    parts: list[str] = []
+    i = 0
+    while i < len(named_shape):
+        name = named_shape[i]
+        # Collapse consecutive _ellipsis_* dims into ...(sizes)
+        if name is not None and name.startswith("_ellipsis_"):
+            sizes: list[str] = []
+            while (
+                i < len(named_shape)
+                and named_shape[i] is not None
+                and named_shape[i].startswith("_ellipsis_")  # type: ignore[union-attr]
+            ):
+                sizes.append(str(shape[i]))
+                i += 1
+            parts.append(f"...({', '.join(sizes)})")
+            continue
+        # Collapse consecutive _var_{name}_* dims into *name
+        if name is not None and name.startswith("_var_"):
+            # Extract original name: _var_batch_0 -> batch
+            var_name = name.split("_var_")[1].rsplit("_", 1)[0]
+            while (
+                i < len(named_shape)
+                and named_shape[i] is not None
+                and named_shape[i].startswith(f"_var_{var_name}_")  # type: ignore[union-attr]
+            ):
+                i += 1
+            parts.append(f"*{var_name}")
+            continue
+        # Replace _anon_N with _
+        if name is not None and name.startswith("_anon_"):
+            parts.append("_")
+            i += 1
+            continue
+        # Normal dim: use name or concrete size
+        parts.append(name or str(shape[i]))
+        i += 1
+    return parts
+
+
 def shape_summary(spec: FunctionShapeSpec) -> str:
     """Build a shape summary string like '(batch, seq) -> (batch, hidden)'."""
     parts = []

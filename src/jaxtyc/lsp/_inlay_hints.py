@@ -9,6 +9,7 @@ from pygls.lsp.server import LanguageServer
 
 from jaxtyc.lsp import _state
 from jaxtyc.lsp._util import format_dtype
+from jaxtyc.lsp._util import format_named_shape
 from jaxtyc.lsp.server import server
 from jaxtyc.types import ErrorHintInfo
 from jaxtyc.types import IntermediateShape
@@ -57,19 +58,48 @@ def _format_shape(inter: IntermediateShape, dtype_style: str) -> str:
     When sharding info is available and not suppressed by config, each
     dimension is annotated with its partition axis using pipe syntax
     (e.g. ``batch|data seq|None``). Scalars (rank 0) use empty brackets.
+
+    Synthetic dim names (_ellipsis_*, _var_*, _anon_*) are collapsed into
+    user-friendly display forms by format_named_shape().
     """
     dtype = format_dtype(inter.dtype, dtype_style)
     if not inter.shape:
         return f"{dtype}[]"
 
+    dim_parts = format_named_shape(inter.named_shape, inter.shape)
+
     sharding_axes = _get_sharding_axes(inter)
-    dim_parts: list[str] = []
-    for i, (name, size) in enumerate(zip(inter.named_shape, inter.shape, strict=True)):
-        dim_label = name or str(size)
-        if sharding_axes is not None and i < len(sharding_axes):
-            axis = sharding_axes[i]
-            dim_label = f"{dim_label}|{axis}" if axis is not None else f"{dim_label}|None"
-        dim_parts.append(dim_label)
+    if sharding_axes is not None:
+        annotated: list[str] = []
+        orig_idx = 0
+        for label in dim_parts:
+            if label.startswith("...") or label.startswith("*") or label == "_":
+                # Skip sharding for collapsed/anonymous dims, advance orig_idx
+                if label.startswith("..."):
+                    while (
+                        orig_idx < len(inter.named_shape)
+                        and inter.named_shape[orig_idx] is not None
+                        and inter.named_shape[orig_idx].startswith("_ellipsis_")
+                    ):  # type: ignore[union-attr]
+                        orig_idx += 1
+                elif label.startswith("*"):
+                    var_name = label[1:]
+                    while (
+                        orig_idx < len(inter.named_shape)
+                        and inter.named_shape[orig_idx] is not None
+                        and inter.named_shape[orig_idx].startswith(f"_var_{var_name}_")
+                    ):  # type: ignore[union-attr]
+                        orig_idx += 1
+                else:
+                    orig_idx += 1
+                annotated.append(label)
+            else:
+                if orig_idx < len(sharding_axes):
+                    axis = sharding_axes[orig_idx]
+                    label = f"{label}|{axis}" if axis is not None else f"{label}|None"
+                orig_idx += 1
+                annotated.append(label)
+        dim_parts = annotated
 
     return f"{dtype}[{' '.join(dim_parts)}]"
 

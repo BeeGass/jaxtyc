@@ -11,6 +11,7 @@ from jaxtyc.lsp import _state
 from jaxtyc.lsp._util import dim_label
 from jaxtyc.lsp._util import dim_range
 from jaxtyc.lsp._util import format_dtype
+from jaxtyc.lsp._util import format_named_shape
 from jaxtyc.lsp._util import shape_summary
 from jaxtyc.lsp._util import spec_range
 from jaxtyc.lsp._util import spec_selection_range
@@ -223,7 +224,8 @@ def hover(ls: LanguageServer, params: types.HoverParams) -> types.Hover | None:
     # Build hover content with full intermediate chain
     lines: list[str] = [f"**Intermediates at line {line}:**"]
     for idx, inter in enumerate(matching):
-        named = ", ".join(n or str(s) for n, s in zip(inter.named_shape, inter.shape, strict=True))
+        dim_parts = format_named_shape(inter.named_shape, inter.shape)
+        named = ", ".join(dim_parts)
         dtype = format_dtype(inter.dtype, dtype_style)
         entry = f"`{inter.op_name}` \u2192 `{dtype}[{named}]`"
         if idx == len(matching) - 1:

@@ -3013,3 +3013,69 @@ class TestShardingInTypes:
             assert "mp" not in axes_d
         finally:
             _state.config = original_config
+
+
+class TestFormatNamedShape:
+    def test_normal_dims_unchanged(self) -> None:
+        from jaxtyc.lsp._util import format_named_shape
+
+        result = format_named_shape(("batch", "seq", "d_model"), (4, 8, 512))
+        assert result == ["batch", "seq", "d_model"]
+
+    def test_ellipsis_collapsed_with_sizes(self) -> None:
+        from jaxtyc.lsp._util import format_named_shape
+
+        result = format_named_shape(("_ellipsis_0", "_ellipsis_1", "d_model"), (4, 8, 512))
+        assert result == ["...(4, 8)", "d_model"]
+
+    def test_variadic_collapsed(self) -> None:
+        from jaxtyc.lsp._util import format_named_shape
+
+        result = format_named_shape(("_var_batch_0", "_var_batch_1", "seq"), (2, 4, 128))
+        assert result == ["*batch", "seq"]
+
+    def test_anonymous_replaced(self) -> None:
+        from jaxtyc.lsp._util import format_named_shape
+
+        result = format_named_shape(("_anon_1", "_anon_2"), (3, 5))
+        assert result == ["_", "_"]
+
+    def test_none_shows_size(self) -> None:
+        from jaxtyc.lsp._util import format_named_shape
+
+        result = format_named_shape((None, "seq"), (42, 128))
+        assert result == ["42", "seq"]
+
+    def test_mixed_dims(self) -> None:
+        from jaxtyc.lsp._util import format_named_shape
+
+        result = format_named_shape(
+            ("_ellipsis_0", "_ellipsis_1", "d_model", "_anon_1"),
+            (4, 8, 512, 1),
+        )
+        assert result == ["...(4, 8)", "d_model", "_"]
+
+    def test_empty_shape(self) -> None:
+        from jaxtyc.lsp._util import format_named_shape
+
+        result = format_named_shape((), ())
+        assert result == []
+
+
+class TestInlayHintEllipsisDisplay:
+    def test_inlay_hint_ellipsis_display(self) -> None:
+        """Verify inlay hints show ...(sizes) not _ellipsis_N for ellipsis dims."""
+        from jaxtyc.lsp._inlay_hints import _format_shape
+        from jaxtyc.types import IntermediateShape
+
+        inter = IntermediateShape(
+            shape=(4, 8, 512),
+            dtype="float32",
+            source_file="f.py",
+            source_line=5,
+            source_col=0,
+            named_shape=("_ellipsis_0", "_ellipsis_1", "d_model"),
+            op_name="add",
+        )
+        result = _format_shape(inter, "numpy")
+        assert result == "f32[...(4, 8) d_model]"
