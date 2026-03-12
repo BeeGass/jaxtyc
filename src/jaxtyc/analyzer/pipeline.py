@@ -175,7 +175,9 @@ def analyze_file(file_path: str) -> FileResult:
         if func_spec.is_method and func_spec.class_name is not None:
             cls = getattr(module, func_spec.class_name, None)
             if cls is not None and _is_nnx_module(cls):
-                trace = _trace_nnx_method(cls, func_spec, env)
+                trace = _trace_nnx_method(
+                    cls, func_spec, env, mesh_config=mesh_config, axis_rules=axis_rules
+                )
                 trace_results.append(trace)
                 traced[func_spec.name] = (func_spec, trace)
                 functions_checked += 1
@@ -184,7 +186,9 @@ def analyze_file(file_path: str) -> FileResult:
                 diagnostics.extend(check_sharding(trace.intermediates, func_spec, file_path))
                 continue
             if cls is not None and _is_eqx_module(cls):
-                trace = _trace_eqx_method(cls, func_spec, env)
+                trace = _trace_eqx_method(
+                    cls, func_spec, env, mesh_config=mesh_config, axis_rules=axis_rules
+                )
                 trace_results.append(trace)
                 traced[func_spec.name] = (func_spec, trace)
                 functions_checked += 1
@@ -383,6 +387,8 @@ def _trace_nnx_method(
     cls: type,
     func_spec: FunctionShapeSpec,
     env: DimEnv,
+    mesh_config: dict[str, int] | None = None,
+    axis_rules: dict[str, str] | None = None,
 ) -> TraceResult:
     """Trace a Flax NNX module method using a concrete model with split/merge."""
     import jax
@@ -428,9 +434,25 @@ def _trace_nnx_method(
         model = nnx.merge(graphdef, state)
         return getattr(model, func_spec.name)(**kwargs)
 
+    # Build mesh context if sharding is active
+    has_sharding = bool(
+        mesh_config and any(spec.has_sharding for spec in func_spec.params.values())
+    )
+    abstract_mesh = None
+    if has_sharding and mesh_config:
+        from jaxtyc.analyzer.tracer import _build_abstract_mesh
+
+        abstract_mesh = _build_abstract_mesh(mesh_config)
+
     # Trace for output shape
     try:
-        output_struct = jax.eval_shape(pure_fn, **abstract_inputs)
+        if abstract_mesh is not None:
+            from jax._src.mesh import use_abstract_mesh
+
+            with use_abstract_mesh(abstract_mesh):
+                output_struct = jax.eval_shape(pure_fn, **abstract_inputs)
+        else:
+            output_struct = jax.eval_shape(pure_fn, **abstract_inputs)
     except Exception as e:
         return TraceResult(
             function_name=func_spec.name,
@@ -454,7 +476,13 @@ def _trace_nnx_method(
             output_dtype = None
 
     # Extract intermediates via make_jaxpr (graceful degradation)
-    intermediates = _extract_intermediates(pure_fn, abstract_inputs, env)
+    if abstract_mesh is not None:
+        from jax._src.mesh import use_abstract_mesh
+
+        with use_abstract_mesh(abstract_mesh):
+            intermediates = _extract_intermediates(pure_fn, abstract_inputs, env)
+    else:
+        intermediates = _extract_intermediates(pure_fn, abstract_inputs, env)
 
     return TraceResult(
         function_name=func_spec.name,
@@ -476,6 +504,8 @@ def _trace_eqx_method(
     cls: type,
     func_spec: FunctionShapeSpec,
     env: DimEnv,
+    mesh_config: dict[str, int] | None = None,
+    axis_rules: dict[str, str] | None = None,
 ) -> TraceResult:
     """Trace an equinox module method using jax.eval_shape with a bound method."""
     import jax
@@ -494,6 +524,16 @@ def _trace_eqx_method(
     # Build constructor kwargs from annotation dims so model params
     # match the concrete abstract inputs
     dim_sizes = _collect_dim_kwargs(cls, func_spec, env)
+
+    # Build mesh context if sharding is active
+    has_sharding = bool(
+        mesh_config and any(spec.has_sharding for spec in func_spec.params.values())
+    )
+    abstract_mesh = None
+    if has_sharding and mesh_config:
+        from jaxtyc.analyzer.tracer import _build_abstract_mesh
+
+        abstract_mesh = _build_abstract_mesh(mesh_config)
 
     # Equinox modules are pytrees — instantiate with dimension-matched params
     try:
@@ -517,7 +557,13 @@ def _trace_eqx_method(
         def wrapper(**kwargs: Any) -> Any:
             return method(**kwargs)
 
-        output_struct = jax.eval_shape(wrapper, **abstract_inputs)
+        if abstract_mesh is not None:
+            from jax._src.mesh import use_abstract_mesh
+
+            with use_abstract_mesh(abstract_mesh):
+                output_struct = jax.eval_shape(wrapper, **abstract_inputs)
+        else:
+            output_struct = jax.eval_shape(wrapper, **abstract_inputs)
     except Exception as e:
         return TraceResult(
             function_name=func_spec.name,
@@ -540,7 +586,13 @@ def _trace_eqx_method(
             output_dtype = None
 
     # Extract intermediates via make_jaxpr (graceful degradation)
-    intermediates = _extract_intermediates(wrapper, abstract_inputs, env)
+    if abstract_mesh is not None:
+        from jax._src.mesh import use_abstract_mesh
+
+        with use_abstract_mesh(abstract_mesh):
+            intermediates = _extract_intermediates(wrapper, abstract_inputs, env)
+    else:
+        intermediates = _extract_intermediates(wrapper, abstract_inputs, env)
 
     return TraceResult(
         function_name=func_spec.name,

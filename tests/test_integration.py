@@ -86,6 +86,31 @@ class TestAnalyzeFileEndToEnd:
         )
 
 
+class TestBoolAnnotation:
+    def test_bool_annotation_traces_correctly(self) -> None:
+        """Bool annotations trace to bool dtype through the full pipeline."""
+        result = analyze_file(str(FIXTURES / "bool_annotations.py"))
+        assert result.functions_checked >= 1
+        errors = [d for d in result.diagnostics if d.severity == "error"]
+        assert len(errors) == 0, f"Unexpected errors: {errors}"
+
+        make_mask = next(
+            (t for t in result.trace_results if t.function_name == "make_mask"),
+            None,
+        )
+        assert make_mask is not None
+        assert make_mask.success
+        assert make_mask.output_dtype == "bool"
+
+        apply_mask = next(
+            (t for t in result.trace_results if t.function_name == "apply_mask"),
+            None,
+        )
+        assert apply_mask is not None
+        assert apply_mask.success
+        assert apply_mask.output_dtype == "float32"
+
+
 class TestShardedPipelineIntegration:
     """End-to-end tests for sharding diagnostics wired through the pipeline."""
 
