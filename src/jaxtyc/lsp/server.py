@@ -19,6 +19,7 @@ from jaxtyc.config import filter_diagnostics
 from jaxtyc.config import load_config
 from jaxtyc.lsp import _state
 from jaxtyc.lsp._util import debounce_seconds
+from jaxtyc.lsp._util import dim_label
 from jaxtyc.lsp._util import uri_to_path
 from jaxtyc.lsp.index import build_file_index
 from jaxtyc.types import FunctionShapeSpec
@@ -31,26 +32,6 @@ server: LanguageServer = LanguageServer(
     _pkg_version("jaxtyc"),
     text_document_sync_kind=types.TextDocumentSyncKind.Full,
 )
-
-
-def _collect_literal_dims(func_specs: list[FunctionShapeSpec]) -> frozenset[int]:
-    """Pre-scan function specs to collect literal dimension values for reservation."""
-    reserved: set[int] = set()
-    for spec in func_specs:
-        for pspec in spec.params.values():
-            for dim in pspec.dims:
-                if dim.kind == "fixed" and dim.size is not None:
-                    reserved.add(dim.size)
-        if spec.return_spec:
-            for dim in spec.return_spec.dims:
-                if dim.kind == "fixed" and dim.size is not None:
-                    reserved.add(dim.size)
-        if spec.return_specs:
-            for rspec in spec.return_specs:
-                for dim in rspec.dims:
-                    if dim.kind == "fixed" and dim.size is not None:
-                        reserved.add(dim.size)
-    return frozenset(reserved)
 
 
 def _check_cross_file_calls(
@@ -111,10 +92,10 @@ def _check_cross_file_calls(
             lsp_data = None
             if diag.data is not None:
                 lsp_data = {
-                    "expected_shape": list(diag.data.expected_shape)
+                    "expected_shape": [str(s) for s in diag.data.expected_shape]
                     if diag.data.expected_shape
                     else None,
-                    "actual_shape": list(diag.data.actual_shape)
+                    "actual_shape": [str(s) for s in diag.data.actual_shape]
                     if diag.data.actual_shape
                     else None,
                     "expected_named": list(diag.data.expected_named)
@@ -123,7 +104,9 @@ def _check_cross_file_calls(
                     "actual_named": list(diag.data.actual_named)
                     if diag.data.actual_named
                     else None,
-                    "dim_name_mapping": diag.data.dim_name_mapping,
+                    "dim_name_mapping": {k: str(v) for k, v in diag.data.dim_name_mapping.items()}
+                    if diag.data.dim_name_mapping
+                    else None,
                     "suggested_fix": diag.data.suggested_fix,
                     "rule": diag.data.rule,
                 }
@@ -278,15 +261,19 @@ def _analyze_and_publish(ls: LanguageServer, uri: str, source: str | None = None
         lsp_data = None
         if diag.data is not None:
             lsp_data = {
-                "expected_shape": list(diag.data.expected_shape)
+                "expected_shape": [str(s) for s in diag.data.expected_shape]
                 if diag.data.expected_shape
                 else None,
-                "actual_shape": list(diag.data.actual_shape) if diag.data.actual_shape else None,
+                "actual_shape": [str(s) for s in diag.data.actual_shape]
+                if diag.data.actual_shape
+                else None,
                 "expected_named": list(diag.data.expected_named)
                 if diag.data.expected_named
                 else None,
                 "actual_named": list(diag.data.actual_named) if diag.data.actual_named else None,
-                "dim_name_mapping": diag.data.dim_name_mapping,
+                "dim_name_mapping": {k: str(v) for k, v in diag.data.dim_name_mapping.items()}
+                if diag.data.dim_name_mapping
+                else None,
                 "suggested_fix": diag.data.suggested_fix,
                 "rule": diag.data.rule,
             }
@@ -334,9 +321,6 @@ def _analyze_and_publish(ls: LanguageServer, uri: str, source: str | None = None
     # Import DimEnv once for both CodeLens and hover enhancement
     from jaxtyc.analyzer.dim_env import DimEnv
 
-    # Collect literal dim values to reserve them from prime assignment
-    reserved = _collect_literal_dims(func_specs)
-
     # Build CodeLens cache from function specs + trace results
     try:
         lenses: list[tuple[int, str]] = []
@@ -348,11 +332,11 @@ def _analyze_and_publish(ls: LanguageServer, uri: str, source: str | None = None
                 continue
             param_parts = []
             for pname, pspec in spec.params.items():
-                dim_names = ", ".join(d.name or str(d.size) or d.kind for d in pspec.dims)
+                dim_names = ", ".join(dim_label(d) for d in pspec.dims)
                 param_parts.append(f"{pname}: ({dim_names})")
             ret_part = ""
             if trace.output_shape is not None:
-                env_for_names = DimEnv(reserved=reserved)
+                env_for_names = DimEnv()
                 # Rebuild env with the same dim names as the spec
                 for pspec in spec.params.values():
                     env_for_names.make_shape(pspec)
@@ -369,7 +353,7 @@ def _analyze_and_publish(ls: LanguageServer, uri: str, source: str | None = None
     # Build DimEnv for hover enhancement
     hover_env = None
     try:
-        hover_env = DimEnv(reserved=reserved)
+        hover_env = DimEnv()
         for spec in func_specs:
             for pspec in spec.params.values():
                 hover_env.make_shape(pspec)
@@ -383,17 +367,16 @@ def _analyze_and_publish(ls: LanguageServer, uri: str, source: str | None = None
     from jaxtyc.types import ErrorHintInfo
 
     error_hints: list[ErrorHintInfo] = []
-    if hover_env is not None:
-        trace_by_name = {t.function_name: t for t in result.trace_results}
-        for spec in func_specs:
-            trace = trace_by_name.get(spec.name)
-            if trace is None or not trace.success:
-                continue
-            try:
-                hints = find_divergence_points(spec, trace, hover_env)
-                error_hints.extend(hints)
-            except Exception:
-                logger.debug("Failed to find divergence points for %s", spec.name, exc_info=True)
+    trace_by_name = {t.function_name: t for t in result.trace_results}
+    for spec in func_specs:
+        trace = trace_by_name.get(spec.name)
+        if trace is None or not trace.success:
+            continue
+        try:
+            hints = find_divergence_points(spec, trace)
+            error_hints.extend(hints)
+        except Exception:
+            logger.debug("Failed to find divergence points for %s", spec.name, exc_info=True)
 
     # Synthesize return-line intermediates for functions whose trace succeeded
     # but produced no jaxpr-based intermediates (identity/passthrough functions,

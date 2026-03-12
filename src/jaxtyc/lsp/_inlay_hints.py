@@ -52,28 +52,38 @@ def _find_hint_position(line_text: str) -> int | None:
 
 
 def _format_shape(inter: IntermediateShape, dtype_style: str) -> str:
-    """Format intermediate shape as compact dtype[dim1, dim2] string.
+    """Format intermediate shape as compact dtype[dim1|axis dim2|axis] string.
 
-    Scalars (rank 0) use empty brackets: ``f32[]``.
+    When sharding info is available and not suppressed by config, each
+    dimension is annotated with its partition axis using pipe syntax
+    (e.g. ``batch|data seq|None``). Scalars (rank 0) use empty brackets.
     """
     dtype = format_dtype(inter.dtype, dtype_style)
     if not inter.shape:
         return f"{dtype}[]"
-    named = ", ".join(n or str(s) for n, s in zip(inter.named_shape, inter.shape, strict=True))
-    return f"{dtype}[{named}]"
+
+    sharding_axes = _get_sharding_axes(inter)
+    dim_parts: list[str] = []
+    for i, (name, size) in enumerate(zip(inter.named_shape, inter.shape, strict=True)):
+        dim_label = name or str(size)
+        if sharding_axes is not None and i < len(sharding_axes):
+            axis = sharding_axes[i]
+            dim_label = f"{dim_label}|{axis}" if axis is not None else f"{dim_label}|None"
+        dim_parts.append(dim_label)
+
+    return f"{dtype}[{' '.join(dim_parts)}]"
 
 
-def _format_sharding(inter: IntermediateShape) -> str:
-    """Format sharding info as ' | P(...)' string, or empty string if none."""
+def _get_sharding_axes(inter: IntermediateShape) -> tuple[str | None, ...] | None:
+    """Extract per-dimension sharding axes, or None if sharding is suppressed."""
     if inter.sharding is None:
-        return ""
+        return None
     display = _state.config.sharding.display
     if display == "off":
-        return ""
+        return None
     if display == "constrained_only" and inter.sharding.source_primitive != "sharding_constraint":
-        return ""
-    parts = ", ".join(repr(a) if a is not None else "None" for a in inter.sharding.partition_spec)
-    return f" | P({parts})"
+        return None
+    return inter.sharding.partition_spec
 
 
 def _format_error(error: ErrorHintInfo, style: str) -> str:
@@ -130,11 +140,8 @@ def inlay_hint(ls: LanguageServer, params: types.InlayHintParams) -> list[types.
     for line_num in sorted(last_per_line):
         inter = last_per_line[line_num]
 
-        # Shape part (compact format)
+        # Shape part (includes sharding as dim|axis when available)
         shape_text = _format_shape(inter, dtype_style)
-
-        # Sharding part (pipe-separated)
-        sharding_text = _format_sharding(inter)
 
         # Error part
         error_text = ""
@@ -146,7 +153,7 @@ def inlay_hint(ls: LanguageServer, params: types.InlayHintParams) -> list[types.
         if error is not None and error_mode == "replace":
             label = error_text.lstrip()
         else:
-            label = f"{shape_text}{sharding_text}{error_text}"
+            label = f"{shape_text}{error_text}"
 
         # Determine hint position and prefix based on line kind
         character = 999  # default: end-of-line

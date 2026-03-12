@@ -6,6 +6,7 @@ from lsprotocol import types
 from pygls.lsp.server import LanguageServer
 
 from jaxtyc.lsp import _state
+from jaxtyc.lsp._util import dim_label
 from jaxtyc.lsp.server import server
 
 
@@ -82,7 +83,7 @@ def signature_help(
     param_labels: list[str] = []
 
     for pname, pspec in spec.params.items():
-        dim_names = " ".join(d.name or str(d.size) or d.kind for d in pspec.dims)
+        dim_names = " ".join(dim_label(d) for d in pspec.dims)
         label = f"{pname}: ({dim_names}) {pspec.dtype}"
         param_labels.append(label)
         param_infos.append(
@@ -98,7 +99,7 @@ def signature_help(
     # Build signature label
     ret_part = ""
     if spec.return_spec is not None:
-        ret_dims = " ".join(d.name or str(d.size) or d.kind for d in spec.return_spec.dims)
+        ret_dims = " ".join(dim_label(d) for d in spec.return_spec.dims)
         ret_part = f" -> ({ret_dims}) {spec.return_spec.dtype}"
 
     sig_label = f"{spec.name}({', '.join(param_labels)}){ret_part}"

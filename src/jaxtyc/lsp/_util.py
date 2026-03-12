@@ -9,6 +9,7 @@ from lsprotocol import types
 
 from jaxtyc.lsp import _state
 from jaxtyc.types import DimLocation
+from jaxtyc.types import DimSpec
 from jaxtyc.types import FunctionShapeSpec
 
 
@@ -45,15 +46,27 @@ def spec_selection_range(spec: FunctionShapeSpec) -> types.Range:
     )
 
 
+def dim_label(d: DimSpec) -> str:
+    """Build a display label for a single dimension, including mesh_axis if present.
+
+    Returns ``"name|axis"`` when the dim has a ``mesh_axis``, otherwise just
+    the plain name/size/kind fallback.
+    """
+    base = d.name or str(d.size) or d.kind
+    if d.mesh_axis is not None:
+        return f"{base}|{d.mesh_axis}"
+    return base
+
+
 def shape_summary(spec: FunctionShapeSpec) -> str:
     """Build a shape summary string like '(batch, seq) -> (batch, hidden)'."""
     parts = []
     for pname, pspec in spec.params.items():
-        dim_names = ", ".join(d.name or str(d.size) or d.kind for d in pspec.dims)
+        dim_names = ", ".join(dim_label(d) for d in pspec.dims)
         parts.append(f"{pname}: ({dim_names})")
     ret = ""
     if spec.return_spec is not None:
-        ret_dims = ", ".join(d.name or str(d.size) or d.kind for d in spec.return_spec.dims)
+        ret_dims = ", ".join(dim_label(d) for d in spec.return_spec.dims)
         ret = f" -> ({ret_dims})"
     return f"{', '.join(parts)}{ret}"
 

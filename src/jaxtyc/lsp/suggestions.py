@@ -45,7 +45,9 @@ def suggest_fixes(
     expected_names = tuple(_name(s) for s in expected)
     actual_names = tuple(_name(s) for s in actual)
 
-    if len(expected) == len(actual) and sorted(expected) == sorted(actual):
+    if len(expected) == len(actual) and sorted(str(s) for s in expected) == sorted(
+        str(s) for s in actual
+    ):
         # Transposition detected
         _suggest_transpose(expected, actual, expected_names, actual_names, prefer_einops, fixes)
     elif len(actual) < len(expected):
