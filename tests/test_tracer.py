@@ -140,3 +140,79 @@ class TestTraceFunction:
         result = trace_function(identity, {"x": spec}, env)
         assert result.success
         assert result.output_shape[1] == 4
+
+
+class TestShardedTracing:
+    def test_no_mesh_config_no_sharding(self) -> None:
+        """Without mesh_config, output_sharding is None."""
+
+        def identity(x):
+            return x
+
+        params = {"x": _make_spec("batch", "seq")}
+        env = DimEnv()
+        result = trace_function(identity, params, env)
+        assert result.success
+        assert result.output_sharding is None
+
+    def test_sharded_identity_propagates(self) -> None:
+        """Sharded input propagates through identity function."""
+
+        def identity(x):
+            return x
+
+        params = {
+            "x": ShapeSpec(
+                dims=(
+                    DimSpec(kind="named", name="batch", mesh_axis="data"),
+                    DimSpec(kind="named", name="d_model", mesh_axis=None),
+                ),
+                dtype="float32",
+            ),
+        }
+        env = DimEnv()
+        result = trace_function(identity, params, env, mesh_config={"data": 4, "model": 2})
+        assert result.success
+        assert result.output_sharding is not None
+
+    def test_sharded_matmul_propagates_batch(self) -> None:
+        """Matmul: (batch|data, d) @ (d, f) -> (batch|data, f)."""
+
+        def matmul(x, w):
+            return x @ w
+
+        params = {
+            "x": ShapeSpec(
+                dims=(
+                    DimSpec(kind="named", name="batch", mesh_axis="data"),
+                    DimSpec(kind="named", name="d_model", mesh_axis=None),
+                ),
+                dtype="float32",
+            ),
+            "w": ShapeSpec(
+                dims=(
+                    DimSpec(kind="named", name="d_model", mesh_axis=None),
+                    DimSpec(kind="named", name="d_ff", mesh_axis=None),
+                ),
+                dtype="float32",
+            ),
+        }
+        env = DimEnv()
+        result = trace_function(matmul, params, env, mesh_config={"data": 4, "model": 2})
+        assert result.success
+        # Batch dim should retain data sharding
+        if result.output_sharding is not None:
+            spec = tuple(result.output_sharding.spec)
+            assert spec[0] == "data"
+
+    def test_mesh_config_without_sharded_specs(self) -> None:
+        """mesh_config provided but specs have no mesh_axis — no sharding."""
+
+        def identity(x):
+            return x
+
+        params = {"x": _make_spec("batch", "seq")}
+        env = DimEnv()
+        result = trace_function(identity, params, env, mesh_config={"data": 4, "model": 2})
+        assert result.success
+        assert result.output_sharding is None

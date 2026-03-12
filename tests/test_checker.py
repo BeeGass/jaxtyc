@@ -226,8 +226,8 @@ class TestCheckFunction:
         assert len(diagnostics) == 1
         assert diagnostics[0].rule == "shape-mismatch"
 
-    def test_fixed_dim_with_reserved_no_collision(self) -> None:
-        env = DimEnv(reserved=frozenset({4}))
+    def test_fixed_dim_no_collision(self) -> None:
+        env = DimEnv()
         ret_spec = ShapeSpec(
             dims=(
                 DimSpec(kind="named", name="batch"),
@@ -243,7 +243,7 @@ class TestCheckFunction:
             params={},
             return_spec=ret_spec,
         )
-        # Actual output matches: batch prime and literal 4
+        # Actual output matches: batch symbolic dim and literal 4
         batch_size = env.get_size("batch")
         trace = TraceResult(
             function_name="project",

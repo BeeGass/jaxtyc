@@ -7,6 +7,9 @@ from collections import defaultdict
 from jaxtyc.types import Diagnostic
 from jaxtyc.types import FunctionShapeSpec
 from jaxtyc.types import IntermediateShape
+from jaxtyc.types import ShapeSpec
+
+_SHARDABLE_KINDS: frozenset[str] = frozenset({"named", "fixed", "variadic", "anonymous"})
 
 
 def check_sharding(
@@ -132,5 +135,134 @@ def check_sharding(
                         rule="sharding-io-mismatch",
                     )
                 )
+
+    return diagnostics
+
+
+def check_sharding_propagation(
+    propagated_sharding: object | None,
+    return_spec: ShapeSpec | None,
+    func_spec: FunctionShapeSpec,
+    file_path: str,
+) -> list[Diagnostic]:
+    """Compare JAX's propagated output sharding against return annotation.
+
+    Args:
+        propagated_sharding: NamedSharding from eval_shape output, or None.
+        return_spec: Return annotation ShapeSpec with mesh_axis info.
+        func_spec: Function spec for diagnostic context.
+        file_path: File path for diagnostics.
+
+    Returns:
+        List with at most one diagnostic if propagated sharding differs
+        from annotated sharding.
+    """
+    if propagated_sharding is None or return_spec is None:
+        return []
+    if not return_spec.has_sharding:
+        return []
+
+    propagated = tuple(getattr(propagated_sharding, "spec", ()))
+    expected = tuple(d.mesh_axis for d in return_spec.dims)
+
+    if propagated == expected:
+        return []
+
+    return [
+        Diagnostic(
+            file=file_path,
+            line=func_spec.lineno,
+            col=func_spec.col_offset,
+            severity="error",
+            message=(
+                f"Sharding propagation mismatch in `{func_spec.name}`: "
+                f"JAX propagated P{propagated} but annotation expects P{expected}"
+            ),
+            rule="sharding-propagation-mismatch",
+        )
+    ]
+
+
+def check_annotation_sharding(
+    func_spec: FunctionShapeSpec,
+    file_path: str,
+    strict: bool = True,
+) -> list[Diagnostic]:
+    """Check sharding annotations on a function's parameters and return.
+
+    Implements:
+    - sharding-annotation-incomplete: In strict mode, if any dim in a shape
+      has mesh_axis set, ALL named dims must have mesh_axis set.
+    - sharding-dim-conflict: Same dim name sharded on different axes across params.
+
+    Args:
+        func_spec: Function spec with param and return annotations.
+        file_path: File path for diagnostics.
+        strict: Whether to enforce strict annotation completeness.
+
+    Returns:
+        List of sharding annotation diagnostics.
+    """
+    diagnostics: list[Diagnostic] = []
+
+    # Collect all specs (params + return)
+    all_specs: list[tuple[str, ShapeSpec]] = []
+    for pname, pspec in func_spec.params.items():
+        all_specs.append((f"param `{pname}`", pspec))
+    if func_spec.return_spec is not None:
+        all_specs.append(("return", func_spec.return_spec))
+    if func_spec.return_specs:
+        for i, rspec in enumerate(func_spec.return_specs):
+            all_specs.append((f"return[{i}]", rspec))
+
+    # Rule: sharding-annotation-incomplete (strict mode only)
+    if strict:
+        for context, spec in all_specs:
+            if not spec.has_sharding:
+                continue
+            bare_dims = [
+                d
+                for d in spec.dims
+                if d.kind in _SHARDABLE_KINDS and d.mesh_axis is None and not d.sharding_annotated
+            ]
+            if bare_dims:
+                names = ", ".join(d.name or "_" for d in bare_dims)
+                diagnostics.append(
+                    Diagnostic(
+                        file=file_path,
+                        line=func_spec.lineno,
+                        col=func_spec.col_offset,
+                        severity="error",
+                        message=(
+                            f"Incomplete sharding annotation in {context} of "
+                            f"`{func_spec.name}`: dims [{names}] lack |axis or |None"
+                        ),
+                        rule="sharding-annotation-incomplete",
+                    )
+                )
+
+    # Rule: sharding-dim-conflict
+    # Collect all mesh_axis assignments for each dim name across all specs
+    dim_axes: dict[str, set[str]] = defaultdict(set)
+    for _context, spec in all_specs:
+        for dim in spec.dims:
+            if dim.name is not None and dim.mesh_axis is not None:
+                dim_axes[dim.name].add(dim.mesh_axis)
+
+    for dim_name, axes in dim_axes.items():
+        if len(axes) > 1:
+            diagnostics.append(
+                Diagnostic(
+                    file=file_path,
+                    line=func_spec.lineno,
+                    col=func_spec.col_offset,
+                    severity="warning",
+                    message=(
+                        f"Dim `{dim_name}` sharded on conflicting axes in "
+                        f"`{func_spec.name}`: {', '.join(sorted(axes))}"
+                    ),
+                    rule="sharding-dim-conflict",
+                )
+            )
 
     return diagnostics

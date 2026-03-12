@@ -70,16 +70,43 @@ def parse_shape_string(shape_str: str, dtype: str) -> ShapeSpec:
     dims: list[DimSpec] = []
 
     for token in tokens:
-        if token == "...":
-            dims.append(DimSpec(kind="ellipsis"))
-        elif token == "_":
-            dims.append(DimSpec(kind="anonymous"))
-        elif token.startswith("*"):
-            dims.append(DimSpec(kind="variadic", name=token[1:]))
-        elif token.isdigit():
-            dims.append(DimSpec(kind="fixed", size=int(token)))
+        # Split off pipe-separated mesh axis: "batch|dp", "seq|None", "128|dp"
+        mesh_axis: str | None = None
+        has_pipe = "|" in token
+        if has_pipe:
+            dim_part, axis_part = token.split("|", maxsplit=1)
+            mesh_axis = None if axis_part == "None" else axis_part
         else:
-            dims.append(DimSpec(kind="named", name=token))
+            dim_part = token
+
+        if dim_part == "...":
+            dims.append(DimSpec(kind="ellipsis"))
+        elif dim_part == "_":
+            dims.append(DimSpec(kind="anonymous", mesh_axis=mesh_axis, sharding_annotated=has_pipe))
+        elif dim_part.startswith("*"):
+            dims.append(
+                DimSpec(
+                    kind="variadic",
+                    name=dim_part[1:],
+                    mesh_axis=mesh_axis,
+                    sharding_annotated=has_pipe,
+                )
+            )
+        elif dim_part.isdigit():
+            dims.append(
+                DimSpec(
+                    kind="fixed",
+                    size=int(dim_part),
+                    mesh_axis=mesh_axis,
+                    sharding_annotated=has_pipe,
+                )
+            )
+        else:
+            dims.append(
+                DimSpec(
+                    kind="named", name=dim_part, mesh_axis=mesh_axis, sharding_annotated=has_pipe
+                )
+            )
 
     return ShapeSpec(dims=tuple(dims), dtype=dtype)
 
@@ -464,17 +491,18 @@ def _extract_dims_from_annotation(
 
     for match in re.finditer(r"\S+", shape_str):
         token = match.group()
-        # Skip non-named tokens
-        if token == "..." or token == "_" or token.isdigit():
+        # Skip non-named tokens (check base token without pipe suffix)
+        base_token = token.split("|", maxsplit=1)[0]
+        if base_token == "..." or base_token == "_" or base_token.isdigit():
             continue
         # Strip leading * for variadic dims
-        dim_name = token.lstrip("*")
+        dim_name = base_token.lstrip("*")
         if not dim_name:
             continue
-        # Compute column offset of the dim name (after any *)
-        prefix_len = len(token) - len(dim_name)
+        # Compute column offset of the dim name (after any *, before any |)
+        prefix_len = len(base_token) - len(dim_name)
         col_start = string_col + match.start() + prefix_len
-        col_end = string_col + match.end()
+        col_end = col_start + len(dim_name)
         results.append(
             DimLocation(
                 dim_name=dim_name,

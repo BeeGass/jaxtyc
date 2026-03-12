@@ -1,108 +1,90 @@
-"""Dimension environment: maps dimension names to unique prime sizes for symbolic tracing."""
+"""Dimension environment: maps dimension names to symbolic sizes for tracing."""
 
 from __future__ import annotations
 
+from typing import Any
+
+from jax.export import SymbolicScope
+from jax.export import symbolic_shape
+
 from jaxtyc.types import ShapeSpec
 
-MIN_PRIME: int = 101
-
-
-def _prime_sieve(limit: int) -> list[int]:
-    """Sieve of Eratosthenes. Returns all primes up to `limit`."""
-    if limit < 2:
-        return []
-    is_prime = [True] * (limit + 1)
-    is_prime[0] = is_prime[1] = False
-    for i in range(2, int(limit**0.5) + 1):
-        if is_prime[i]:
-            for j in range(i * i, limit + 1, i):
-                is_prime[j] = False
-    return [i for i, p in enumerate(is_prime) if p]
+DimSize = Any
 
 
 class DimEnv:
-    """Maps dimension names to unique prime sizes for symbolic tracing.
+    """Maps dimension names to symbolic sizes for tracing.
 
-    Each named dimension gets a distinct prime number as its size. This ensures:
-    - No two dimensions can be confused (unique sizes)
-    - Reverse mapping (size -> name) is unambiguous
-    - Product-based ops (reshape, flatten) produce unique results
+    Each named dimension gets a distinct symbolic dimension object via
+    ``jax.export.symbolic_shape``. This ensures:
+    - No two dimensions can be confused (distinct symbolic objects)
+    - Reverse mapping (dim -> name) is trivial via ``str(dim)``
+    - No integer overflow from large prime products
+    - Error messages from JAX use symbolic names directly
     """
 
-    def __init__(
-        self,
-        initial_sieve_limit: int = 1000,
-        reserved: frozenset[int] = frozenset(),
-    ) -> None:
-        self._name_to_size: dict[str, int] = {}
-        self._size_to_name: dict[int, str] = {}
-        self._sieve_limit: int = initial_sieve_limit
-        self._primes: list[int] = _prime_sieve(initial_sieve_limit)
-        self._next_idx: int = 0
-        self._reserved: frozenset[int] = reserved
+    _MIN_CONCRETE: int = 101
+
+    def __init__(self) -> None:
+        self._scope = SymbolicScope()
+        self._dims: dict[str, DimSize] = {}
         self._anon_counter: int = 0
+        self._concrete: dict[str, int] = {}
+        self._next_concrete: int = self._MIN_CONCRETE
 
-    def _next_prime(self) -> int:
-        """Get the next unused prime. Extends sieve if exhausted."""
-        while True:
-            while self._next_idx >= len(self._primes):
-                self._sieve_limit *= 2
-                self._primes = _prime_sieve(self._sieve_limit)
-            prime = self._primes[self._next_idx]
-            self._next_idx += 1
-            if prime >= MIN_PRIME and prime not in self._reserved:
-                return prime
-
-    def get_size(self, name: str) -> int:
-        """Get the prime size for a dimension name. Assigns one if new.
+    def get_size(self, name: str) -> DimSize:
+        """Get the symbolic size for a dimension name. Creates one if new.
 
         Args:
             name: Symbolic dimension name (e.g. "batch", "seq").
 
         Returns:
-            Prime integer uniquely assigned to this dimension name.
+            Symbolic dimension object uniquely assigned to this name.
         """
-        if name not in self._name_to_size:
-            size = self._next_prime()
-            self._name_to_size[name] = size
-            self._size_to_name[size] = name
-        return self._name_to_size[name]
+        if name not in self._dims:
+            (dim,) = symbolic_shape(name, scope=self._scope)
+            self._dims[name] = dim
+        return self._dims[name]
 
-    def resolve_name(self, size: int) -> str | None:
-        """Reverse-map a size back to its dimension name, if known.
+    def resolve_name(self, size: DimSize) -> str | None:
+        """Reverse-map a size back to its dimension name.
+
+        For symbolic dims, returns ``str(size)``. For concrete ints from
+        ``get_concrete_size``, looks up the reverse mapping. Returns None
+        for unknown plain ints.
 
         Args:
-            size: Integer size to look up.
+            size: Dimension size (symbolic or plain int).
 
         Returns:
-            Dimension name if ``size`` was assigned by this env, else None.
+            Dimension name string, or None for unknown sizes.
         """
-        return self._size_to_name.get(size)
+        if isinstance(size, int):
+            return self.resolve_concrete_name(size)
+        return str(size)
 
-    def shape_to_names(self, shape: tuple[int, ...]) -> tuple[str | None, ...]:
+    def shape_to_names(self, shape: tuple[DimSize, ...]) -> tuple[str | None, ...]:
         """Map a full shape tuple back to dimension names.
 
         Args:
-            shape: Concrete shape tuple from JAX tracing.
+            shape: Shape tuple from JAX tracing (may contain symbolic dims or ints).
 
         Returns:
-            Tuple of dimension names (or None for unrecognised sizes),
-            same length as ``shape``.
+            Tuple of dimension name strings (or None for plain ints).
         """
         return tuple(self.resolve_name(s) for s in shape)
 
-    def make_shape(self, spec: ShapeSpec) -> tuple[int, ...]:
-        """Build a concrete shape tuple from a ShapeSpec using prime sizes.
+    def make_shape(self, spec: ShapeSpec) -> tuple[DimSize, ...]:
+        """Build a concrete/symbolic shape tuple from a ShapeSpec.
 
         Args:
             spec: Parsed shape specification to materialise.
 
         Returns:
-            Concrete shape tuple where each named dimension is replaced by its
-            unique prime, fixed dimensions keep their literal value, and
-            variadic/ellipsis dimensions expand to two primes each.
+            Shape tuple where named dims are symbolic _DimExpr objects,
+            fixed dims are plain ints, and variadic/ellipsis expand to two dims.
         """
-        shape: list[int] = []
+        shape: list[DimSize] = []
         for dim in spec.dims:
             match dim.kind:
                 case "named":
@@ -131,17 +113,91 @@ class DimEnv:
                     shape.append(self.get_size(f"_anon_{self._anon_counter}"))
         return tuple(shape)
 
-    def name_size_mapping(self) -> dict[str, int]:
+    def get_concrete_size(self, name: str) -> int:
+        """Get a concrete integer size for module construction.
+
+        Used by NNX/equinox module tracing where constructors need int args.
+        Each name gets a unique odd integer >= 101.
+
+        Args:
+            name: Dimension name.
+
+        Returns:
+            Unique concrete integer for this dimension name.
+        """
+        if name not in self._concrete:
+            self._concrete[name] = self._next_concrete
+            self._next_concrete += 2
+        return self._concrete[name]
+
+    def make_concrete_shape(self, spec: ShapeSpec) -> tuple[int, ...]:
+        """Build a concrete int shape tuple from a ShapeSpec.
+
+        Uses ``get_concrete_size`` instead of ``get_size``, producing
+        plain integers suitable for NNX/equinox module construction
+        where symbolic dims are not accepted.
+
+        Args:
+            spec: Parsed shape specification to materialise.
+
+        Returns:
+            Shape tuple of plain integers.
+        """
+        shape: list[int] = []
+        for dim in spec.dims:
+            match dim.kind:
+                case "named":
+                    assert dim.name is not None
+                    shape.append(self.get_concrete_size(dim.name))
+                case "fixed":
+                    assert dim.size is not None
+                    shape.append(dim.size)
+                case "variadic":
+                    assert dim.name is not None
+                    shape.extend(
+                        [
+                            self.get_concrete_size(f"_var_{dim.name}_0"),
+                            self.get_concrete_size(f"_var_{dim.name}_1"),
+                        ]
+                    )
+                case "ellipsis":
+                    shape.extend(
+                        [
+                            self.get_concrete_size("_ellipsis_0"),
+                            self.get_concrete_size("_ellipsis_1"),
+                        ]
+                    )
+                case "anonymous":
+                    self._anon_counter += 1
+                    shape.append(self.get_concrete_size(f"_anon_{self._anon_counter}"))
+        return tuple(shape)
+
+    def resolve_concrete_name(self, size: int) -> str | None:
+        """Reverse-map a concrete size back to its dimension name.
+
+        Args:
+            size: Concrete integer size from ``get_concrete_size``.
+
+        Returns:
+            Dimension name if known, else None.
+        """
+        for name, s in self._concrete.items():
+            if s == size:
+                return name
+        return None
+
+    def name_size_mapping(self) -> dict[str, DimSize]:
         """Return a copy of the dimension name to size mapping.
 
         Returns:
-            Dictionary mapping dimension names to their assigned prime sizes.
+            Dictionary mapping dimension names to their symbolic sizes.
         """
-        return dict(self._name_to_size)
+        return dict(self._dims)
 
     def reset(self) -> None:
-        """Clear all name-to-size mappings and reset the prime counter."""
-        self._name_to_size.clear()
-        self._size_to_name.clear()
-        self._next_idx = 0
+        """Clear all name-to-size mappings and create a fresh scope."""
+        self._dims.clear()
+        self._scope = SymbolicScope()
         self._anon_counter = 0
+        self._concrete.clear()
+        self._next_concrete = self._MIN_CONCRETE

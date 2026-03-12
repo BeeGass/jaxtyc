@@ -18,6 +18,7 @@ _SHARDING_PRIMITIVES: frozenset[str] = frozenset(
     {
         "sharding_constraint",
         "shard_map",
+        "jit",
     }
 )
 
@@ -187,34 +188,108 @@ def _extract_intermediates(
     return intermediates
 
 
+def _build_sharded_abstract_input(
+    spec: ShapeSpec,
+    env: DimEnv,
+    mesh_config: dict[str, int],
+) -> jax.ShapeDtypeStruct:
+    """Build a ShapeDtypeStruct with NamedSharding for a sharded spec.
+
+    Uses concrete sizes that are divisible by the mesh partition size for each
+    sharded dimension. Unsharded dims use standard concrete sizes.
+    """
+    from jax.sharding import NamedSharding
+    from jax.sharding import PartitionSpec as P
+
+    shape: list[int] = []
+    pspec_entries: list[str | None] = []
+
+    for dim in spec.dims:
+        axis = dim.mesh_axis
+        pspec_entries.append(axis)
+
+        if dim.kind == "named":
+            assert dim.name is not None
+            base_size = env.get_concrete_size(dim.name)
+            if axis is not None and axis in mesh_config:
+                # Make size divisible by partition count
+                partition = mesh_config[axis]
+                if base_size % partition != 0:
+                    base_size = base_size + (partition - base_size % partition)
+                    # Update DimEnv so checker's make_concrete_shape matches
+                    env._concrete[dim.name] = base_size
+            shape.append(base_size)
+        elif dim.kind == "fixed":
+            assert dim.size is not None
+            shape.append(dim.size)
+        elif dim.kind == "variadic":
+            assert dim.name is not None
+            shape.extend(
+                [
+                    env.get_concrete_size(f"_var_{dim.name}_0"),
+                    env.get_concrete_size(f"_var_{dim.name}_1"),
+                ]
+            )
+            pspec_entries.append(None)  # second variadic dim unsharded
+        elif dim.kind == "ellipsis":
+            shape.extend(
+                [
+                    env.get_concrete_size("_ellipsis_0"),
+                    env.get_concrete_size("_ellipsis_1"),
+                ]
+            )
+            pspec_entries.append(None)
+        elif dim.kind == "anonymous":
+            env._anon_counter += 1
+            shape.append(env.get_concrete_size(f"_anon_{env._anon_counter}"))
+
+    dtype = _resolve_jax_dtype(spec.dtype)
+
+    # Build AbstractMesh with Explicit axis types for sharding propagation
+    from jax.sharding import AbstractMesh
+    from jax.sharding import AxisType
+
+    axis_names = tuple(mesh_config.keys())
+    axis_sizes = tuple(mesh_config.values())
+    axis_types = tuple(AxisType.Explicit for _ in axis_names)
+    abstract_mesh = AbstractMesh(axis_sizes, axis_names, axis_types=axis_types)
+
+    named_sharding = NamedSharding(abstract_mesh, P(*pspec_entries))
+    return jax.ShapeDtypeStruct(tuple(shape), dtype, sharding=named_sharding)
+
+
 def trace_function(
     fn: Callable[..., Any],
     params: dict[str, ShapeSpec],
     env: DimEnv,
+    mesh_config: dict[str, int] | None = None,
 ) -> TraceResult:
     """Trace a function using jax.eval_shape to get output shapes.
 
     Args:
         fn: The function to trace.
         params: Map of parameter name to ShapeSpec (from jaxtyping annotations).
-        env: DimEnv for prime-based symbolic sizing.
+        env: DimEnv for symbolic sizing.
+        mesh_config: Optional mesh axis name -> size mapping for sharded tracing.
 
     Returns:
         TraceResult with output shape, intermediates, and any errors.
-
-    Example:
-        >>> env = DimEnv()
-        >>> spec = parse_shape_string("batch seq d_model", "float32")
-        >>> result = trace_function(my_fn, {"x": spec}, env)
-        >>> result.output_shape
-        (2, 3, 5)
     """
+    has_sharding = bool(mesh_config and any(spec.has_sharding for spec in params.values()))
+
     # Build abstract inputs
     abstract_inputs: dict[str, jax.ShapeDtypeStruct] = {}
     for name, spec in params.items():
         if spec.is_any_shape:
             continue
-        abstract_inputs[name] = _build_abstract_input(spec, env)
+        if has_sharding:
+            abstract_inputs[name] = _build_sharded_abstract_input(
+                spec,
+                env,
+                mesh_config,  # type: ignore[arg-type]
+            )
+        else:
+            abstract_inputs[name] = _build_abstract_input(spec, env)
 
     # Run eval_shape
     try:
@@ -235,12 +310,15 @@ def trace_function(
     # Extract output shape(s)
     output_shapes: list[tuple[int, ...]] | None = None
     output_dtypes: list[str] | None = None
+    output_sharding = None
 
     if hasattr(output_struct, "shape"):
         output_shape = output_struct.shape
         output_dtype = str(output_struct.dtype)
         output_shapes = [output_shape]
         output_dtypes = [output_dtype]
+        if has_sharding:
+            output_sharding = getattr(output_struct, "sharding", None)
     else:
         leaves = jax.tree.leaves(output_struct)
         shaped_leaves = [lf for lf in leaves if hasattr(lf, "shape")]
@@ -249,6 +327,8 @@ def trace_function(
             output_dtype = str(shaped_leaves[0].dtype)
             output_shapes = [lf.shape for lf in shaped_leaves]
             output_dtypes = [str(lf.dtype) for lf in shaped_leaves]
+            if has_sharding:
+                output_sharding = getattr(shaped_leaves[0], "sharding", None)
         else:
             output_shape = None
             output_dtype = None
@@ -265,4 +345,5 @@ def trace_function(
         input_shapes={name: struct.shape for name, struct in abstract_inputs.items()},
         output_shapes=output_shapes,
         output_dtypes=output_dtypes,
+        output_sharding=output_sharding,
     )

@@ -74,6 +74,114 @@ class TestParseShapeString:
 
 
 # ---------------------------------------------------------------------------
+# parse_shape_string — pipe syntax for sharding
+# ---------------------------------------------------------------------------
+
+
+class TestParsePipeSharding:
+    def test_all_dims_piped(self) -> None:
+        """All dims have |axis or |None — fully annotated."""
+        spec = parse_shape_string("batch|dp seq|None d_model|mp", "float32")
+        assert len(spec.dims) == 3
+        assert spec.dims[0] == DimSpec(
+            kind="named", name="batch", mesh_axis="dp", sharding_annotated=True
+        )
+        assert spec.dims[1] == DimSpec(
+            kind="named", name="seq", mesh_axis=None, sharding_annotated=True
+        )
+        assert spec.dims[2] == DimSpec(
+            kind="named", name="d_model", mesh_axis="mp", sharding_annotated=True
+        )
+
+    def test_pipe_none_is_python_none(self) -> None:
+        """|None in annotation becomes mesh_axis=None (not the string 'None')."""
+        spec = parse_shape_string("batch|None", "float32")
+        assert spec.dims[0].mesh_axis is None
+
+    def test_pipe_on_fixed_dim(self) -> None:
+        """Fixed dims can have pipe annotations: 128|dp."""
+        spec = parse_shape_string("128|dp seq|None", "float32")
+        assert spec.dims[0].kind == "fixed"
+        assert spec.dims[0].size == 128
+        assert spec.dims[0].mesh_axis == "dp"
+
+    def test_pipe_on_variadic_dim(self) -> None:
+        """Variadic dims can have pipe annotations: *batch|dp."""
+        spec = parse_shape_string("*batch|dp seq|None", "float32")
+        assert spec.dims[0].kind == "variadic"
+        assert spec.dims[0].name == "batch"
+        assert spec.dims[0].mesh_axis == "dp"
+
+    def test_no_pipe_backward_compat(self) -> None:
+        """Shape strings without any | work exactly as before."""
+        spec = parse_shape_string("batch seq d_model", "float32")
+        assert all(d.mesh_axis is None for d in spec.dims)
+        assert spec.has_sharding is False
+
+    def test_mixed_pipe_and_bare(self) -> None:
+        """Shape string with some piped and some bare dims."""
+        spec = parse_shape_string("batch|dp seq d_model|mp", "float32")
+        assert spec.dims[0].mesh_axis == "dp"
+        assert spec.dims[1].mesh_axis is None
+        assert spec.dims[2].mesh_axis == "mp"
+
+    def test_has_sharding_true_with_pipes(self) -> None:
+        spec = parse_shape_string("batch|dp seq|None", "float32")
+        assert spec.has_sharding is True
+
+    def test_has_sharding_false_without_pipes(self) -> None:
+        spec = parse_shape_string("batch seq", "float32")
+        assert spec.has_sharding is False
+
+    def test_anonymous_with_pipe(self) -> None:
+        """Anonymous dim _ can have pipe: _|dp."""
+        spec = parse_shape_string("_|dp _|None", "float32")
+        assert spec.dims[0].kind == "anonymous"
+        assert spec.dims[0].mesh_axis == "dp"
+        assert spec.dims[1].kind == "anonymous"
+        assert spec.dims[1].mesh_axis is None
+
+    def test_ellipsis_no_pipe(self) -> None:
+        """Ellipsis token does not support pipe annotation."""
+        spec = parse_shape_string("...", "float32")
+        assert spec.is_any_shape is True
+
+    def test_ellipsis_inline_no_pipe(self) -> None:
+        """Inline ellipsis without pipe."""
+        spec = parse_shape_string("... d_model|mp", "float32")
+        assert spec.dims[0] == DimSpec(kind="ellipsis")
+        assert spec.dims[1] == DimSpec(
+            kind="named", name="d_model", mesh_axis="mp", sharding_annotated=True
+        )
+
+
+# ---------------------------------------------------------------------------
+# extract_function_specs — pipe syntax integration
+# ---------------------------------------------------------------------------
+
+
+class TestExtractSpecsWithPipeSyntax:
+    def test_extract_specs_with_pipe_syntax(self) -> None:
+        source = textwrap.dedent("""\
+            from jaxtyping import Array, Float
+
+            def matmul(
+                x: Float[Array, "batch|dp seq|None d_model|mp"],
+            ) -> Float[Array, "batch|dp seq|None d_model|mp"]:
+                pass
+        """)
+        specs = extract_function_specs(source, "test.py")
+        assert len(specs) == 1
+        func = specs[0]
+        assert func.params["x"].has_sharding
+        assert func.params["x"].dims[0].mesh_axis == "dp"
+        assert func.params["x"].dims[1].mesh_axis is None
+        assert func.params["x"].dims[2].mesh_axis == "mp"
+        assert func.return_spec is not None
+        assert func.return_spec.has_sharding
+
+
+# ---------------------------------------------------------------------------
 # extract_function_specs
 # ---------------------------------------------------------------------------
 
@@ -405,6 +513,43 @@ class TestExtractDimLocations:
         source = "def f(x: Float[Array, :"
         locs = extract_dim_locations(source, "test.py")
         assert locs == []
+
+    def test_piped_dims_strip_axis(self) -> None:
+        """Pipe syntax |axis is stripped from dim names."""
+        source = 'def f(x: Float[Array, "batch|dp seq|None d_model|mp"]) -> None: pass\n'
+        locs = extract_dim_locations(source, "test.py")
+        names = [loc.dim_name for loc in locs]
+        assert names == ["batch", "seq", "d_model"]
+
+    def test_piped_dims_column_offsets(self) -> None:
+        """Column offsets for piped dims span only the dim name, not |axis."""
+        # "batch|dp seq|None"
+        # 0123456789...
+        source = 'def f(x: Float[Array, "batch|dp seq|None"]): pass\n'
+        locs = extract_dim_locations(source, "test.py")
+        assert len(locs) == 2
+        assert locs[0].dim_name == "batch"
+        assert locs[0].col_start == 23
+        assert locs[0].col_end == 28  # "batch" is 5 chars
+        assert locs[1].dim_name == "seq"
+        assert locs[1].col_start == 32
+        assert locs[1].col_end == 35  # "seq" is 3 chars
+
+    def test_piped_variadic_dim(self) -> None:
+        """Variadic dim with pipe: *batch|dp -> dim_name='batch'."""
+        source = 'def f(x: Float[Array, "*batch|dp seq|None"]): pass\n'
+        locs = extract_dim_locations(source, "test.py")
+        names = [loc.dim_name for loc in locs]
+        assert names == ["batch", "seq"]
+        # *batch|dp: col_start points to 'b' (after *), col_end to end of 'batch'
+        assert locs[0].dim_name == "batch"
+
+    def test_piped_fixed_and_anonymous_skipped(self) -> None:
+        """Fixed dims and anonymous _ with pipe suffixes are still skipped."""
+        source = 'def f(x: Float[Array, "128|dp _|None batch|mp"]): pass\n'
+        locs = extract_dim_locations(source, "test.py")
+        names = [loc.dim_name for loc in locs]
+        assert names == ["batch"]
 
 
 # ---------------------------------------------------------------------------
