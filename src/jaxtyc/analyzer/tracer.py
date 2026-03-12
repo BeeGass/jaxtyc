@@ -188,6 +188,24 @@ def _extract_intermediates(
     return intermediates
 
 
+def _build_abstract_mesh(mesh_config: dict[str, int]) -> Any:
+    """Build an AbstractMesh with Explicit axis types from mesh config.
+
+    Args:
+        mesh_config: Map of physical axis name to device count.
+
+    Returns:
+        AbstractMesh suitable for use with jax.set_mesh().
+    """
+    from jax.sharding import AbstractMesh
+    from jax.sharding import AxisType
+
+    axis_names = tuple(mesh_config.keys())
+    axis_sizes = tuple(mesh_config.values())
+    axis_types = tuple(AxisType.Explicit for _ in axis_names)
+    return AbstractMesh(axis_sizes, axis_names, axis_types=axis_types)
+
+
 def _build_sharded_abstract_input(
     spec: ShapeSpec,
     env: DimEnv,
@@ -245,17 +263,82 @@ def _build_sharded_abstract_input(
 
     dtype = _resolve_jax_dtype(spec.dtype)
 
-    # Build AbstractMesh with Explicit axis types for sharding propagation
-    from jax.sharding import AbstractMesh
-    from jax.sharding import AxisType
-
-    axis_names = tuple(mesh_config.keys())
-    axis_sizes = tuple(mesh_config.values())
-    axis_types = tuple(AxisType.Explicit for _ in axis_names)
-    abstract_mesh = AbstractMesh(axis_sizes, axis_names, axis_types=axis_types)
-
+    abstract_mesh = _build_abstract_mesh(mesh_config)
     named_sharding = NamedSharding(abstract_mesh, P(*pspec_entries))
     return jax.ShapeDtypeStruct(tuple(shape), dtype, sharding=named_sharding)
+
+
+def _trace_fallback_unsharded(
+    fn: Callable[..., Any],
+    params: dict[str, ShapeSpec],
+    env: DimEnv,
+    original_error: str,
+) -> TraceResult:
+    """Retry tracing without sharding after a sharded trace failure.
+
+    Args:
+        fn: The function to trace.
+        params: Map of parameter name to ShapeSpec.
+        env: DimEnv for symbolic sizing.
+        original_error: Error message from the failed sharded trace.
+
+    Returns:
+        TraceResult from unsharded tracing, with sharding_fallback_reason set.
+    """
+    abstract_inputs: dict[str, jax.ShapeDtypeStruct] = {}
+    for name, spec in params.items():
+        if spec.is_any_shape:
+            continue
+        abstract_inputs[name] = _build_abstract_input(spec, env)
+
+    try:
+
+        def wrapper(**kwargs: Any) -> Any:
+            return fn(**kwargs)
+
+        output_struct = jax.eval_shape(wrapper, **abstract_inputs)
+    except Exception as e:
+        return TraceResult(
+            function_name=getattr(fn, "__name__", "<unknown>"),
+            output_shape=None,
+            output_dtype=None,
+            intermediates=[],
+            error=str(e),
+            sharding_fallback_reason=original_error,
+        )
+
+    if hasattr(output_struct, "shape"):
+        output_shape = output_struct.shape
+        output_dtype = str(output_struct.dtype)
+        output_shapes: list[tuple[int, ...]] | None = [output_shape]
+        output_dtypes: list[str] | None = [output_dtype]
+    else:
+        leaves = jax.tree.leaves(output_struct)
+        shaped_leaves = [lf for lf in leaves if hasattr(lf, "shape")]
+        if shaped_leaves:
+            output_shape = shaped_leaves[0].shape
+            output_dtype = str(shaped_leaves[0].dtype)
+            output_shapes = [lf.shape for lf in shaped_leaves]
+            output_dtypes = [str(lf.dtype) for lf in shaped_leaves]
+        else:
+            output_shape = None
+            output_dtype = None
+            output_shapes = None
+            output_dtypes = None
+
+    intermediates = _extract_intermediates(fn, abstract_inputs, env)
+
+    return TraceResult(
+        function_name=getattr(fn, "__name__", "<unknown>"),
+        output_shape=output_shape,
+        output_dtype=output_dtype,
+        intermediates=intermediates,
+        error=None,
+        input_shapes={name: struct.shape for name, struct in abstract_inputs.items()},
+        output_shapes=output_shapes,
+        output_dtypes=output_dtypes,
+        sharding_fallback_reason=original_error,
+    )
 
 
 def trace_function(
@@ -277,6 +360,9 @@ def trace_function(
     """
     has_sharding = bool(mesh_config and any(spec.has_sharding for spec in params.values()))
 
+    # Build mesh once for reuse in both input construction and tracing context
+    abstract_mesh = _build_abstract_mesh(mesh_config) if has_sharding else None  # type: ignore[arg-type]
+
     # Build abstract inputs
     abstract_inputs: dict[str, jax.ShapeDtypeStruct] = {}
     for name, spec in params.items():
@@ -291,14 +377,22 @@ def trace_function(
         else:
             abstract_inputs[name] = _build_abstract_input(spec, env)
 
-    # Run eval_shape
+    # Run eval_shape — with mesh context when sharding is active
     try:
 
         def wrapper(**kwargs: Any) -> Any:
             return fn(**kwargs)
 
-        output_struct = jax.eval_shape(wrapper, **abstract_inputs)
+        if abstract_mesh is not None:
+            from jax._src.mesh import use_abstract_mesh
+
+            with use_abstract_mesh(abstract_mesh):
+                output_struct = jax.eval_shape(wrapper, **abstract_inputs)
+        else:
+            output_struct = jax.eval_shape(wrapper, **abstract_inputs)
     except Exception as e:
+        if has_sharding:
+            return _trace_fallback_unsharded(fn, params, env, str(e))
         return TraceResult(
             function_name=getattr(fn, "__name__", "<unknown>"),
             output_shape=None,
@@ -334,7 +428,13 @@ def trace_function(
             output_dtype = None
 
     # Extract intermediates via make_jaxpr
-    intermediates = _extract_intermediates(fn, abstract_inputs, env)
+    if abstract_mesh is not None:
+        from jax._src.mesh import use_abstract_mesh
+
+        with use_abstract_mesh(abstract_mesh):
+            intermediates = _extract_intermediates(fn, abstract_inputs, env)
+    else:
+        intermediates = _extract_intermediates(fn, abstract_inputs, env)
 
     return TraceResult(
         function_name=getattr(fn, "__name__", "<unknown>"),

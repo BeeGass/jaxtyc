@@ -142,6 +142,20 @@ class TestTraceFunction:
         assert result.output_shape[1] == 4
 
 
+class TestBuildAbstractMesh:
+    def test_build_abstract_mesh_axis_names(self) -> None:
+        from jaxtyc.analyzer.tracer import _build_abstract_mesh
+
+        mesh = _build_abstract_mesh({"data": 4, "model": 2})
+        assert tuple(mesh.axis_names) == ("data", "model")
+
+    def test_build_abstract_mesh_empty(self) -> None:
+        from jaxtyc.analyzer.tracer import _build_abstract_mesh
+
+        mesh = _build_abstract_mesh({})
+        assert tuple(mesh.axis_names) == ()
+
+
 class TestShardedTracing:
     def test_no_mesh_config_no_sharding(self) -> None:
         """Without mesh_config, output_sharding is None."""
@@ -204,6 +218,46 @@ class TestShardedTracing:
         if result.output_sharding is not None:
             spec = tuple(result.output_sharding.spec)
             assert spec[0] == "data"
+
+    def test_sharded_trace_with_set_mesh_propagates(self) -> None:
+        """Verify sharding propagates through eval_shape under set_mesh."""
+        env = DimEnv()
+        params = {
+            "x": ShapeSpec(
+                dims=(
+                    DimSpec("named", "batch", mesh_axis="data"),
+                    DimSpec("named", "d_model", mesh_axis=None),
+                ),
+                dtype="float32",
+            ),
+        }
+        result = trace_function(lambda x: x, params, env, mesh_config={"data": 4, "model": 2})
+        assert result.success
+        assert result.output_sharding is not None
+
+    def test_sharded_trace_fallback_returns_success(self) -> None:
+        """When sharded eval_shape fails, fallback produces a successful result."""
+        env = DimEnv()
+
+        def bad_fn(x):
+            return x[0]  # indexing may fail under explicit sharding
+
+        params = {
+            "x": ShapeSpec(
+                dims=(
+                    DimSpec("named", "batch", mesh_axis="data"),
+                    DimSpec("named", "d_model", mesh_axis=None),
+                ),
+                dtype="float32",
+            ),
+        }
+        result = trace_function(bad_fn, params, env, mesh_config={"data": 4})
+        # Either the trace succeeds (JAX handles it) or the fallback kicked in
+        if result.sharding_fallback_reason is not None:
+            assert result.success  # fallback produced a result
+            assert result.output_shape is not None
+        else:
+            assert result.success  # direct sharded trace worked
 
     def test_mesh_config_without_sharded_specs(self) -> None:
         """mesh_config provided but specs have no mesh_axis — no sharding."""

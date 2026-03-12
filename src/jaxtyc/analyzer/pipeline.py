@@ -203,6 +203,23 @@ def analyze_file(file_path: str) -> FileResult:
             effective_mesh = None
 
         trace = trace_function(fn, func_spec.params, env, mesh_config=effective_mesh)
+
+        # Emit warning if sharded tracing fell back to unsharded
+        if trace.sharding_fallback_reason is not None:
+            diagnostics.append(
+                Diagnostic(
+                    file=file_path,
+                    line=func_spec.lineno,
+                    col=func_spec.col_offset,
+                    severity="warning",
+                    message=(
+                        f"Sharded tracing failed for `{func_spec.name}`, fell back to "
+                        f"unsharded: {trace.sharding_fallback_reason}"
+                    ),
+                    rule="trace-error",
+                )
+            )
+
         trace_results.append(trace)
         traced[func_spec.name] = (func_spec, trace)
         functions_checked += 1

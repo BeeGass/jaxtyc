@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from jaxtyc.types import Diagnostic
 from jaxtyc.types import DimSpec
 from jaxtyc.types import ErrorHintInfo
@@ -352,6 +354,36 @@ class TestIntermediateShapeSharding:
             op_name="add",
         )
         assert inter.sharding is None
+
+
+class TestDimSizeAlias:
+    def test_dim_size_alias_importable(self) -> None:
+        from jaxtyc.types import DimSize
+
+        assert DimSize is Any
+
+
+class TestTraceResultShardingFallback:
+    def test_trace_result_has_sharding_fallback_reason(self) -> None:
+        tr = TraceResult(
+            function_name="f",
+            output_shape=None,
+            output_dtype=None,
+            intermediates=[],
+            error=None,
+            sharding_fallback_reason="some reason",
+        )
+        assert tr.sharding_fallback_reason == "some reason"
+
+    def test_trace_result_sharding_fallback_default_none(self) -> None:
+        tr = TraceResult(
+            function_name="f",
+            output_shape=None,
+            output_dtype=None,
+            intermediates=[],
+            error=None,
+        )
+        assert tr.sharding_fallback_reason is None
 
 
 class TestFileResult:
