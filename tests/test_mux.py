@@ -306,6 +306,141 @@ class TestHoverCompactEnabled:
 
 
 # ---------------------------------------------------------------------------
+# _mux_solo_server
+# ---------------------------------------------------------------------------
+
+
+class TestMuxSoloServer:
+    def test_default_returns_none(self) -> None:
+        from jaxtyc.lsp.mux import _mux_solo_server
+
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("JAXTYC_MUX_SOLO", None)
+            assert _mux_solo_server() is None
+
+    def test_jaxtyc_solo(self) -> None:
+        from jaxtyc.lsp.mux import _mux_solo_server
+
+        with mock.patch.dict(os.environ, {"JAXTYC_MUX_SOLO": "jaxtyc"}):
+            assert _mux_solo_server() == "jaxtyc"
+
+    def test_ty_solo(self) -> None:
+        from jaxtyc.lsp.mux import _mux_solo_server
+
+        with mock.patch.dict(os.environ, {"JAXTYC_MUX_SOLO": "ty"}):
+            assert _mux_solo_server() == "ty"
+
+    def test_primary_alias(self) -> None:
+        """'primary' should also work as an alias for the primary server."""
+        from jaxtyc.lsp.mux import _mux_solo_server
+
+        with mock.patch.dict(os.environ, {"JAXTYC_MUX_SOLO": "primary"}):
+            assert _mux_solo_server() == "primary"
+
+    def test_empty_string_returns_none(self) -> None:
+        from jaxtyc.lsp.mux import _mux_solo_server
+
+        with mock.patch.dict(os.environ, {"JAXTYC_MUX_SOLO": ""}):
+            assert _mux_solo_server() is None
+
+    def test_case_insensitive(self) -> None:
+        from jaxtyc.lsp.mux import _mux_solo_server
+
+        with mock.patch.dict(os.environ, {"JAXTYC_MUX_SOLO": "JAXTYC"}):
+            assert _mux_solo_server() == "jaxtyc"
+
+
+class TestFilterDiagsByServer:
+    """Test that _filter_diag_sources filters the diag_cache correctly."""
+
+    def test_no_filter_returns_all(self) -> None:
+        from jaxtyc.lsp.mux import _filter_diag_sources
+
+        cache: dict[str, list[dict]] = {
+            "ty": [{"message": "ty diag"}],
+            "jaxtyc": [{"message": "jaxtyc diag"}],
+        }
+        result = _filter_diag_sources(cache, solo=None)
+        assert len(result) == 2
+
+    def test_solo_jaxtyc_filters_primary(self) -> None:
+        from jaxtyc.lsp.mux import _filter_diag_sources
+
+        cache: dict[str, list[dict]] = {
+            "ty": [{"message": "ty diag"}],
+            "jaxtyc": [{"message": "jaxtyc diag"}],
+        }
+        result = _filter_diag_sources(cache, solo="jaxtyc")
+        merged: list[dict] = []
+        for diags in result.values():
+            merged.extend(diags)
+        assert len(merged) == 1
+        assert merged[0]["message"] == "jaxtyc diag"
+
+    def test_solo_primary_filters_jaxtyc(self) -> None:
+        from jaxtyc.lsp.mux import _filter_diag_sources
+
+        cache: dict[str, list[dict]] = {
+            "ty": [{"message": "ty diag"}],
+            "jaxtyc": [{"message": "jaxtyc diag"}],
+        }
+        result = _filter_diag_sources(cache, solo="primary")
+        merged: list[dict] = []
+        for diags in result.values():
+            merged.extend(diags)
+        assert len(merged) == 1
+        assert merged[0]["message"] == "ty diag"
+
+    def test_solo_ty_matches_primary_name(self) -> None:
+        """When solo='ty', it should match the key 'ty' in the cache."""
+        from jaxtyc.lsp.mux import _filter_diag_sources
+
+        cache: dict[str, list[dict]] = {
+            "ty": [{"message": "ty diag"}],
+            "jaxtyc": [{"message": "jaxtyc diag"}],
+        }
+        result = _filter_diag_sources(cache, solo="ty")
+        merged: list[dict] = []
+        for diags in result.values():
+            merged.extend(diags)
+        assert len(merged) == 1
+        assert merged[0]["message"] == "ty diag"
+
+
+class TestRunMuxSoloArg:
+    """run_mux() accepts a solo parameter that overrides the env var."""
+
+    def test_run_mux_accepts_solo_param(self) -> None:
+        import inspect
+
+        from jaxtyc.lsp.mux import run_mux
+
+        sig = inspect.signature(run_mux)
+        assert "solo" in sig.parameters, "run_mux() should accept a 'solo' parameter"
+        assert sig.parameters["solo"].default is None
+
+    def test_cmd_mux_passes_solo_arg(self) -> None:
+        """CLI 'mux --solo jaxtyc' should parse and pass solo to run_mux."""
+        from jaxtyc.cli.main import main
+
+        with mock.patch("jaxtyc.cli.main.cmd_mux") as mock_cmd:
+            mock_cmd.return_value = 0
+            main(["mux", "--solo", "jaxtyc"])
+            args = mock_cmd.call_args[0][0]
+            assert args.solo == "jaxtyc"
+
+    def test_cmd_mux_solo_default_none(self) -> None:
+        """CLI 'mux' without --solo should default to None."""
+        from jaxtyc.cli.main import main
+
+        with mock.patch("jaxtyc.cli.main.cmd_mux") as mock_cmd:
+            mock_cmd.return_value = 0
+            main(["mux"])
+            args = mock_cmd.call_args[0][0]
+            assert args.solo is None
+
+
+# ---------------------------------------------------------------------------
 # _clean_hover_text
 # ---------------------------------------------------------------------------
 

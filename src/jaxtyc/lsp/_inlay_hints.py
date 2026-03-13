@@ -9,6 +9,7 @@ from pygls.lsp.server import LanguageServer
 
 from jaxtyc.lsp import _state
 from jaxtyc.lsp._util import format_dtype
+from jaxtyc.lsp._util import format_named_shape
 from jaxtyc.lsp.server import server
 from jaxtyc.types import ErrorHintInfo
 from jaxtyc.types import IntermediateShape
@@ -52,28 +53,67 @@ def _find_hint_position(line_text: str) -> int | None:
 
 
 def _format_shape(inter: IntermediateShape, dtype_style: str) -> str:
-    """Format intermediate shape as compact dtype[dim1, dim2] string.
+    """Format intermediate shape as compact dtype[dim1|axis dim2|axis] string.
 
-    Scalars (rank 0) use empty brackets: ``f32[]``.
+    When sharding info is available and not suppressed by config, each
+    dimension is annotated with its partition axis using pipe syntax
+    (e.g. ``batch|data seq|None``). Scalars (rank 0) use empty brackets.
+
+    Synthetic dim names (_ellipsis_*, _var_*, _anon_*) are collapsed into
+    user-friendly display forms by format_named_shape().
     """
     dtype = format_dtype(inter.dtype, dtype_style)
     if not inter.shape:
         return f"{dtype}[]"
-    named = ", ".join(n or str(s) for n, s in zip(inter.named_shape, inter.shape, strict=True))
-    return f"{dtype}[{named}]"
+
+    dim_parts = format_named_shape(inter.named_shape, inter.shape)
+
+    sharding_axes = _get_sharding_axes(inter)
+    if sharding_axes is not None:
+        annotated: list[str] = []
+        orig_idx = 0
+        for label in dim_parts:
+            if label.startswith("...") or label.startswith("*") or label == "_":
+                # Skip sharding for collapsed/anonymous dims, advance orig_idx
+                if label.startswith("..."):
+                    while (
+                        orig_idx < len(inter.named_shape)
+                        and inter.named_shape[orig_idx] is not None
+                        and inter.named_shape[orig_idx].startswith("_ellipsis_")
+                    ):  # type: ignore[union-attr]
+                        orig_idx += 1
+                elif label.startswith("*"):
+                    var_name = label[1:]
+                    while (
+                        orig_idx < len(inter.named_shape)
+                        and inter.named_shape[orig_idx] is not None
+                        and inter.named_shape[orig_idx].startswith(f"_var_{var_name}_")
+                    ):  # type: ignore[union-attr]
+                        orig_idx += 1
+                else:
+                    orig_idx += 1
+                annotated.append(label)
+            else:
+                if orig_idx < len(sharding_axes):
+                    axis = sharding_axes[orig_idx]
+                    label = f"{label}|{axis}" if axis is not None else f"{label}|None"
+                orig_idx += 1
+                annotated.append(label)
+        dim_parts = annotated
+
+    return f"{dtype}[{' '.join(dim_parts)}]"
 
 
-def _format_sharding(inter: IntermediateShape) -> str:
-    """Format sharding info as ' | P(...)' string, or empty string if none."""
+def _get_sharding_axes(inter: IntermediateShape) -> tuple[str | None, ...] | None:
+    """Extract per-dimension sharding axes, or None if sharding is suppressed."""
     if inter.sharding is None:
-        return ""
+        return None
     display = _state.config.sharding.display
     if display == "off":
-        return ""
+        return None
     if display == "constrained_only" and inter.sharding.source_primitive != "sharding_constraint":
-        return ""
-    parts = ", ".join(repr(a) if a is not None else "None" for a in inter.sharding.partition_spec)
-    return f" | P({parts})"
+        return None
+    return inter.sharding.partition_spec
 
 
 def _format_error(error: ErrorHintInfo, style: str) -> str:
@@ -130,11 +170,8 @@ def inlay_hint(ls: LanguageServer, params: types.InlayHintParams) -> list[types.
     for line_num in sorted(last_per_line):
         inter = last_per_line[line_num]
 
-        # Shape part (compact format)
+        # Shape part (includes sharding as dim|axis when available)
         shape_text = _format_shape(inter, dtype_style)
-
-        # Sharding part (pipe-separated)
-        sharding_text = _format_sharding(inter)
 
         # Error part
         error_text = ""
@@ -146,7 +183,7 @@ def inlay_hint(ls: LanguageServer, params: types.InlayHintParams) -> list[types.
         if error is not None and error_mode == "replace":
             label = error_text.lstrip()
         else:
-            label = f"{shape_text}{sharding_text}{error_text}"
+            label = f"{shape_text}{error_text}"
 
         # Determine hint position and prefix based on line kind
         character = 999  # default: end-of-line

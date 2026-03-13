@@ -108,7 +108,7 @@ jaxtyc trace <file.py::function_name>
 
 1. Parses the file's AST to find the target function's jaxtyping annotations.
 2. Imports the module and resolves the function object (supports class methods via `class_name`).
-3. Builds abstract inputs from annotated parameter shapes using the `DimEnv` prime-mapping system.
+3. Builds abstract inputs from annotated parameter shapes using the `DimEnv` symbolic dimension system.
 4. Runs `jax.make_jaxpr` to extract every intermediate operation and its output shape.
 5. Maps each operation back to its source line and prints the trace with named dimensions.
 
@@ -211,8 +211,20 @@ See [Editors](../editors/editors.md) for editor-specific setup.
 Start the LSP multiplexer over stdio. Runs a Python type checker (ty or pyright) alongside jaxtyc behind a single stdio pipe, merging results transparently. Intended for editors that only support one LSP server per file extension.
 
 ```
-jaxtyc mux
+jaxtyc mux [--solo jaxtyc|ty|primary|pyright]
 ```
+
+**Arguments:**
+
+| Argument | Description |
+|----------|-------------|
+| `--solo` | Show diagnostics from only this server. `jaxtyc` shows only shape-checking diagnostics. `ty`, `primary`, or `pyright` shows only type-checking diagnostics. Default: both servers' diagnostics are merged. |
+
+**Environment variables:**
+
+| Variable | Description |
+|----------|-------------|
+| `JAXTYC_MUX_SOLO` | Equivalent to `--solo`. Values: `jaxtyc`, `ty`, `primary`, `pyright`. The `--solo` CLI flag takes precedence. |
 
 **Behavior:**
 
@@ -224,6 +236,7 @@ jaxtyc mux
     - **Completion**: item lists merged
     - **Single-value** (definition, rename, etc.): first non-null, preferring the type checker
 4. Diagnostics from both servers are merged per-URI and forwarded to the client.
+5. When `--solo` is set, only diagnostics from the selected server are forwarded. All other LSP features (hover, completion, etc.) still merge from both servers.
 
 A 3-second timeout ensures the client always gets a response even if one server is slow.
 
@@ -237,5 +250,5 @@ Print the installed version and exit.
 
 ```
 $ jaxtyc version
-jaxtyc 0.3.0
+jaxtyc 0.6.0
 ```

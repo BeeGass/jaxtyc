@@ -40,19 +40,24 @@ dtype_style = "jaxtyping"
 
 ## Sharding configuration
 
-The `[tool.jaxtyc.sharding]` section controls sharding display and validation.
+The `[tool.jaxtyc.sharding]` section controls sharding display, validation, and mesh configuration.
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `display` | `"append"` \| `"constrained_only"` \| `"off"` | `"append"` | Sharding display in inlay hints: `append` always shows, `constrained_only` shows only for sharding_constraint primitives, `off` hides sharding info |
-| `rules` | `list[str]` | all 4 rules | Allow-list of enabled sharding diagnostic rules. Only listed rules produce diagnostics. |
+| `display` | `"all"` \| `"constrained_only"` \| `"off"` | `"all"` | Sharding display in inlay hints: `all` shows `dim\|axis` on every line, `constrained_only` shows only for lines with explicit sharding constraints, `off` hides sharding info |
+| `rules` | `list[str]` | all 8 rules | Allow-list of enabled sharding diagnostic rules. Only listed rules produce diagnostics. |
+| `mesh` | `dict[str, int]` | `{}` | Physical mesh axis name to device count mapping (e.g. `{ data = 4, model = 2 }`). |
+| `axis_rules` | `dict[str, str]` | `{}` | Logical axis name to physical axis name mapping (e.g. `{ dp = "data", mp = "model" }`). |
+| `strict_annotation` | `bool` | `true` | When `true`, piped shapes with bare (unsharded) dims emit `sharding-annotation-incomplete`. |
 
-The default `rules` list includes all four sharding rules: `sharding-rank-mismatch`, `sharding-axis-unknown`, `sharding-conflict`, `sharding-io-mismatch`. To disable a specific rule, list only the rules you want:
+The default `rules` list includes all eight sharding rules: `sharding-rank-mismatch`, `sharding-axis-unknown`, `sharding-conflict`, `sharding-io-mismatch`, `sharding-propagation-mismatch`, `sharding-annotation-incomplete`, `sharding-dim-conflict`, `sharding-mesh-undefined`. To disable a specific rule, list only the rules you want:
 
 ```toml
 [tool.jaxtyc.sharding]
 display = "constrained_only"
-rules = ["sharding-rank-mismatch", "sharding-axis-unknown"]
+mesh = { data = 4, model = 2 }
+axis_rules = { dp = "data", mp = "model" }
+rules = ["sharding-rank-mismatch", "sharding-axis-unknown", "sharding-mesh-undefined"]
 ```
 
 ---
@@ -89,8 +94,20 @@ error_mode = "both"
 dtype_style = "numpy"
 
 [tool.jaxtyc.sharding]
-display = "append"
-rules = ["sharding-rank-mismatch", "sharding-axis-unknown", "sharding-conflict", "sharding-io-mismatch"]
+display = "all"
+mesh = { data = 4, model = 2 }
+axis_rules = { dp = "data", mp = "model" }
+strict_annotation = true
+rules = [
+    "sharding-rank-mismatch",
+    "sharding-axis-unknown",
+    "sharding-conflict",
+    "sharding-io-mismatch",
+    "sharding-propagation-mismatch",
+    "sharding-annotation-incomplete",
+    "sharding-dim-conflict",
+    "sharding-mesh-undefined",
+]
 
 [tool.jaxtyc.navigation]
 references_scope = "workspace"
@@ -129,6 +146,10 @@ These are the rule codes emitted by jaxtyc, usable in `ignore_rules`:
 | `sharding-axis-unknown` | error | PartitionSpec references a non-existent mesh axis. |
 | `sharding-conflict` | error | Conflicting PartitionSpecs on same shape at same line. |
 | `sharding-io-mismatch` | warning | jit out_shardings contradict an inner sharding_constraint. |
+| `sharding-propagation-mismatch` | error | JAX-propagated output sharding differs from return annotation. |
+| `sharding-annotation-incomplete` | warning | Piped shape with bare (unsharded) dims in strict mode. |
+| `sharding-dim-conflict` | error | Same dim name sharded on different axes across params. |
+| `sharding-mesh-undefined` | error | mesh_axis references axis not in mesh config or axis_rules. |
 | `file-not-found` | info | The specified file path does not exist. |
 | `read-error` | info | The file could not be read (permissions, encoding). |
 | `import-error` | info | The module could not be imported for tracing. |
@@ -142,7 +163,7 @@ A diagnostic is included in output when **all** conditions are met:
 
 1. Its severity is at or above the configured `severity` threshold.
 2. Its rule code is **not** in `ignore_rules`.
-3. For sharding diagnostics: its rule code is in the `[tool.jaxtyc.sharding] rules` allow-list (defaults to all 4 sharding rules).
+3. For sharding diagnostics: its rule code is in the `[tool.jaxtyc.sharding] rules` allow-list (defaults to all 8 sharding rules).
 
 ```toml
 [tool.jaxtyc]

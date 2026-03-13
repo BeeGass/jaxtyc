@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -18,7 +19,12 @@ from jaxtyc.analyzer.checker import check_call_site
 from jaxtyc.analyzer.checker import check_function
 from jaxtyc.analyzer.dim_env import DimEnv
 from jaxtyc.analyzer.importer import import_module_from_path
+from jaxtyc.analyzer.mesh_resolver import MeshInfo
+from jaxtyc.analyzer.mesh_resolver import resolve_mesh
+from jaxtyc.analyzer.sharding_checker import check_annotation_sharding
+from jaxtyc.analyzer.sharding_checker import check_mesh_axes
 from jaxtyc.analyzer.sharding_checker import check_sharding
+from jaxtyc.analyzer.sharding_checker import check_sharding_propagation
 from jaxtyc.analyzer.suppressions import extract_suppressions
 from jaxtyc.analyzer.suppressions import filter_inline_suppressions
 from jaxtyc.analyzer.tracer import trace_function
@@ -103,6 +109,16 @@ def analyze_file(file_path: str) -> FileResult:
             trace_results=trace_results,
         )
 
+    # Infer mesh shape and axis rules from source AST (consumed by sharded tracing)
+    try:
+        tree = ast.parse(source)
+        mesh_info = resolve_mesh(tree)
+    except SyntaxError:
+        mesh_info = MeshInfo()
+
+    mesh_config = mesh_info.mesh or None
+    axis_rules = dict(mesh_info.axis_rules) if mesh_info.axis_rules else {}
+
     # Import module to get live function objects
     try:
         module = import_module_from_path(file_path)
@@ -124,26 +140,9 @@ def analyze_file(file_path: str) -> FileResult:
             trace_results=trace_results,
         )
 
-    # Collect literal dim values to reserve them so primes never collide
-    reserved_literals: set[int] = set()
-    for func_spec in func_specs:
-        for pspec in func_spec.params.values():
-            for dim in pspec.dims:
-                if dim.kind == "fixed" and dim.size is not None:
-                    reserved_literals.add(dim.size)
-        if func_spec.return_spec:
-            for dim in func_spec.return_spec.dims:
-                if dim.kind == "fixed" and dim.size is not None:
-                    reserved_literals.add(dim.size)
-        if func_spec.return_specs:
-            for rspec in func_spec.return_specs:
-                for dim in rspec.dims:
-                    if dim.kind == "fixed" and dim.size is not None:
-                        reserved_literals.add(dim.size)
-
     # Shared DimEnv across all functions in the file — same dim name always maps
-    # to the same prime, enabling cross-function consistency checking.
-    env = DimEnv(reserved=frozenset(reserved_literals))
+    # to the same symbolic value, enabling cross-function consistency checking.
+    env = DimEnv()
 
     # Trace and check each annotated function
     traced: dict[str, tuple[FunctionShapeSpec, TraceResult]] = {}
@@ -176,7 +175,9 @@ def analyze_file(file_path: str) -> FileResult:
         if func_spec.is_method and func_spec.class_name is not None:
             cls = getattr(module, func_spec.class_name, None)
             if cls is not None and _is_nnx_module(cls):
-                trace = _trace_nnx_method(cls, func_spec, env)
+                trace = _trace_nnx_method(
+                    cls, func_spec, env, mesh_config=mesh_config, axis_rules=axis_rules
+                )
                 trace_results.append(trace)
                 traced[func_spec.name] = (func_spec, trace)
                 functions_checked += 1
@@ -185,7 +186,9 @@ def analyze_file(file_path: str) -> FileResult:
                 diagnostics.extend(check_sharding(trace.intermediates, func_spec, file_path))
                 continue
             if cls is not None and _is_eqx_module(cls):
-                trace = _trace_eqx_method(cls, func_spec, env)
+                trace = _trace_eqx_method(
+                    cls, func_spec, env, mesh_config=mesh_config, axis_rules=axis_rules
+                )
                 trace_results.append(trace)
                 traced[func_spec.name] = (func_spec, trace)
                 functions_checked += 1
@@ -194,7 +197,42 @@ def analyze_file(file_path: str) -> FileResult:
                 diagnostics.extend(check_sharding(trace.intermediates, func_spec, file_path))
                 continue
 
-        trace = trace_function(fn, func_spec.params, env)
+        # Check annotation-level sharding consistency (no tracing needed)
+        annotation_sharding_diags = check_annotation_sharding(func_spec, file_path)
+        diagnostics.extend(annotation_sharding_diags)
+
+        # Check mesh axis references
+        if mesh_config:
+            mesh_diags = check_mesh_axes(func_spec, file_path, mesh_config, axis_rules)
+            diagnostics.extend(mesh_diags)
+
+        # If annotation-level sharding has errors, skip sharded tracing to avoid
+        # confusing trace-error from conflicting concrete sizes. Fall back to
+        # unsharded tracing so shape checks still run.
+        effective_mesh = mesh_config
+        if annotation_sharding_diags and mesh_config:
+            effective_mesh = None
+
+        trace = trace_function(
+            fn, func_spec.params, env, mesh_config=effective_mesh, axis_rules=axis_rules
+        )
+
+        # Emit warning if sharded tracing fell back to unsharded
+        if trace.sharding_fallback_reason is not None:
+            diagnostics.append(
+                Diagnostic(
+                    file=file_path,
+                    line=func_spec.lineno,
+                    col=func_spec.col_offset,
+                    severity="warning",
+                    message=(
+                        f"Sharded tracing failed for `{func_spec.name}`, fell back to "
+                        f"unsharded: {trace.sharding_fallback_reason}"
+                    ),
+                    rule="trace-error",
+                )
+            )
+
         trace_results.append(trace)
         traced[func_spec.name] = (func_spec, trace)
         functions_checked += 1
@@ -203,9 +241,17 @@ def analyze_file(file_path: str) -> FileResult:
         diags = check_function(func_spec, trace, env)
         diagnostics.extend(diags)
 
-        # Check sharding constraints
+        # Check sharding constraints from make_jaxpr intermediates
         sharding_diags = check_sharding(trace.intermediates, func_spec, file_path)
         diagnostics.extend(sharding_diags)
+
+        # Check propagated output sharding against return annotation
+        if trace.output_sharding is not None:
+            diagnostics.extend(
+                check_sharding_propagation(
+                    trace.output_sharding, func_spec.return_spec, func_spec, file_path
+                )
+            )
 
     # Cross-function shape propagation
 
@@ -294,7 +340,7 @@ def _collect_dim_kwargs(
     """
     import inspect
 
-    # 1. Collect named dims from method annotations
+    # 1. Collect named dims from method annotations (concrete ints for construction)
     annotation_dims: dict[str, int] = {}
     specs = list(func_spec.params.values())
     if func_spec.return_spec is not None:
@@ -304,7 +350,7 @@ def _collect_dim_kwargs(
     for spec in specs:
         for dim in spec.dims:
             if dim.kind == "named" and dim.name is not None:
-                annotation_dims.setdefault(dim.name, env.get_size(dim.name))
+                annotation_dims.setdefault(dim.name, env.get_concrete_size(dim.name))
 
     # 2. Inspect constructor for all int-typed params
     try:
@@ -329,10 +375,10 @@ def _collect_dim_kwargs(
         elif (
             param.annotation is int or param.annotation == "int"
         ) and param.default is inspect.Parameter.empty:
-            # Required int param not in annotations — assign a prime for reverse-mapping.
+            # Required int param not in annotations — assign a concrete size for reverse-mapping.
             # Optional int params (with defaults) keep their defaults to avoid
             # breaking divisibility assertions like `assert features % num_head == 0`.
-            result[pname] = env.get_size(pname)
+            result[pname] = env.get_concrete_size(pname)
 
     return result
 
@@ -341,6 +387,8 @@ def _trace_nnx_method(
     cls: type,
     func_spec: FunctionShapeSpec,
     env: DimEnv,
+    mesh_config: dict[str, int] | None = None,
+    axis_rules: dict[str, str] | None = None,
 ) -> TraceResult:
     """Trace a Flax NNX module method using a concrete model with split/merge."""
     import jax
@@ -348,16 +396,18 @@ def _trace_nnx_method(
 
     from jaxtyc.analyzer.tracer import _extract_intermediates
 
+    # NNX modules need concrete int sizes for construction. Use concrete
+    # shapes for abstract inputs so they match the module's internal weights.
     abstract_inputs: dict[str, jax.ShapeDtypeStruct] = {}
     for pname, pspec in func_spec.params.items():
         if pspec.is_any_shape:
             continue
-        shape = env.make_shape(pspec)
+        shape = env.make_concrete_shape(pspec)
         dtype = _resolve_jax_dtype(pspec.dtype)
         abstract_inputs[pname] = jax.ShapeDtypeStruct(shape, dtype)
 
     # Build constructor kwargs from dimension names in annotations.
-    # The model's internal params must match the prime-based abstract inputs
+    # The model's internal params must match the concrete abstract inputs
     # so that eval_shape and make_jaxpr produce correct shapes.
     dim_sizes = _collect_dim_kwargs(cls, func_spec, env)
 
@@ -384,9 +434,25 @@ def _trace_nnx_method(
         model = nnx.merge(graphdef, state)
         return getattr(model, func_spec.name)(**kwargs)
 
+    # Build mesh context if sharding is active
+    has_sharding = bool(
+        mesh_config and any(spec.has_sharding for spec in func_spec.params.values())
+    )
+    abstract_mesh = None
+    if has_sharding and mesh_config:
+        from jaxtyc.analyzer.tracer import _build_abstract_mesh
+
+        abstract_mesh = _build_abstract_mesh(mesh_config)
+
     # Trace for output shape
     try:
-        output_struct = jax.eval_shape(pure_fn, **abstract_inputs)
+        if abstract_mesh is not None:
+            from jax._src.mesh import use_abstract_mesh
+
+            with use_abstract_mesh(abstract_mesh):
+                output_struct = jax.eval_shape(pure_fn, **abstract_inputs)
+        else:
+            output_struct = jax.eval_shape(pure_fn, **abstract_inputs)
     except Exception as e:
         return TraceResult(
             function_name=func_spec.name,
@@ -410,7 +476,13 @@ def _trace_nnx_method(
             output_dtype = None
 
     # Extract intermediates via make_jaxpr (graceful degradation)
-    intermediates = _extract_intermediates(pure_fn, abstract_inputs, env)
+    if abstract_mesh is not None:
+        from jax._src.mesh import use_abstract_mesh
+
+        with use_abstract_mesh(abstract_mesh):
+            intermediates = _extract_intermediates(pure_fn, abstract_inputs, env)
+    else:
+        intermediates = _extract_intermediates(pure_fn, abstract_inputs, env)
 
     return TraceResult(
         function_name=func_spec.name,
@@ -432,23 +504,36 @@ def _trace_eqx_method(
     cls: type,
     func_spec: FunctionShapeSpec,
     env: DimEnv,
+    mesh_config: dict[str, int] | None = None,
+    axis_rules: dict[str, str] | None = None,
 ) -> TraceResult:
     """Trace an equinox module method using jax.eval_shape with a bound method."""
     import jax
 
     from jaxtyc.analyzer.tracer import _extract_intermediates
 
+    # Equinox modules need concrete int sizes — use make_concrete_shape
     abstract_inputs: dict[str, jax.ShapeDtypeStruct] = {}
     for pname, pspec in func_spec.params.items():
         if pspec.is_any_shape:
             continue
-        shape = env.make_shape(pspec)
+        shape = env.make_concrete_shape(pspec)
         dtype = _resolve_jax_dtype(pspec.dtype)
         abstract_inputs[pname] = jax.ShapeDtypeStruct(shape, dtype)
 
     # Build constructor kwargs from annotation dims so model params
-    # match the prime-based abstract inputs
+    # match the concrete abstract inputs
     dim_sizes = _collect_dim_kwargs(cls, func_spec, env)
+
+    # Build mesh context if sharding is active
+    has_sharding = bool(
+        mesh_config and any(spec.has_sharding for spec in func_spec.params.values())
+    )
+    abstract_mesh = None
+    if has_sharding and mesh_config:
+        from jaxtyc.analyzer.tracer import _build_abstract_mesh
+
+        abstract_mesh = _build_abstract_mesh(mesh_config)
 
     # Equinox modules are pytrees — instantiate with dimension-matched params
     try:
@@ -472,7 +557,13 @@ def _trace_eqx_method(
         def wrapper(**kwargs: Any) -> Any:
             return method(**kwargs)
 
-        output_struct = jax.eval_shape(wrapper, **abstract_inputs)
+        if abstract_mesh is not None:
+            from jax._src.mesh import use_abstract_mesh
+
+            with use_abstract_mesh(abstract_mesh):
+                output_struct = jax.eval_shape(wrapper, **abstract_inputs)
+        else:
+            output_struct = jax.eval_shape(wrapper, **abstract_inputs)
     except Exception as e:
         return TraceResult(
             function_name=func_spec.name,
@@ -495,7 +586,13 @@ def _trace_eqx_method(
             output_dtype = None
 
     # Extract intermediates via make_jaxpr (graceful degradation)
-    intermediates = _extract_intermediates(wrapper, abstract_inputs, env)
+    if abstract_mesh is not None:
+        from jax._src.mesh import use_abstract_mesh
+
+        with use_abstract_mesh(abstract_mesh):
+            intermediates = _extract_intermediates(wrapper, abstract_inputs, env)
+    else:
+        intermediates = _extract_intermediates(wrapper, abstract_inputs, env)
 
     return TraceResult(
         function_name=func_spec.name,

@@ -9,6 +9,7 @@ from lsprotocol import types
 
 from jaxtyc.lsp import _state
 from jaxtyc.types import DimLocation
+from jaxtyc.types import DimSpec
 from jaxtyc.types import FunctionShapeSpec
 
 
@@ -45,15 +46,88 @@ def spec_selection_range(spec: FunctionShapeSpec) -> types.Range:
     )
 
 
+def dim_label(d: DimSpec) -> str:
+    """Build a display label for a single dimension, including mesh_axis if present.
+
+    Returns ``"name|axis"`` when the dim has a ``mesh_axis``, otherwise just
+    the plain name/size/kind fallback.
+    """
+    base = d.name or str(d.size) or d.kind
+    if d.mesh_axis is not None:
+        return f"{base}|{d.mesh_axis}"
+    return base
+
+
+def format_named_shape(
+    named_shape: tuple[str | None, ...],
+    shape: tuple[object, ...],
+) -> list[str]:
+    """Format named_shape for display, collapsing synthetic dim names.
+
+    Display rules:
+    - ``_ellipsis_0, _ellipsis_1`` -> ``...(0, 1)`` with indices
+    - ``_var_batch_0, _var_batch_1`` -> ``*batch`` (original variadic name)
+    - ``_anon_N`` -> ``_``
+    - ``None`` -> concrete size as string
+    - named dims -> name as-is
+
+    Args:
+        named_shape: Dimension names from the tracer (may contain synthetic names).
+        shape: Corresponding concrete shape tuple.
+
+    Returns:
+        List of display-ready dimension labels.
+    """
+    parts: list[str] = []
+    i = 0
+    while i < len(named_shape):
+        name = named_shape[i]
+        # Collapse consecutive _ellipsis_* dims into ...(indices)
+        if name is not None and name.startswith("_ellipsis_"):
+            indices: list[str] = []
+            while (
+                i < len(named_shape)
+                and named_shape[i] is not None
+                and named_shape[i].startswith("_ellipsis_")  # type: ignore[union-attr]
+            ):
+                # Extract index from _ellipsis_N; fall back to str(shape) for concrete
+                idx = named_shape[i].split("_ellipsis_")[1]  # type: ignore[union-attr]
+                indices.append(idx)
+                i += 1
+            parts.append(f"...({', '.join(indices)})")
+            continue
+        # Collapse consecutive _var_{name}_* dims into *name
+        if name is not None and name.startswith("_var_"):
+            # Extract original name: _var_batch_0 -> batch
+            var_name = name.split("_var_")[1].rsplit("_", 1)[0]
+            while (
+                i < len(named_shape)
+                and named_shape[i] is not None
+                and named_shape[i].startswith(f"_var_{var_name}_")  # type: ignore[union-attr]
+            ):
+                i += 1
+            parts.append(f"*{var_name}")
+            continue
+        # Replace _anon_N with _
+        if name is not None and name.startswith("_anon_"):
+            parts.append("_")
+            i += 1
+            continue
+        # Normal dim: use name or concrete size
+        parts.append(name or str(shape[i]))
+        i += 1
+    return parts
+
+
 def shape_summary(spec: FunctionShapeSpec) -> str:
     """Build a shape summary string like '(batch, seq) -> (batch, hidden)'."""
     parts = []
     for pname, pspec in spec.params.items():
-        dim_names = ", ".join(d.name or str(d.size) or d.kind for d in pspec.dims)
+        dim_names = ", ".join(dim_label(d) for d in pspec.dims)
         parts.append(f"{pname}: ({dim_names})")
     ret = ""
     if spec.return_spec is not None:
-        ret_dims = ", ".join(d.name or str(d.size) or d.kind for d in spec.return_spec.dims)
+        ret_dims = ", ".join(dim_label(d) for d in spec.return_spec.dims)
         ret = f" -> ({ret_dims})"
     return f"{', '.join(parts)}{ret}"
 

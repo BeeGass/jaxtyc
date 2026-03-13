@@ -34,6 +34,19 @@ def _is_in_shape_string(line_text: str, col: int) -> bool:
     return False
 
 
+def _is_after_pipe(line_text: str, col: int) -> bool:
+    """Check if the cursor is immediately after a ``|`` inside a shape string.
+
+    Walks backwards from ``col`` over any partial word to see if a pipe
+    character precedes the token being typed.
+    """
+    # Walk backwards over partial word (letters, digits, underscores)
+    i = col - 1
+    while i >= 0 and (line_text[i].isalnum() or line_text[i] == "_"):
+        i -= 1
+    return i >= 0 and line_text[i] == "|"
+
+
 def _get_partial_word(line_text: str, col: int) -> str:
     """Extract the partial word being typed at the cursor position."""
     # Walk backwards from cursor to find word start
@@ -43,9 +56,19 @@ def _get_partial_word(line_text: str, col: int) -> str:
     return line_text[start:col]
 
 
+def _get_mesh_axis_completions(prefix: str) -> list[str]:
+    """Return mesh axis names from config that match the given prefix."""
+    mesh = _state.config.sharding.mesh
+    if not mesh:
+        return []
+    if prefix:
+        return sorted(a for a in mesh if a.startswith(prefix))
+    return sorted(mesh.keys())
+
+
 @server.feature(
     types.TEXT_DOCUMENT_COMPLETION,
-    types.CompletionOptions(trigger_characters=[" ", '"']),
+    types.CompletionOptions(trigger_characters=[" ", '"', "|"]),
 )
 def completion(ls: LanguageServer, params: types.CompletionParams) -> types.CompletionList | None:
     """Complete dimension names inside jaxtyping shape strings."""
@@ -60,6 +83,23 @@ def completion(ls: LanguageServer, params: types.CompletionParams) -> types.Comp
     line_text = lines[pos.line]
     if not _is_in_shape_string(line_text, pos.character):
         return None
+
+    # Check if cursor is after a pipe — offer mesh axis names
+    if _is_after_pipe(line_text, pos.character):
+        prefix = _get_partial_word(line_text, pos.character)
+        matching = _get_mesh_axis_completions(prefix)
+        if not matching:
+            return None
+        items = [
+            types.CompletionItem(
+                label=axis_name,
+                kind=types.CompletionItemKind.EnumMember,
+                detail="mesh axis",
+                insert_text=axis_name,
+            )
+            for axis_name in matching
+        ]
+        return types.CompletionList(is_incomplete=False, items=items)
 
     prefix = _get_partial_word(line_text, pos.character)
 

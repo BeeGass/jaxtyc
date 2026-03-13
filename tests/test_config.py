@@ -250,8 +250,8 @@ class TestShardingConfig:
     def test_sharding_config_defaults(self) -> None:
         """ShardingConfig has correct defaults."""
         cfg = ShardingConfig()
-        assert cfg.display == "append"
-        assert len(cfg.rules) == 4
+        assert cfg.display == "all"
+        assert len(cfg.rules) == 8
 
     def test_sharding_config_frozen(self) -> None:
         """ShardingConfig should be immutable."""
@@ -260,6 +260,47 @@ class TestShardingConfig:
         cfg = ShardingConfig()
         with pytest.raises(AttributeError):
             cfg.display = "off"  # type: ignore[misc]
+
+
+class TestShardingConfigMesh:
+    def test_mesh_from_toml(self) -> None:
+        """Load mesh and axis_rules from [tool.jaxtyc.sharding]."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            pyproject = Path(tmpdir) / "pyproject.toml"
+            pyproject.write_text(
+                "[tool.jaxtyc.sharding]\n"
+                "mesh = { data = 4, model = 2 }\n"
+                'axis_rules = { dp = "data", mp = "model" }\n'
+                "strict_annotation = true\n"
+            )
+            config = load_config(tmpdir)
+            assert config.sharding.mesh == {"data": 4, "model": 2}
+            assert config.sharding.axis_rules == {"dp": "data", "mp": "model"}
+            assert config.sharding.strict_annotation is True
+
+    def test_mesh_defaults_empty(self) -> None:
+        """Default ShardingConfig has empty mesh and axis_rules."""
+        config = ShardingConfig()
+        assert config.mesh == {}
+        assert config.axis_rules == {}
+        assert config.strict_annotation is True
+
+    def test_strict_annotation_false(self) -> None:
+        """strict_annotation can be set to false."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            pyproject = Path(tmpdir) / "pyproject.toml"
+            pyproject.write_text("[tool.jaxtyc.sharding]\nstrict_annotation = false\n")
+            config = load_config(tmpdir)
+            assert config.sharding.strict_annotation is False
+
+    def test_mesh_only(self) -> None:
+        """Load just mesh without axis_rules."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            pyproject = Path(tmpdir) / "pyproject.toml"
+            pyproject.write_text("[tool.jaxtyc.sharding]\nmesh = { dp = 8 }\n")
+            config = load_config(tmpdir)
+            assert config.sharding.mesh == {"dp": 8}
+            assert config.sharding.axis_rules == {}
 
 
 class TestNestedConfig:
@@ -304,7 +345,7 @@ class TestNestedConfig:
             pyproject.write_text("[tool.jaxtyc]\nseverity = 'warning'\n")
             cfg = load_config(tmpdir)
             assert cfg.hints.error_mode == "both"
-            assert cfg.sharding.display == "append"
+            assert cfg.sharding.display == "all"
 
     def test_unknown_nested_keys_ignored(self) -> None:
         """Unknown keys inside subsections are silently ignored."""

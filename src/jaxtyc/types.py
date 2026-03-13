@@ -4,11 +4,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from dataclasses import field
+from typing import Any
 from typing import Literal
 from typing import TypeAlias
 
 Severity: TypeAlias = Literal["error", "warning", "info"]
 NamedShape: TypeAlias = tuple[str | None, ...]
+DimSize: TypeAlias = Any  # int | jax.export._DimExpr (symbolic dimension)
 
 
 @dataclass(frozen=True)
@@ -26,6 +28,8 @@ class DimSpec:
     kind: Literal["named", "fixed", "variadic", "anonymous", "ellipsis"]
     name: str | None = None
     size: int | None = None
+    mesh_axis: str | None = None
+    sharding_annotated: bool = False
 
 
 @dataclass(frozen=True)
@@ -44,6 +48,11 @@ class ShapeSpec:
     dtype: str
     is_scalar: bool = False
     is_any_shape: bool = False
+
+    @property
+    def has_sharding(self) -> bool:
+        """True if any dimension has a mesh_axis annotation."""
+        return any(d.mesh_axis is not None for d in self.dims)
 
 
 @dataclass(frozen=True)
@@ -110,11 +119,11 @@ class DiagnosticData:
         related_locations: Related source locations for clickable links.
     """
 
-    expected_shape: tuple[int, ...] | None = None
-    actual_shape: tuple[int, ...] | None = None
+    expected_shape: tuple[DimSize, ...] | None = None
+    actual_shape: tuple[DimSize, ...] | None = None
     expected_named: tuple[str, ...] | None = None
     actual_named: tuple[str, ...] | None = None
-    dim_name_mapping: dict[str, int] | None = None
+    dim_name_mapping: dict[str, DimSize] | None = None
     suggested_fix: str | None = None
     rule: str = ""
     related_locations: tuple[RelatedLocation, ...] = ()
@@ -202,7 +211,7 @@ class IntermediateShape:
             produced by a sharding primitive.
     """
 
-    shape: tuple[int, ...]
+    shape: tuple[DimSize, ...]
     dtype: str
     source_file: str
     source_line: int
@@ -225,13 +234,15 @@ class TraceResult:
     """
 
     function_name: str
-    output_shape: tuple[int, ...] | None
+    output_shape: tuple[DimSize, ...] | None
     output_dtype: str | None
     intermediates: list[IntermediateShape]
     error: str | None
-    input_shapes: dict[str, tuple[int, ...]] = field(default_factory=dict)
-    output_shapes: list[tuple[int, ...]] | None = None
+    input_shapes: dict[str, tuple[DimSize, ...]] = field(default_factory=dict)
+    output_shapes: list[tuple[DimSize, ...]] | None = None
     output_dtypes: list[str] | None = None
+    output_sharding: object | None = None
+    sharding_fallback_reason: str | None = None
 
     @property
     def success(self) -> bool:

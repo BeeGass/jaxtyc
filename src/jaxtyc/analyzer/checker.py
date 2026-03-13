@@ -62,8 +62,11 @@ def check_function(
         for pname, pspec in func_spec.params.items():
             if pspec.is_any_shape or pname not in trace.input_shapes:
                 continue
-            expected_param_shape = env.make_shape(pspec)
             actual_param_shape = trace.input_shapes[pname]
+            if actual_param_shape and isinstance(actual_param_shape[0], int):
+                expected_param_shape = env.make_concrete_shape(pspec)
+            else:
+                expected_param_shape = env.make_shape(pspec)
             if expected_param_shape != actual_param_shape:
                 expected_named = _format_named_shape(expected_param_shape, env)
                 actual_named = _format_named_shape(actual_param_shape, env)
@@ -152,7 +155,7 @@ def _suggest_fix(
         return f"Add {-diff} dimension(s) — try jnp.expand_dims"
 
     # shape-mismatch: detect transposition
-    if sorted(expected_shape) == sorted(actual_shape):
+    if sorted(str(s) for s in expected_shape) == sorted(str(s) for s in actual_shape):
         exp_names = _named_shape_tuple(expected_shape, env)
         act_names = _named_shape_tuple(actual_shape, env)
         return f"Transpose: rearrange from ({', '.join(act_names)}) to ({', '.join(exp_names)})"
@@ -181,8 +184,12 @@ def _check_shape(
     if expected_spec.is_any_shape:
         return
 
-    # Build expected shape from spec
-    expected_shape = env.make_shape(expected_spec)
+    # Build expected shape from spec. If actual_shape contains concrete ints
+    # (from NNX/equinox tracing), use concrete expected shapes to match.
+    if actual_shape and isinstance(actual_shape[0], int):
+        expected_shape = env.make_concrete_shape(expected_spec)
+    else:
+        expected_shape = env.make_shape(expected_spec)
 
     # Rank check
     if len(expected_shape) != len(actual_shape):
@@ -287,8 +294,11 @@ def check_call_site(
     if callee_spec.return_spec is None:
         return diagnostics
 
-    expected_shape = env.make_shape(callee_spec.return_spec)
     actual_shape = callee_trace.output_shape
+    if actual_shape and isinstance(actual_shape[0], int):
+        expected_shape = env.make_concrete_shape(callee_spec.return_spec)
+    else:
+        expected_shape = env.make_shape(callee_spec.return_spec)
 
     if expected_shape != actual_shape:
         expected_named = _format_named_shape(expected_shape, env)

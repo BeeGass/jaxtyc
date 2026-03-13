@@ -974,7 +974,7 @@ class TestLSPInlayHints:
         label = hints[0].label
         assert isinstance(label, str)
         # No source_cache so no prefix is added (no line classification)
-        assert label == "f32[batch, seq]", f"Expected 'f32[batch, seq]', got: {label}"
+        assert label == "f32[batch seq]", f"Expected 'f32[batch seq]', got: {label}"
 
         with _state.cache_lock:
             _state.analysis_cache.pop(uri, None)
@@ -1082,7 +1082,7 @@ class TestLSPInlayHints:
         label = line5_hints[0].label
         assert isinstance(label, str)
         assert " | " in label, f"Expected pipe separator in error hint, got: {label}"
-        # New format: "f32[batch, head_dim] | dim 1: expected seq, got head_dim"
+        # New format: "f32[batch head_dim] | dim 1: expected seq, got head_dim"
         assert "f32[" in label, f"Expected compact dtype format, got: {label}"
         assert "batch" in label
 
@@ -1134,7 +1134,7 @@ class TestLSPInlayHints:
             _state.error_hints_cache.pop(uri, None)
 
     def test_inlay_hint_sharding_display(self) -> None:
-        """Inlay hint on sharded line appends P(...) with pipe separator."""
+        """Inlay hint on sharded line uses dim|axis notation in shape."""
         from jaxtyc.lsp import _state
         from jaxtyc.types import IntermediateShape
         from jaxtyc.types import ShardingInfo
@@ -1177,8 +1177,9 @@ class TestLSPInlayHints:
         assert len(hints) >= 1
         label = hints[0].label
         assert isinstance(label, str)
-        # New format: pipe-separated sharding
-        assert "| P(" in label, f"Expected '| P(...)' in sharded hint, got: {label}"
+        # Sharding integrated into shape: "f32[batch|data seq|None]"
+        assert "batch|data" in label, f"Expected 'batch|data' in sharded hint, got: {label}"
+        assert "seq|None" in label, f"Expected 'seq|None' in sharded hint, got: {label}"
 
         with _state.cache_lock:
             _state.analysis_cache.pop(uri, None)
@@ -2810,3 +2811,320 @@ class TestEarlyIndexBuild:
             assert uri not in _state.trace_results_cache
 
         _state.workspace_index.remove_file(uri)
+
+
+class TestShardingInTypes:
+    """Tests for dim|axis pipe syntax in hover, shape_summary, and completion."""
+
+    def test_dim_label_with_mesh_axis(self) -> None:
+        """dim_label should append |axis when mesh_axis is set."""
+        from jaxtyc.lsp._util import dim_label
+        from jaxtyc.types import DimSpec
+
+        d = DimSpec(kind="named", name="batch", mesh_axis="dp")
+        assert dim_label(d) == "batch|dp"
+
+    def test_dim_label_without_mesh_axis(self) -> None:
+        """dim_label should return plain name when mesh_axis is None."""
+        from jaxtyc.lsp._util import dim_label
+        from jaxtyc.types import DimSpec
+
+        d = DimSpec(kind="named", name="batch")
+        assert dim_label(d) == "batch"
+
+    def test_dim_label_fixed_with_mesh_axis(self) -> None:
+        """dim_label should handle fixed dims with mesh_axis."""
+        from jaxtyc.lsp._util import dim_label
+        from jaxtyc.types import DimSpec
+
+        d = DimSpec(kind="fixed", size=32, mesh_axis="mp")
+        assert dim_label(d) == "32|mp"
+
+    def test_shape_summary_includes_mesh_axis(self) -> None:
+        """shape_summary should show dim|axis for sharded params."""
+        from jaxtyc.lsp._util import shape_summary
+        from jaxtyc.types import DimSpec
+        from jaxtyc.types import FunctionShapeSpec
+        from jaxtyc.types import ShapeSpec
+
+        spec = FunctionShapeSpec(
+            name="sharded_matmul",
+            file_path="/test/sharded.py",
+            lineno=1,
+            col_offset=0,
+            params={
+                "x": ShapeSpec(
+                    dims=(
+                        DimSpec(kind="named", name="batch", mesh_axis="dp"),
+                        DimSpec(kind="named", name="seq"),
+                        DimSpec(kind="named", name="d_model", mesh_axis="mp"),
+                    ),
+                    dtype="float32",
+                )
+            },
+            return_spec=ShapeSpec(
+                dims=(
+                    DimSpec(kind="named", name="batch", mesh_axis="dp"),
+                    DimSpec(kind="named", name="seq"),
+                    DimSpec(kind="named", name="d_ff"),
+                ),
+                dtype="float32",
+            ),
+        )
+        result = shape_summary(spec)
+        assert "batch|dp" in result
+        assert "d_model|mp" in result
+        # Unsharded dim should not have pipe
+        assert "seq|" not in result
+        assert "d_ff|" not in result
+
+    def test_param_hover_includes_mesh_axis(self) -> None:
+        """_param_hover should show dim|axis for sharded dims."""
+        from jaxtyc.lsp._navigation import _param_hover
+        from jaxtyc.types import DimSpec
+        from jaxtyc.types import ShapeSpec
+
+        pspec = ShapeSpec(
+            dims=(
+                DimSpec(kind="named", name="batch", mesh_axis="dp"),
+                DimSpec(kind="named", name="seq"),
+                DimSpec(kind="named", name="d_model", mesh_axis="mp"),
+            ),
+            dtype="float32",
+        )
+        result = _param_hover("x", pspec)
+        assert "batch|dp" in result
+        assert "d_model|mp" in result
+        # Unsharded dim should not have pipe
+        assert "seq|" not in result
+
+    def test_function_hover_includes_mesh_axis(self) -> None:
+        """_function_hover should show dim|axis for sharded params and return."""
+        from jaxtyc.lsp._navigation import _function_hover
+        from jaxtyc.types import DimSpec
+        from jaxtyc.types import FunctionShapeSpec
+        from jaxtyc.types import ShapeSpec
+
+        spec = FunctionShapeSpec(
+            name="sharded_fn",
+            file_path="/test/sharded.py",
+            lineno=1,
+            col_offset=0,
+            params={
+                "x": ShapeSpec(
+                    dims=(
+                        DimSpec(kind="named", name="batch", mesh_axis="dp"),
+                        DimSpec(kind="named", name="d_model", mesh_axis="mp"),
+                    ),
+                    dtype="float32",
+                )
+            },
+            return_spec=ShapeSpec(
+                dims=(
+                    DimSpec(kind="named", name="batch", mesh_axis="dp"),
+                    DimSpec(kind="named", name="hidden"),
+                ),
+                dtype="float32",
+            ),
+        )
+        result = _function_hover(spec)
+        assert "batch|dp" in result
+        assert "d_model|mp" in result
+        # Return section
+        assert "hidden" in result
+        # hidden should not have pipe
+        assert "hidden|" not in result
+
+    def test_hover_on_sharded_function_name(self) -> None:
+        """Full hover on a sharded function shows mesh_axis in all positions."""
+        from jaxtyc.types import DimSpec
+        from jaxtyc.types import FunctionShapeSpec
+        from jaxtyc.types import ShapeSpec
+
+        func_spec = FunctionShapeSpec(
+            name="sharded_matmul",
+            file_path="/test/sharded_hover.py",
+            lineno=3,
+            col_offset=0,
+            name_col_offset=4,
+            end_lineno=5,
+            params={
+                "x": ShapeSpec(
+                    dims=(
+                        DimSpec(kind="named", name="batch", mesh_axis="dp"),
+                        DimSpec(kind="named", name="seq"),
+                        DimSpec(kind="named", name="d_model", mesh_axis="mp"),
+                    ),
+                    dtype="float32",
+                )
+            },
+            return_spec=ShapeSpec(
+                dims=(
+                    DimSpec(kind="named", name="batch", mesh_axis="dp"),
+                    DimSpec(kind="named", name="seq"),
+                    DimSpec(kind="named", name="d_ff"),
+                ),
+                dtype="float32",
+            ),
+        )
+
+        # Test via _function_hover directly (avoids needing server.workspace)
+        from jaxtyc.lsp._navigation import _function_hover
+
+        content = _function_hover(func_spec)
+        assert "batch|dp" in content
+        assert "d_model|mp" in content
+        # Unsharded dims
+        assert "seq|" not in content
+        assert "d_ff|" not in content
+
+        # Also verify shape_summary includes sharding
+        from jaxtyc.lsp._util import shape_summary
+
+        summary = shape_summary(func_spec)
+        assert "batch|dp" in summary
+        assert "d_model|mp" in summary
+
+    def test_completion_offers_mesh_axes_after_pipe(self) -> None:
+        """Typing | in a shape string should offer mesh axis completions."""
+        from jaxtyc.config import JaxtycConfig
+        from jaxtyc.config import ShardingConfig
+        from jaxtyc.lsp import _state
+        from jaxtyc.lsp._completion import _get_mesh_axis_completions
+        from jaxtyc.lsp._completion import _is_after_pipe
+
+        original_config = _state.config
+        _state.config = JaxtycConfig(sharding=ShardingConfig(mesh={"dp": 4, "mp": 2, "pp": 1}))
+
+        try:
+            # Test pipe detection
+            # "batch|" -> | is at col 29, " is at col 30
+            line = 'def fn(x: Float[Array, "batch|"]):'
+            assert _is_after_pipe(line, 30)  # cursor right after |
+            assert not _is_after_pipe(line, 29)  # cursor at | itself
+
+            # Test mesh axis completions
+            axes = _get_mesh_axis_completions("")
+            assert set(axes) == {"dp", "mp", "pp"}
+
+            # Test filtering
+            axes_d = _get_mesh_axis_completions("d")
+            assert "dp" in axes_d
+            assert "mp" not in axes_d
+        finally:
+            _state.config = original_config
+
+
+class TestFormatNamedShape:
+    def test_normal_dims_unchanged(self) -> None:
+        from jaxtyc.lsp._util import format_named_shape
+
+        result = format_named_shape(("batch", "seq", "d_model"), (4, 8, 512))
+        assert result == ["batch", "seq", "d_model"]
+
+    def test_ellipsis_collapsed_with_indices(self) -> None:
+        from jaxtyc.lsp._util import format_named_shape
+
+        result = format_named_shape(("_ellipsis_0", "_ellipsis_1", "d_model"), (4, 8, 512))
+        assert result == ["...(0, 1)", "d_model"]
+
+    def test_ellipsis_with_symbolic_shapes_shows_indices(self) -> None:
+        """When shape values are symbolic _DimExpr, show indices not names."""
+        from jaxtyc.lsp._util import format_named_shape
+
+        # Simulate symbolic dims whose str() returns the synthetic name
+        class FakeDimExpr:
+            def __init__(self, name: str) -> None:
+                self._name = name
+
+            def __str__(self) -> str:
+                return self._name
+
+        result = format_named_shape(
+            ("_ellipsis_0", "_ellipsis_1", "d_model"),
+            (FakeDimExpr("_ellipsis_0"), FakeDimExpr("_ellipsis_1"), FakeDimExpr("d_model")),
+        )
+        assert result == ["...(0, 1)", "d_model"]
+
+    def test_variadic_collapsed(self) -> None:
+        from jaxtyc.lsp._util import format_named_shape
+
+        result = format_named_shape(("_var_batch_0", "_var_batch_1", "seq"), (2, 4, 128))
+        assert result == ["*batch", "seq"]
+
+    def test_anonymous_replaced(self) -> None:
+        from jaxtyc.lsp._util import format_named_shape
+
+        result = format_named_shape(("_anon_1", "_anon_2"), (3, 5))
+        assert result == ["_", "_"]
+
+    def test_none_shows_size(self) -> None:
+        from jaxtyc.lsp._util import format_named_shape
+
+        result = format_named_shape((None, "seq"), (42, 128))
+        assert result == ["42", "seq"]
+
+    def test_mixed_dims(self) -> None:
+        from jaxtyc.lsp._util import format_named_shape
+
+        result = format_named_shape(
+            ("_ellipsis_0", "_ellipsis_1", "d_model", "_anon_1"),
+            (4, 8, 512, 1),
+        )
+        assert result == ["...(0, 1)", "d_model", "_"]
+
+    def test_empty_shape(self) -> None:
+        from jaxtyc.lsp._util import format_named_shape
+
+        result = format_named_shape((), ())
+        assert result == []
+
+
+class TestShardingDiagnosticsAsInlayHints:
+    def test_sharding_diagnostics_converted_to_error_hints(self) -> None:
+        """Sharding diagnostics from the pipeline should appear as inlay error hints."""
+        from jaxtyc.lsp.server import _diagnostics_to_error_hints
+        from jaxtyc.types import Diagnostic
+
+        diags = [
+            Diagnostic(
+                file="test.py",
+                line=10,
+                col=0,
+                severity="error",
+                message="Output sharding P('data', None) differs from annotation P(None, None)",
+                rule="sharding-propagation-mismatch",
+            ),
+            Diagnostic(
+                file="test.py",
+                line=5,
+                col=0,
+                severity="warning",
+                message="Some non-sharding warning",
+                rule="trace-error",
+            ),
+        ]
+        hints = _diagnostics_to_error_hints(diags)
+        assert len(hints) == 1
+        assert hints[0].source_line == 10
+        assert hints[0].rule == "sharding-propagation-mismatch"
+        assert "sharding" in hints[0].message.lower() or "P(" in hints[0].message
+
+
+class TestInlayHintEllipsisDisplay:
+    def test_inlay_hint_ellipsis_display(self) -> None:
+        """Verify inlay hints show ...(sizes) not _ellipsis_N for ellipsis dims."""
+        from jaxtyc.lsp._inlay_hints import _format_shape
+        from jaxtyc.types import IntermediateShape
+
+        inter = IntermediateShape(
+            shape=(4, 8, 512),
+            dtype="float32",
+            source_file="f.py",
+            source_line=5,
+            source_col=0,
+            named_shape=("_ellipsis_0", "_ellipsis_1", "d_model"),
+            op_name="add",
+        )
+        result = _format_shape(inter, "numpy")
+        assert result == "f32[...(0, 1) d_model]"

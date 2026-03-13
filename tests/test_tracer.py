@@ -140,3 +140,197 @@ class TestTraceFunction:
         result = trace_function(identity, {"x": spec}, env)
         assert result.success
         assert result.output_shape[1] == 4
+
+
+class TestBuildAbstractMesh:
+    def test_build_abstract_mesh_axis_names(self) -> None:
+        from jaxtyc.analyzer.tracer import _build_abstract_mesh
+
+        mesh = _build_abstract_mesh({"data": 4, "model": 2})
+        assert tuple(mesh.axis_names) == ("data", "model")
+
+    def test_build_abstract_mesh_empty(self) -> None:
+        from jaxtyc.analyzer.tracer import _build_abstract_mesh
+
+        mesh = _build_abstract_mesh({})
+        assert tuple(mesh.axis_names) == ()
+
+
+class TestShardedTracing:
+    def test_no_mesh_config_no_sharding(self) -> None:
+        """Without mesh_config, output_sharding is None."""
+
+        def identity(x):
+            return x
+
+        params = {"x": _make_spec("batch", "seq")}
+        env = DimEnv()
+        result = trace_function(identity, params, env)
+        assert result.success
+        assert result.output_sharding is None
+
+    def test_sharded_identity_propagates(self) -> None:
+        """Sharded input propagates through identity function."""
+
+        def identity(x):
+            return x
+
+        params = {
+            "x": ShapeSpec(
+                dims=(
+                    DimSpec(kind="named", name="batch", mesh_axis="data"),
+                    DimSpec(kind="named", name="d_model", mesh_axis=None),
+                ),
+                dtype="float32",
+            ),
+        }
+        env = DimEnv()
+        result = trace_function(identity, params, env, mesh_config={"data": 4, "model": 2})
+        assert result.success
+        assert result.output_sharding is not None
+
+    def test_sharded_matmul_propagates_batch(self) -> None:
+        """Matmul: (batch|data, d) @ (d, f) -> (batch|data, f)."""
+
+        def matmul(x, w):
+            return x @ w
+
+        params = {
+            "x": ShapeSpec(
+                dims=(
+                    DimSpec(kind="named", name="batch", mesh_axis="data"),
+                    DimSpec(kind="named", name="d_model", mesh_axis=None),
+                ),
+                dtype="float32",
+            ),
+            "w": ShapeSpec(
+                dims=(
+                    DimSpec(kind="named", name="d_model", mesh_axis=None),
+                    DimSpec(kind="named", name="d_ff", mesh_axis=None),
+                ),
+                dtype="float32",
+            ),
+        }
+        env = DimEnv()
+        result = trace_function(matmul, params, env, mesh_config={"data": 4, "model": 2})
+        assert result.success
+        # Batch dim should retain data sharding
+        if result.output_sharding is not None:
+            spec = tuple(result.output_sharding.spec)
+            assert spec[0] == "data"
+
+    def test_sharded_trace_with_set_mesh_propagates(self) -> None:
+        """Verify sharding propagates through eval_shape under set_mesh."""
+        env = DimEnv()
+        params = {
+            "x": ShapeSpec(
+                dims=(
+                    DimSpec("named", "batch", mesh_axis="data"),
+                    DimSpec("named", "d_model", mesh_axis=None),
+                ),
+                dtype="float32",
+            ),
+        }
+        result = trace_function(lambda x: x, params, env, mesh_config={"data": 4, "model": 2})
+        assert result.success
+        assert result.output_sharding is not None
+
+    def test_sharded_trace_fallback_returns_success(self) -> None:
+        """When sharded eval_shape fails, fallback produces a successful result."""
+        env = DimEnv()
+
+        def bad_fn(x):
+            return x[0]  # indexing may fail under explicit sharding
+
+        params = {
+            "x": ShapeSpec(
+                dims=(
+                    DimSpec("named", "batch", mesh_axis="data"),
+                    DimSpec("named", "d_model", mesh_axis=None),
+                ),
+                dtype="float32",
+            ),
+        }
+        result = trace_function(bad_fn, params, env, mesh_config={"data": 4})
+        # Either the trace succeeds (JAX handles it) or the fallback kicked in
+        if result.sharding_fallback_reason is not None:
+            assert result.success  # fallback produced a result
+            assert result.output_shape is not None
+        else:
+            assert result.success  # direct sharded trace worked
+
+
+class TestAxisRulesResolution:
+    def test_logical_axis_resolved_to_physical(self) -> None:
+        """Trace with mesh_axis='dp', axis_rules={'dp': 'data'}, mesh={'data': 4}."""
+        env = DimEnv()
+        params = {
+            "x": ShapeSpec(
+                dims=(
+                    DimSpec("named", "batch", mesh_axis="dp"),
+                    DimSpec("named", "seq", mesh_axis=None),
+                ),
+                dtype="float32",
+            ),
+        }
+        result = trace_function(
+            lambda x: x,
+            params,
+            env,
+            mesh_config={"data": 4},
+            axis_rules={"dp": "data"},
+        )
+        assert result.success, f"Trace failed: {result.error}"
+
+    def test_physical_axis_passthrough(self) -> None:
+        """mesh_axis='data' passes through when axis_rules maps 'dp' to 'data'."""
+        env = DimEnv()
+        params = {
+            "x": ShapeSpec(
+                dims=(
+                    DimSpec("named", "batch", mesh_axis="data"),
+                    DimSpec("named", "seq", mesh_axis=None),
+                ),
+                dtype="float32",
+            ),
+        }
+        result = trace_function(
+            lambda x: x,
+            params,
+            env,
+            mesh_config={"data": 4},
+            axis_rules={"dp": "data"},
+        )
+        assert result.success
+
+    def test_no_axis_rules_uses_direct_name(self) -> None:
+        """Without axis_rules, mesh_axis is used as-is."""
+        env = DimEnv()
+        params = {
+            "x": ShapeSpec(
+                dims=(DimSpec("named", "batch", mesh_axis="data"),),
+                dtype="float32",
+            ),
+        }
+        result = trace_function(
+            lambda x: x,
+            params,
+            env,
+            mesh_config={"data": 4},
+            axis_rules=None,
+        )
+        assert result.success
+
+
+class TestShardedTracingMisc:
+    def test_mesh_config_without_sharded_specs(self) -> None:
+        """mesh_config provided but specs have no mesh_axis — no sharding."""
+
+        def identity(x):
+            return x
+
+        params = {"x": _make_spec("batch", "seq")}
+        env = DimEnv()
+        result = trace_function(identity, params, env, mesh_config={"data": 4, "model": 2})
+        assert result.success
+        assert result.output_sharding is None

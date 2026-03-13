@@ -8,8 +8,10 @@ from lsprotocol import types
 from pygls.lsp.server import LanguageServer
 
 from jaxtyc.lsp import _state
+from jaxtyc.lsp._util import dim_label
 from jaxtyc.lsp._util import dim_range
 from jaxtyc.lsp._util import format_dtype
+from jaxtyc.lsp._util import format_named_shape
 from jaxtyc.lsp._util import shape_summary
 from jaxtyc.lsp._util import spec_range
 from jaxtyc.lsp._util import spec_selection_range
@@ -39,10 +41,10 @@ def _param_hover(param_name: str, spec: ShapeSpec) -> str:
     """Build hover markdown for a shape-annotated parameter."""
     dim_parts = []
     for d in spec.dims:
-        label = d.name or str(d.size) or d.kind
+        label = dim_label(d)
         dim_parts.append(f"`{label}`")
     dims_str = ", ".join(dim_parts)
-    return f"**`{param_name}`** — `{spec.dtype}[{', '.join(d.name or str(d.size) or d.kind for d in spec.dims)}]`\n\nDimensions: {dims_str}"
+    return f"**`{param_name}`** — `{spec.dtype}[{', '.join(dim_label(d) for d in spec.dims)}]`\n\nDimensions: {dims_str}"
 
 
 def _function_hover(func_spec: FunctionShapeSpec) -> str:
@@ -50,16 +52,16 @@ def _function_hover(func_spec: FunctionShapeSpec) -> str:
     parts: list[str] = [f"**`{func_spec.name}`** — shape signature\n"]
     # Parameters
     for pname, pspec in func_spec.params.items():
-        dim_names = ", ".join(d.name or str(d.size) or d.kind for d in pspec.dims)
+        dim_names = ", ".join(dim_label(d) for d in pspec.dims)
         parts.append(f"- `{pname}`: `{pspec.dtype}[{dim_names}]`")
     # Return
     if func_spec.return_spec is not None:
-        ret_dims = ", ".join(d.name or str(d.size) or d.kind for d in func_spec.return_spec.dims)
+        ret_dims = ", ".join(dim_label(d) for d in func_spec.return_spec.dims)
         parts.append(f"- **returns**: `{func_spec.return_spec.dtype}[{ret_dims}]`")
     if func_spec.return_specs:
         parts.append("- **returns** (tuple):")
         for i, rspec in enumerate(func_spec.return_specs):
-            ret_dims = ", ".join(d.name or str(d.size) or d.kind for d in rspec.dims)
+            ret_dims = ", ".join(dim_label(d) for d in rspec.dims)
             parts.append(f"  - `[{i}]`: `{rspec.dtype}[{ret_dims}]`")
     return "\n".join(parts)
 
@@ -222,7 +224,8 @@ def hover(ls: LanguageServer, params: types.HoverParams) -> types.Hover | None:
     # Build hover content with full intermediate chain
     lines: list[str] = [f"**Intermediates at line {line}:**"]
     for idx, inter in enumerate(matching):
-        named = ", ".join(n or str(s) for n, s in zip(inter.named_shape, inter.shape, strict=True))
+        dim_parts = format_named_shape(inter.named_shape, inter.shape)
+        named = ", ".join(dim_parts)
         dtype = format_dtype(inter.dtype, dtype_style)
         entry = f"`{inter.op_name}` \u2192 `{dtype}[{named}]`"
         if idx == len(matching) - 1:

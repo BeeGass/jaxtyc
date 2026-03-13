@@ -5,6 +5,50 @@ All notable changes to jaxtyc are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.6.0] — 2026-03-12
+
+### Changed
+
+- **DimEnv rewrite**: Replaced prime-based dimension sizing with symbolic dimensions via `jax.export.symbolic_shape`. Each named dimension now gets a distinct symbolic `_DimExpr` object instead of a prime number. This eliminates integer overflow for large models, makes JAX error messages use real dimension names, and removes the prime sieve entirely
+- **Sharding display default**: `ShardingConfig.display` now defaults to `"all"` (was `"append"`), showing `dim|axis` sharding annotations on every inlay hint line by default. Valid values: `"all"`, `"constrained_only"`, `"off"`
+- **Minimum JAX version**: Raised to `>= 0.9.0` for `jax.export.symbolic_shape` and `AbstractMesh` with `AxisType.Explicit`
+- **Concrete fallback for modules**: NNX and equinox module tracing uses `DimEnv.get_concrete_size()` (unique odd ints >= 101) instead of symbolic dims, since module constructors require plain int arguments
+- Test count: 498 -> 625
+
+### Added
+
+- **Sharding-in-types (pipe syntax)**: Annotations now support `dim|axis` syntax for per-dimension sharding: `Float[Array, "batch|dp seq|None d_model|mp"]`. The pipe separator sets `DimSpec.mesh_axis`, parsed by `parse_shape_string()` in `annotations.py`
+- **Mesh configuration**: `[tool.jaxtyc.sharding]` supports `mesh` (physical axis name -> device count) and `axis_rules` (logical -> physical mapping) fields in `pyproject.toml`
+- **Mesh context for tracing**: Sharded functions are traced inside `jax._src.mesh.use_abstract_mesh()` with an `AbstractMesh` built from `mesh_config`, enabling sharding propagation through `eval_shape`
+- **Axis rules resolution**: Logical axis names (e.g. `dp`, `mp` from `nnx.logical_axis_rules`) are resolved to physical mesh axis names (e.g. `data`, `model`) before constructing `NamedSharding` inputs. Threaded from `MeshInfo` through pipeline to tracer via `axis_rules` parameter
+- **Graceful sharding fallback**: When sharded `eval_shape` fails (e.g. scatter, advanced indexing), the tracer retries without sharding and sets `TraceResult.sharding_fallback_reason`. Pipeline emits a `trace-error` warning when fallback is used
+- **`sharding-mesh-undefined` rule**: Diagnostic error when a `mesh_axis` annotation references an axis not found in the mesh config or axis_rules
+- **`sharding-propagation-mismatch` rule**: Detects when JAX-propagated output sharding differs from the return annotation's sharding
+- **`sharding-annotation-incomplete` rule**: Warns when a piped shape has bare (unsharded) dims in strict mode
+- **`sharding-dim-conflict` rule**: Detects when the same dim name is sharded on different axes across parameters
+- **`DimSize` type alias**: `DimSize: TypeAlias = Any` in `types.py` for shape fields that hold either `int` or symbolic `_DimExpr` objects. All shape-typed fields (`DiagnosticData`, `IntermediateShape`, `TraceResult`) updated
+- **`TraceResult.sharding_fallback_reason`**: New optional field indicating why sharded tracing fell back to unsharded
+- **`_build_abstract_mesh()` helper**: Reusable function in `tracer.py` for constructing `AbstractMesh` with `AxisType.Explicit`
+- **`check_mesh_axes()`**: New function in `sharding_checker.py` validating mesh axis references against known physical and logical axes
+- **`check_annotation_sharding()`**: New function checking for `sharding-annotation-incomplete` and `sharding-dim-conflict` within function annotations
+- **`check_sharding_propagation()`**: Compares JAX-propagated output sharding against return annotation sharding
+- **`mesh_resolver.py`**: AST-based inference of `jax.make_mesh`, `AbstractMesh`, and `nnx.logical_axis_rules` from source code
+- **Synthetic dim name cleanup**: `format_named_shape()` in `_util.py` collapses internal names for user-facing display: `_ellipsis_0, _ellipsis_1` -> `...(0, 1)`, `_var_batch_0, _var_batch_1` -> `*batch`, `_anon_N` -> `_`
+- **Sharding diagnostics as inlay hints**: Sharding diagnostic rules (all 8 `sharding-*` rules) now appear as error hints at divergence points in inlay hints, not just as squiggly diagnostics. Added `_diagnostics_to_error_hints()` in `server.py`
+- **Mesh axis autocomplete**: Dimension name completion now also suggests mesh axis names from the resolved `MeshInfo` when typing inside pipe-syntax annotations
+- **NNX/equinox sharded tracing**: Module method tracing wraps `jax.eval_shape` in mesh context when sharding annotations are present
+- **Bool annotation support**: `Bool[Array, "..."]` traces to `bool` dtype through the full pipeline (verified by integration test)
+- **Mux diagnostic filtering**: `--solo` flag on `jaxtyc mux` and `JAXTYC_MUX_SOLO` env var to show diagnostics from only one server. Valid values: `jaxtyc`, `ty`, `primary`, `pyright`
+- **`_filter_diag_sources()`**: Filters mux diagnostic cache by server source for solo mode
+- New test suites: `test_mesh_resolver.py` (14), `test_sharding_checker.py` (24)
+- Extended tests: `test_dim_env.py` (+12), `test_tracer.py` (+9), `test_types.py` (+3), `test_config.py` (+3), `test_lsp.py` (+10), `test_mux.py` (+13), `test_integration.py` (+2)
+
+### Fixed
+
+- **Ellipsis display in inlay hints**: Synthetic dim names (`_ellipsis_0`) no longer leak into user-facing inlay hints and hover. Now shows `...(0, 1)` with indices instead of `...(_ellipsis_0, _ellipsis_1)`
+- **Variadic display in inlay hints**: `_var_batch_0, _var_batch_1` collapses to `*batch` in inlay hints
+- **Anonymous dim display**: `_anon_N` shows as `_` in inlay hints
+
 ## [v0.5.0] — 2026-03-11
 
 ### Changed
@@ -184,6 +228,7 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Flax NNX and Equinox module support (auto-skips `self`/`cls` parameters)
 - CI workflow and mkdocs documentation site
 
+[v0.6.0]: https://github.com/BeeGass/jaxtyc/compare/v0.5.0...v0.6.0
 [v0.5.0]: https://github.com/BeeGass/jaxtyc/compare/v0.4.0...v0.5.0
 [v0.4.0]: https://github.com/BeeGass/jaxtyc/compare/v0.3.1...v0.4.0
 [v0.3.1]: https://github.com/BeeGass/jaxtyc/compare/v0.3.0...v0.3.1

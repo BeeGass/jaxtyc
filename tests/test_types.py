@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from jaxtyc.types import Diagnostic
 from jaxtyc.types import DimSpec
 from jaxtyc.types import ErrorHintInfo
@@ -45,6 +47,74 @@ class TestDimSpec:
         d = DimSpec(kind="named", name="seq")
         with pytest.raises(AttributeError):
             d.name = "other"  # type: ignore[misc]
+
+
+class TestDimSpecMeshAxis:
+    def test_mesh_axis_field_present(self) -> None:
+        d = DimSpec(kind="named", name="batch", mesh_axis="dp")
+        assert d.mesh_axis == "dp"
+
+    def test_mesh_axis_default_none(self) -> None:
+        d = DimSpec(kind="named", name="batch")
+        assert d.mesh_axis is None
+
+    def test_mesh_axis_frozen(self) -> None:
+        import pytest
+
+        d = DimSpec(kind="named", name="batch", mesh_axis="dp")
+        with pytest.raises(AttributeError):
+            d.mesh_axis = "mp"  # type: ignore[misc]
+
+    def test_mesh_axis_on_fixed_dim(self) -> None:
+        d = DimSpec(kind="fixed", size=128, mesh_axis="dp")
+        assert d.kind == "fixed"
+        assert d.size == 128
+        assert d.mesh_axis == "dp"
+
+    def test_mesh_axis_on_variadic_dim(self) -> None:
+        d = DimSpec(kind="variadic", name="batch", mesh_axis="dp")
+        assert d.mesh_axis == "dp"
+
+    def test_mesh_axis_on_anonymous_dim(self) -> None:
+        d = DimSpec(kind="anonymous", mesh_axis="dp")
+        assert d.mesh_axis == "dp"
+
+
+class TestShapeSpecHasSharding:
+    def test_has_sharding_true_when_mesh_axis_present(self) -> None:
+        spec = ShapeSpec(
+            dims=(
+                DimSpec(kind="named", name="batch", mesh_axis="dp"),
+                DimSpec(kind="named", name="seq"),
+            ),
+            dtype="float32",
+        )
+        assert spec.has_sharding is True
+
+    def test_has_sharding_false_when_no_mesh_axis(self) -> None:
+        spec = ShapeSpec(
+            dims=(
+                DimSpec(kind="named", name="batch"),
+                DimSpec(kind="named", name="seq"),
+            ),
+            dtype="float32",
+        )
+        assert spec.has_sharding is False
+
+    def test_has_sharding_false_for_scalar(self) -> None:
+        spec = ShapeSpec(dims=(), dtype="float32", is_scalar=True)
+        assert spec.has_sharding is False
+
+    def test_has_sharding_true_mixed(self) -> None:
+        spec = ShapeSpec(
+            dims=(
+                DimSpec(kind="named", name="batch", mesh_axis="dp"),
+                DimSpec(kind="fixed", size=128),
+                DimSpec(kind="named", name="d_model", mesh_axis="mp"),
+            ),
+            dtype="float32",
+        )
+        assert spec.has_sharding is True
 
 
 class TestShapeSpec:
@@ -164,6 +234,27 @@ class TestTraceResult:
         assert not result.success
         assert result.error is not None
 
+    def test_output_sharding_default_none(self) -> None:
+        result = TraceResult(
+            function_name="f",
+            output_shape=(2, 3),
+            output_dtype="float32",
+            intermediates=[],
+            error=None,
+        )
+        assert result.output_sharding is None
+
+    def test_output_sharding_set(self) -> None:
+        result = TraceResult(
+            function_name="f",
+            output_shape=(2, 3),
+            output_dtype="float32",
+            intermediates=[],
+            error=None,
+            output_sharding=("data", None),
+        )
+        assert result.output_sharding == ("data", None)
+
 
 class TestIntermediateShape:
     def test_basic(self) -> None:
@@ -263,6 +354,36 @@ class TestIntermediateShapeSharding:
             op_name="add",
         )
         assert inter.sharding is None
+
+
+class TestDimSizeAlias:
+    def test_dim_size_alias_importable(self) -> None:
+        from jaxtyc.types import DimSize
+
+        assert DimSize is Any
+
+
+class TestTraceResultShardingFallback:
+    def test_trace_result_has_sharding_fallback_reason(self) -> None:
+        tr = TraceResult(
+            function_name="f",
+            output_shape=None,
+            output_dtype=None,
+            intermediates=[],
+            error=None,
+            sharding_fallback_reason="some reason",
+        )
+        assert tr.sharding_fallback_reason == "some reason"
+
+    def test_trace_result_sharding_fallback_default_none(self) -> None:
+        tr = TraceResult(
+            function_name="f",
+            output_shape=None,
+            output_dtype=None,
+            intermediates=[],
+            error=None,
+        )
+        assert tr.sharding_fallback_reason is None
 
 
 class TestFileResult:

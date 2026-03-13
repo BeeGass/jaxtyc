@@ -258,7 +258,7 @@ def cmd_mux(args: argparse.Namespace) -> int:
 
     from jaxtyc.lsp.mux import run_mux
 
-    asyncio.run(run_mux())
+    asyncio.run(run_mux(solo=args.solo))
     return 0
 
 
@@ -309,6 +309,12 @@ def main(argv: list[str] | None = None) -> int:
 
     # mux
     mux_parser = subparsers.add_parser("mux", help="Start LSP multiplexer (ty + jaxtyc)")
+    mux_parser.add_argument(
+        "--solo",
+        choices=["jaxtyc", "ty", "primary", "pyright"],
+        default=None,
+        help="Show diagnostics from only this server (default: both)",
+    )
     mux_parser.set_defaults(func=cmd_mux)
 
     # version
