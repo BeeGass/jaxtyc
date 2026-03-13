@@ -45,7 +45,7 @@ The second argument to a jaxtyping annotation is a shape string. jaxtyc parses e
 
 ### Named dimensions
 
-Each unique name gets a distinct prime number as its size. Two parameters sharing a dimension name share the same prime, so shape mismatches propagate correctly through arithmetic.
+Each unique name gets a distinct symbolic dimension via `jax.export.symbolic_shape`. Two parameters sharing a dimension name share the same symbolic object, so shape mismatches propagate correctly through JAX operations.
 
 ```python
 def attention(
@@ -55,7 +55,7 @@ def attention(
     ...
 ```
 
-`batch`, `seq`, and `d_model` each get one prime (e.g., 2, 3, 5). Both `q` and `k` get shape `(2, 3, 5)`.
+`batch`, `seq`, and `d_model` each get one symbolic dim. Both `q` and `k` get the same shape tuple, and JAX error messages use the original dimension names directly.
 
 ### Fixed dimensions
 
@@ -129,6 +129,85 @@ def mse_loss(
     target: Float[Array, "batch d"],
 ) -> Float[Array, ""]:
     return jnp.mean((pred - target) ** 2)
+```
+
+---
+
+## Sharding annotations (pipe syntax)
+
+jaxtyc supports per-dimension sharding annotations using pipe (`|`) syntax. Each dimension token can optionally specify which mesh axis it is sharded on:
+
+```
+"dim_name|mesh_axis"
+```
+
+Use `|None` to explicitly mark a dimension as replicated.
+
+### Basic usage
+
+```python
+def sharded_linear(
+    x: Float[Array, "batch|dp seq|None d_model|mp"],
+    w: Float[Array, "d_model|mp d_out|None"],
+) -> Float[Array, "batch|dp seq|None d_out|None"]:
+    return x @ w
+```
+
+Each `|axis` sets `DimSpec.mesh_axis`, which jaxtyc uses to:
+
+1. Construct `NamedSharding` inputs with the appropriate `PartitionSpec` for tracing
+2. Validate that referenced mesh axes exist in the mesh config (`sharding-mesh-undefined`)
+3. Check for conflicting sharding of the same dimension name across parameters (`sharding-dim-conflict`)
+4. Detect incomplete annotations in strict mode (`sharding-annotation-incomplete`)
+
+### Mesh configuration
+
+Configure the mesh in `pyproject.toml`:
+
+```toml
+[tool.jaxtyc.sharding]
+mesh = { data = 4, model = 2 }
+axis_rules = { dp = "data", mp = "model" }
+strict_annotation = true
+```
+
+| Key | Description |
+|-----|-------------|
+| `mesh` | Physical mesh axis name to device count. |
+| `axis_rules` | Logical axis name to physical axis name mapping (e.g. from `nnx.logical_axis_rules`). |
+| `strict_annotation` | When `true`, piped shapes with bare (unsharded) dims emit `sharding-annotation-incomplete`. |
+
+### Logical axis resolution
+
+When `axis_rules` is configured, logical axis names in annotations are resolved to physical names before tracing:
+
+```python
+# With axis_rules = { dp = "data", mp = "model" }
+# "batch|dp" resolves to PartitionSpec("data") for the batch dimension
+def forward(
+    x: Float[Array, "batch|dp seq|None d_model|mp"],
+) -> Float[Array, "batch|dp seq|None d_model|mp"]:
+    ...
+```
+
+jaxtyc also infers axis rules from `nnx.logical_axis_rules()` calls in your source via AST analysis (`mesh_resolver.py`).
+
+### Sharding display in inlay hints
+
+By default (`display = "all"`), inlay hints show sharding annotations alongside dimension names:
+
+```
+# Inlay hint output:
+add -> f32[batch|dp seq|None d_model|mp]
+```
+
+Configure display in `pyproject.toml`:
+
+```toml
+[tool.jaxtyc.sharding]
+display = "all"              # Show dim|axis on every line (default)
+# display = "constrained_only" # Only on lines with explicit sharding constraints
+# display = "off"              # No sharding in inlay hints
 ```
 
 ---
