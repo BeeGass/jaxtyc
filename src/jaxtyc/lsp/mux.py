@@ -67,6 +67,38 @@ ARRAY_MERGE = frozenset(
 
 MERGE_TIMEOUT = 3.0
 
+_VALID_SOLO = frozenset({"jaxtyc", "ty", "primary", "pyright"})
+
+
+def _mux_solo_server() -> str | None:
+    """Return which server's diagnostics to show exclusively, or None for both.
+
+    Controlled by JAXTYC_MUX_SOLO env var. Valid values: jaxtyc, ty, primary, pyright.
+    Empty or unset means show diagnostics from both servers.
+    """
+    val = os.environ.get("JAXTYC_MUX_SOLO", "").strip().lower()
+    if not val:
+        return None
+    return val if val in _VALID_SOLO else None
+
+
+def _filter_diag_sources(
+    cache: dict[str, list[dict[str, object]]],
+    solo: str | None,
+) -> dict[str, list[dict[str, object]]]:
+    """Filter diagnostic cache entries based on solo server selection.
+
+    When solo is None, returns all entries. When solo is "jaxtyc", returns
+    only the "jaxtyc" key. When solo is "primary", "ty", or "pyright",
+    returns only the non-jaxtyc key.
+    """
+    if solo is None:
+        return cache
+    if solo == "jaxtyc":
+        return {k: v for k, v in cache.items() if k == "jaxtyc"}
+    # "primary", "ty", "pyright" all mean: show only the primary server
+    return {k: v for k, v in cache.items() if k != "jaxtyc"}
+
 
 # Max characters for hover text before truncation
 _HOVER_MAX_CHARS = 1500
@@ -315,8 +347,13 @@ def _extract_file_path_from_msg(msg: dict) -> str | None:
     return None
 
 
-async def run_mux() -> None:
+async def run_mux(solo: str | None = None) -> None:
     """Start the multiplexer, forwarding between client and both servers.
+
+    Args:
+        solo: Show diagnostics from only this server ("jaxtyc", "ty",
+            "primary", "pyright"). None means show both. Falls back to
+            the JAXTYC_MUX_SOLO env var when not provided.
 
     Server startup is deferred until the first file-referencing message
     (e.g. textDocument/didOpen) so we can detect the actual project root
@@ -423,9 +460,13 @@ async def run_mux() -> None:
 
         servers_started = True
 
+    if solo is None:
+        solo = _mux_solo_server()
+
     async def publish_merged_diagnostics(uri: str) -> None:
+        sources = _filter_diag_sources(diag_cache[uri], solo)
         merged = []
-        for diags in diag_cache[uri].values():
+        for diags in sources.values():
             merged.extend(diags)
         await send_to_client(
             {
