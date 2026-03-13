@@ -3022,11 +3022,29 @@ class TestFormatNamedShape:
         result = format_named_shape(("batch", "seq", "d_model"), (4, 8, 512))
         assert result == ["batch", "seq", "d_model"]
 
-    def test_ellipsis_collapsed_with_sizes(self) -> None:
+    def test_ellipsis_collapsed_with_indices(self) -> None:
         from jaxtyc.lsp._util import format_named_shape
 
         result = format_named_shape(("_ellipsis_0", "_ellipsis_1", "d_model"), (4, 8, 512))
-        assert result == ["...(4, 8)", "d_model"]
+        assert result == ["...(0, 1)", "d_model"]
+
+    def test_ellipsis_with_symbolic_shapes_shows_indices(self) -> None:
+        """When shape values are symbolic _DimExpr, show indices not names."""
+        from jaxtyc.lsp._util import format_named_shape
+
+        # Simulate symbolic dims whose str() returns the synthetic name
+        class FakeDimExpr:
+            def __init__(self, name: str) -> None:
+                self._name = name
+
+            def __str__(self) -> str:
+                return self._name
+
+        result = format_named_shape(
+            ("_ellipsis_0", "_ellipsis_1", "d_model"),
+            (FakeDimExpr("_ellipsis_0"), FakeDimExpr("_ellipsis_1"), FakeDimExpr("d_model")),
+        )
+        assert result == ["...(0, 1)", "d_model"]
 
     def test_variadic_collapsed(self) -> None:
         from jaxtyc.lsp._util import format_named_shape
@@ -3053,13 +3071,44 @@ class TestFormatNamedShape:
             ("_ellipsis_0", "_ellipsis_1", "d_model", "_anon_1"),
             (4, 8, 512, 1),
         )
-        assert result == ["...(4, 8)", "d_model", "_"]
+        assert result == ["...(0, 1)", "d_model", "_"]
 
     def test_empty_shape(self) -> None:
         from jaxtyc.lsp._util import format_named_shape
 
         result = format_named_shape((), ())
         assert result == []
+
+
+class TestShardingDiagnosticsAsInlayHints:
+    def test_sharding_diagnostics_converted_to_error_hints(self) -> None:
+        """Sharding diagnostics from the pipeline should appear as inlay error hints."""
+        from jaxtyc.lsp.server import _diagnostics_to_error_hints
+        from jaxtyc.types import Diagnostic
+
+        diags = [
+            Diagnostic(
+                file="test.py",
+                line=10,
+                col=0,
+                severity="error",
+                message="Output sharding P('data', None) differs from annotation P(None, None)",
+                rule="sharding-propagation-mismatch",
+            ),
+            Diagnostic(
+                file="test.py",
+                line=5,
+                col=0,
+                severity="warning",
+                message="Some non-sharding warning",
+                rule="trace-error",
+            ),
+        ]
+        hints = _diagnostics_to_error_hints(diags)
+        assert len(hints) == 1
+        assert hints[0].source_line == 10
+        assert hints[0].rule == "sharding-propagation-mismatch"
+        assert "sharding" in hints[0].message.lower() or "P(" in hints[0].message
 
 
 class TestInlayHintEllipsisDisplay:
@@ -3078,4 +3127,4 @@ class TestInlayHintEllipsisDisplay:
             op_name="add",
         )
         result = _format_shape(inter, "numpy")
-        assert result == "f32[...(4, 8) d_model]"
+        assert result == "f32[...(0, 1) d_model]"

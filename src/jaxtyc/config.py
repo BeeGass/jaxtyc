@@ -56,12 +56,13 @@ class ShardingConfig:
 
     Attributes:
         display: How to show sharding info in inlay hints.
-            "append" shows P(...) after dtype, "constrained_only" shows
-            only for lines with sharding constraints, "off" disables.
+            "all" shows dim|axis on every line with sharding info,
+            "constrained_only" shows only for lines with explicit
+            sharding constraints, "off" disables.
         rules: Allow-list of sharding diagnostic rules to enable.
     """
 
-    display: str = "append"
+    display: str = "all"
     rules: list[str] = field(default_factory=lambda: list(_DEFAULT_SHARDING_RULES))
     mesh: dict[str, int] = field(default_factory=dict)
     axis_rules: dict[str, str] = field(default_factory=dict)

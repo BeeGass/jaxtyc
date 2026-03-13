@@ -250,7 +250,7 @@ class TestShardingConfig:
     def test_sharding_config_defaults(self) -> None:
         """ShardingConfig has correct defaults."""
         cfg = ShardingConfig()
-        assert cfg.display == "append"
+        assert cfg.display == "all"
         assert len(cfg.rules) == 8
 
     def test_sharding_config_frozen(self) -> None:
@@ -345,7 +345,7 @@ class TestNestedConfig:
             pyproject.write_text("[tool.jaxtyc]\nseverity = 'warning'\n")
             cfg = load_config(tmpdir)
             assert cfg.hints.error_mode == "both"
-            assert cfg.sharding.display == "append"
+            assert cfg.sharding.display == "all"
 
     def test_unknown_nested_keys_ignored(self) -> None:
         """Unknown keys inside subsections are silently ignored."""

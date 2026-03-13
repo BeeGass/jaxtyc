@@ -65,7 +65,7 @@ def format_named_shape(
     """Format named_shape for display, collapsing synthetic dim names.
 
     Display rules:
-    - ``_ellipsis_0, _ellipsis_1`` -> ``...(size0, size1)`` with concrete sizes
+    - ``_ellipsis_0, _ellipsis_1`` -> ``...(0, 1)`` with indices
     - ``_var_batch_0, _var_batch_1`` -> ``*batch`` (original variadic name)
     - ``_anon_N`` -> ``_``
     - ``None`` -> concrete size as string
@@ -82,17 +82,19 @@ def format_named_shape(
     i = 0
     while i < len(named_shape):
         name = named_shape[i]
-        # Collapse consecutive _ellipsis_* dims into ...(sizes)
+        # Collapse consecutive _ellipsis_* dims into ...(indices)
         if name is not None and name.startswith("_ellipsis_"):
-            sizes: list[str] = []
+            indices: list[str] = []
             while (
                 i < len(named_shape)
                 and named_shape[i] is not None
                 and named_shape[i].startswith("_ellipsis_")  # type: ignore[union-attr]
             ):
-                sizes.append(str(shape[i]))
+                # Extract index from _ellipsis_N; fall back to str(shape) for concrete
+                idx = named_shape[i].split("_ellipsis_")[1]  # type: ignore[union-attr]
+                indices.append(idx)
                 i += 1
-            parts.append(f"...({', '.join(sizes)})")
+            parts.append(f"...({', '.join(indices)})")
             continue
         # Collapse consecutive _var_{name}_* dims into *name
         if name is not None and name.startswith("_var_"):

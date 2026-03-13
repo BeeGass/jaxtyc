@@ -22,10 +22,47 @@ from jaxtyc.lsp._util import debounce_seconds
 from jaxtyc.lsp._util import dim_label
 from jaxtyc.lsp._util import uri_to_path
 from jaxtyc.lsp.index import build_file_index
+from jaxtyc.types import Diagnostic as JaxtycDiagnostic
+from jaxtyc.types import ErrorHintInfo
 from jaxtyc.types import FunctionShapeSpec
 from jaxtyc.types import IntermediateShape
 
 logger: logging.Logger = logging.getLogger(__name__)
+
+# Sharding diagnostic rules that should appear as inlay error hints
+_SHARDING_HINT_RULES = frozenset(
+    {
+        "sharding-propagation-mismatch",
+        "sharding-rank-mismatch",
+        "sharding-axis-unknown",
+        "sharding-conflict",
+        "sharding-io-mismatch",
+        "sharding-annotation-incomplete",
+        "sharding-dim-conflict",
+        "sharding-mesh-undefined",
+    }
+)
+
+
+def _diagnostics_to_error_hints(diagnostics: list[JaxtycDiagnostic]) -> list[ErrorHintInfo]:
+    """Convert sharding diagnostics into ErrorHintInfo for inlay hint display.
+
+    Only sharding-related diagnostics are converted; shape/rank mismatches
+    are already handled by find_divergence_points().
+    """
+    hints: list[ErrorHintInfo] = []
+    for diag in diagnostics:
+        if diag.rule in _SHARDING_HINT_RULES and diag.line > 0:
+            hints.append(
+                ErrorHintInfo(
+                    source_line=diag.line,
+                    message=diag.message,
+                    rule=diag.rule,
+                    function_name="",
+                )
+            )
+    return hints
+
 
 server: LanguageServer = LanguageServer(
     "jaxtyc",
@@ -364,7 +401,6 @@ def _analyze_and_publish(ls: LanguageServer, uri: str, source: str | None = None
 
     # Build error hints via divergence detection
     from jaxtyc.analyzer.divergence import find_divergence_points
-    from jaxtyc.types import ErrorHintInfo
 
     error_hints: list[ErrorHintInfo] = []
     trace_by_name = {t.function_name: t for t in result.trace_results}
@@ -377,6 +413,9 @@ def _analyze_and_publish(ls: LanguageServer, uri: str, source: str | None = None
             error_hints.extend(hints)
         except Exception:
             logger.debug("Failed to find divergence points for %s", spec.name, exc_info=True)
+
+    # Convert sharding diagnostics into inlay error hints
+    error_hints.extend(_diagnostics_to_error_hints(filtered_diags))
 
     # Synthesize return-line intermediates for functions whose trace succeeded
     # but produced no jaxpr-based intermediates (identity/passthrough functions,
