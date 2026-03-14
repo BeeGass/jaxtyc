@@ -85,16 +85,22 @@ class DimEnv:
             fixed dims are plain ints, and variadic/ellipsis expand to two dims.
         """
         shape: list[DimSize] = []
-        for dim in spec.dims:
+        for i, dim in enumerate(spec.dims):
             match dim.kind:
                 case "named":
-                    assert dim.name is not None
+                    if dim.name is None:
+                        msg = f"DimSpec(kind='named') requires name, got None at index {i}"
+                        raise ValueError(msg)
                     shape.append(self.get_size(dim.name))
                 case "fixed":
-                    assert dim.size is not None
+                    if dim.size is None:
+                        msg = f"DimSpec(kind='fixed') requires size, got None at index {i}"
+                        raise ValueError(msg)
                     shape.append(dim.size)
                 case "variadic":
-                    assert dim.name is not None
+                    if dim.name is None:
+                        msg = f"DimSpec(kind='variadic') requires name, got None at index {i}"
+                        raise ValueError(msg)
                     shape.extend(
                         [
                             self.get_size(f"_var_{dim.name}_0"),
@@ -144,16 +150,22 @@ class DimEnv:
             Shape tuple of plain integers.
         """
         shape: list[int] = []
-        for dim in spec.dims:
+        for i, dim in enumerate(spec.dims):
             match dim.kind:
                 case "named":
-                    assert dim.name is not None
+                    if dim.name is None:
+                        msg = f"DimSpec(kind='named') requires name, got None at index {i}"
+                        raise ValueError(msg)
                     shape.append(self.get_concrete_size(dim.name))
                 case "fixed":
-                    assert dim.size is not None
+                    if dim.size is None:
+                        msg = f"DimSpec(kind='fixed') requires size, got None at index {i}"
+                        raise ValueError(msg)
                     shape.append(dim.size)
                 case "variadic":
-                    assert dim.name is not None
+                    if dim.name is None:
+                        msg = f"DimSpec(kind='variadic') requires name, got None at index {i}"
+                        raise ValueError(msg)
                     shape.extend(
                         [
                             self.get_concrete_size(f"_var_{dim.name}_0"),

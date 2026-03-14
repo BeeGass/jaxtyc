@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import logging
 import tempfile
 from pathlib import Path
+
+import pytest
 
 from jaxtyc.config import HintsConfig
 from jaxtyc.config import JaxtycConfig
@@ -30,6 +33,19 @@ class TestDefaultConfig:
         config = JaxtycConfig()
         with pytest.raises(AttributeError):
             config.severity = "warning"
+
+
+class TestLoadConfigLogging:
+    def test_corrupt_toml_logs_warning(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Corrupt pyproject.toml should log a warning and return defaults."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            pyproject = Path(tmpdir) / "pyproject.toml"
+            pyproject.write_bytes(b"[invalid toml content <<<")
+            with caplog.at_level(logging.WARNING, logger="jaxtyc.config"):
+                config = load_config(tmpdir)
+            assert config == JaxtycConfig()
+            assert any("Failed to parse" in r.message for r in caplog.records)
+            assert any(r.levelno == logging.WARNING for r in caplog.records)
 
 
 class TestLoadConfig:

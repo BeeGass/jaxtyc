@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from typing import Any
 
@@ -13,6 +14,8 @@ from jaxtyc.types import IntermediateShape
 from jaxtyc.types import ShapeSpec
 from jaxtyc.types import ShardingInfo
 from jaxtyc.types import TraceResult
+
+logger = logging.getLogger(__name__)
 
 _SHARDING_PRIMITIVES: frozenset[str] = frozenset(
     {
@@ -123,7 +126,7 @@ def _extract_sharding_info(eqn: Any, source_line: int) -> ShardingInfo | None:
                 source_line=source_line,
             )
     except Exception:
-        pass
+        logger.debug("Failed to extract sharding info from %s", eqn.primitive.name, exc_info=True)
     return None
 
 
@@ -182,8 +185,7 @@ def _extract_intermediates(
                         )
                     )
     except Exception:
-        # If make_jaxpr fails, we still have eval_shape results
-        pass
+        logger.debug("make_jaxpr failed for intermediates extraction", exc_info=True)
 
     return intermediates
 
@@ -223,7 +225,7 @@ def _build_sharded_abstract_input(
     shape: list[int] = []
     pspec_entries: list[str | None] = []
 
-    for dim in spec.dims:
+    for i, dim in enumerate(spec.dims):
         axis = dim.mesh_axis
         # Resolve logical -> physical axis name
         if axis is not None and axis_rules:
@@ -231,7 +233,9 @@ def _build_sharded_abstract_input(
         pspec_entries.append(axis)
 
         if dim.kind == "named":
-            assert dim.name is not None
+            if dim.name is None:
+                msg = f"DimSpec(kind='named') requires name, got None at index {i}"
+                raise ValueError(msg)
             base_size = env.get_concrete_size(dim.name)
             if axis is not None and axis in mesh_config:
                 # Make size divisible by partition count
@@ -242,10 +246,14 @@ def _build_sharded_abstract_input(
                     env._concrete[dim.name] = base_size
             shape.append(base_size)
         elif dim.kind == "fixed":
-            assert dim.size is not None
+            if dim.size is None:
+                msg = f"DimSpec(kind='fixed') requires size, got None at index {i}"
+                raise ValueError(msg)
             shape.append(dim.size)
         elif dim.kind == "variadic":
-            assert dim.name is not None
+            if dim.name is None:
+                msg = f"DimSpec(kind='variadic') requires name, got None at index {i}"
+                raise ValueError(msg)
             shape.extend(
                 [
                     env.get_concrete_size(f"_var_{dim.name}_0"),

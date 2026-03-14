@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import tomllib
 from dataclasses import dataclass
 from dataclasses import field
 from pathlib import Path
 from typing import TYPE_CHECKING
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from jaxtyc.types import Diagnostic
@@ -155,6 +158,7 @@ def load_config(project_root: str | Path) -> JaxtycConfig:
         with open(pyproject_path, "rb") as f:
             data = tomllib.load(f)
     except Exception:
+        logger.warning("Failed to parse %s, using default config", pyproject_path, exc_info=True)
         return JaxtycConfig()
 
     jaxtyc_config = data.get("tool", {}).get("jaxtyc", {})

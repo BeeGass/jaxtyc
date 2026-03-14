@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import logging
 from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -32,6 +33,8 @@ from jaxtyc.types import Diagnostic
 from jaxtyc.types import FileResult
 from jaxtyc.types import FunctionShapeSpec
 from jaxtyc.types import TraceResult
+
+logger = logging.getLogger(__name__)
 
 
 def analyze_file(file_path: str) -> FileResult:
