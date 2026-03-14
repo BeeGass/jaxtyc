@@ -458,7 +458,12 @@ def _analyze_and_publish(ls: LanguageServer, uri: str, source: str | None = None
     # Build trace results index for cross-file and call-site features
     trace_results_by_name = {t.function_name: t for t in result.trace_results}
 
-    # Batch-write all caches atomically
+    # Cross-file checking phase (before cache write to avoid TOCTOU race)
+    cross_file_diags = _check_cross_file_calls(uri, func_specs)
+    if cross_file_diags:
+        lsp_diagnostics = [*lsp_diagnostics, *cross_file_diags]
+
+    # Batch-write all caches atomically (single lock acquisition)
     with _state.cache_lock:
         _state.diagnostics_cache[uri] = lsp_diagnostics
         _state.analysis_cache[uri] = all_intermediates
@@ -468,13 +473,6 @@ def _analyze_and_publish(ls: LanguageServer, uri: str, source: str | None = None
         _state.trace_results_cache[uri] = trace_results_by_name
         if hover_env is not None:
             _state.dim_env_cache[uri] = hover_env
-
-    # Cross-file checking phase
-    cross_file_diags = _check_cross_file_calls(uri, func_specs)
-    if cross_file_diags:
-        lsp_diagnostics.extend(cross_file_diags)
-        with _state.cache_lock:
-            _state.diagnostics_cache[uri] = lsp_diagnostics
 
     ls.text_document_publish_diagnostics(
         types.PublishDiagnosticsParams(
