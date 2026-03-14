@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import threading
 from dataclasses import dataclass
-from dataclasses import field
 
 from jaxtyc.analyzer.annotations import extract_all_function_defs
 from jaxtyc.analyzer.annotations import extract_call_sites
@@ -16,16 +15,16 @@ from jaxtyc.types import FunctionDefInfo
 from jaxtyc.types import FunctionShapeSpec
 
 
-@dataclass
+@dataclass(frozen=True)
 class FileIndex:
     """Per-file index of shape-annotated symbols for LSP navigation."""
 
     file_path: str
     uri: str
-    function_specs: list[FunctionShapeSpec]
-    dim_locations: list[DimLocation]
-    call_sites: list[CallSite] = field(default_factory=list)
-    function_defs: list[FunctionDefInfo] = field(default_factory=list)
+    function_specs: tuple[FunctionShapeSpec, ...]
+    dim_locations: tuple[DimLocation, ...]
+    call_sites: tuple[CallSite, ...] = ()
+    function_defs: tuple[FunctionDefInfo, ...] = ()
 
 
 def build_file_index(
@@ -57,10 +56,10 @@ def build_file_index(
     return FileIndex(
         file_path=file_path,
         uri=uri,
-        function_specs=func_specs,
-        dim_locations=dim_locs,
-        call_sites=call_sites,
-        function_defs=func_defs,
+        function_specs=tuple(func_specs),
+        dim_locations=tuple(dim_locs),
+        call_sites=tuple(call_sites),
+        function_defs=tuple(func_defs),
     )
 
 

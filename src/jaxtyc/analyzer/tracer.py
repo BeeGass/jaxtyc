@@ -9,6 +9,7 @@ from typing import Any
 import jax
 from jax.typing import DTypeLike
 
+from jaxtyc.analyzer._errors import truncate_error
 from jaxtyc.analyzer.dim_env import DimEnv
 from jaxtyc.types import IntermediateShape
 from jaxtyc.types import ShapeSpec
@@ -315,7 +316,7 @@ def _trace_fallback_unsharded(
             output_shape=None,
             output_dtype=None,
             intermediates=[],
-            error=str(e),
+            error=truncate_error(e),
             sharding_fallback_reason=original_error,
         )
 
@@ -407,13 +408,13 @@ def trace_function(
             output_struct = jax.eval_shape(wrapper, **abstract_inputs)
     except Exception as e:
         if has_sharding:
-            return _trace_fallback_unsharded(fn, params, env, str(e))
+            return _trace_fallback_unsharded(fn, params, env, truncate_error(e))
         return TraceResult(
             function_name=getattr(fn, "__name__", "<unknown>"),
             output_shape=None,
             output_dtype=None,
             intermediates=[],
-            error=str(e),
+            error=truncate_error(e),
         )
 
     # Extract output shape(s)

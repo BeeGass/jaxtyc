@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 import os
 import tomllib
@@ -127,13 +128,49 @@ _KNOWN_KEYS: frozenset[str] = frozenset(JaxtycConfig.__dataclass_fields__.keys()
 }
 
 
+_FIELD_TYPE_CHECKS: dict[str, type | tuple[type, ...]] = {
+    "str": str,
+    "int": int,
+    "bool": bool,
+    "Severity": str,
+}
+
+
+def _validate_field_types(
+    filtered: dict[str, object],
+    cls: type,
+) -> dict[str, object]:
+    """Remove entries whose runtime types don't match the dataclass field type.
+
+    Logs a warning for each rejected key so config typos are visible.
+    """
+    hints = {f.name: f.type for f in dataclasses.fields(cls)}
+    valid: dict[str, object] = {}
+    for k, v in filtered.items():
+        expected = hints.get(k)
+        if expected is None:
+            continue
+        check_type = _FIELD_TYPE_CHECKS.get(expected)  # type: ignore[arg-type]
+        if check_type is not None and not isinstance(v, check_type):
+            logger.warning(
+                "Config key '%s' expected %s, got %s; ignoring",
+                k,
+                expected,
+                type(v).__name__,
+            )
+            continue
+        valid[k] = v
+    return valid
+
+
 def _build_nested_config(
     raw: dict[str, object],
     cls: type,
     known_keys: frozenset[str],
 ) -> object:
-    """Build a nested config dataclass, filtering unknown keys."""
+    """Build a nested config dataclass, filtering unknown keys and bad types."""
     filtered = {k: v for k, v in raw.items() if k in known_keys}
+    filtered = _validate_field_types(filtered, cls)
     return cls(**filtered)
 
 
@@ -170,8 +207,9 @@ def load_config(project_root: str | Path) -> JaxtycConfig:
     sharding_raw = jaxtyc_config.pop("sharding", None)
     navigation_raw = jaxtyc_config.pop("navigation", None)
 
-    # Filter to known top-level keys only
+    # Filter to known top-level keys only, then validate types
     filtered: dict[str, object] = {k: v for k, v in jaxtyc_config.items() if k in _KNOWN_KEYS}
+    filtered = _validate_field_types(filtered, JaxtycConfig)
 
     # Build nested configs
     if isinstance(hints_raw, dict):

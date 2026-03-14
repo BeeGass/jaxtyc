@@ -6,6 +6,7 @@ import tempfile
 import types
 from pathlib import Path
 
+from jaxtyc.analyzer._errors import truncate_error
 from jaxtyc.analyzer.pipeline import _is_eqx_module
 from jaxtyc.analyzer.pipeline import _is_nnx_module
 from jaxtyc.analyzer.pipeline import _resolve_function
@@ -140,3 +141,26 @@ class TestAnalyzeFileMeshResolution:
         # sharded_full_correct has mesh definition in source — should trace
         # without falling back. Just verify no crash and some functions checked.
         assert result.functions_checked >= 1
+
+
+class TestTruncateError:
+    def test_short_message_unchanged(self) -> None:
+        assert truncate_error("simple error") == "simple error"
+
+    def test_long_message_truncated(self) -> None:
+        long_msg = "x" * 1000
+        result = truncate_error(long_msg)
+        assert len(result) == 504  # 500 + " ..."
+        assert result.endswith(" ...")
+
+    def test_multiline_takes_first_line(self) -> None:
+        msg = "First line\nSecond line\nThird line"
+        assert truncate_error(msg) == "First line"
+
+    def test_exception_object(self) -> None:
+        exc = ValueError("something went wrong")
+        assert truncate_error(exc) == "something went wrong"
+
+    def test_custom_max_len(self) -> None:
+        result = truncate_error("abcdefghij", max_len=5)
+        assert result == "abcde ..."
