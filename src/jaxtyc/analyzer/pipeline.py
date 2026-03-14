@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import logging
 from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -13,6 +14,7 @@ if TYPE_CHECKING:
 
 from jax.typing import DTypeLike
 
+from jaxtyc.analyzer._errors import truncate_error
 from jaxtyc.analyzer.annotations import extract_call_sites
 from jaxtyc.analyzer.annotations import extract_function_specs
 from jaxtyc.analyzer.checker import check_call_site
@@ -32,6 +34,8 @@ from jaxtyc.types import Diagnostic
 from jaxtyc.types import FileResult
 from jaxtyc.types import FunctionShapeSpec
 from jaxtyc.types import TraceResult
+
+logger = logging.getLogger(__name__)
 
 
 def analyze_file(file_path: str) -> FileResult:
@@ -88,7 +92,7 @@ def analyze_file(file_path: str) -> FileResult:
                 line=0,
                 col=0,
                 severity="info",
-                message=f"Could not read file: {e}",
+                message=f"Could not read file: {truncate_error(e)}",
                 rule="read-error",
             )
         )
@@ -129,7 +133,7 @@ def analyze_file(file_path: str) -> FileResult:
                 line=0,
                 col=0,
                 severity="info",
-                message=f"Could not import module: {e}",
+                message=f"Could not import module: {truncate_error(e)}",
                 rule="import-error",
             )
         )
@@ -424,7 +428,7 @@ def _trace_nnx_method(
                 output_shape=None,
                 output_dtype=None,
                 intermediates=[],
-                error=f"Could not instantiate NNX module {cls.__name__}: {e}",
+                error=f"Could not instantiate NNX module {cls.__name__}: {truncate_error(e)}",
             )
 
     # Build pure function via split/merge for jax.eval_shape and make_jaxpr
@@ -459,7 +463,7 @@ def _trace_nnx_method(
             output_shape=None,
             output_dtype=None,
             intermediates=[],
-            error=str(e),
+            error=truncate_error(e),
         )
 
     # Extract output shape
@@ -549,7 +553,7 @@ def _trace_eqx_method(
                     output_shape=None,
                     output_dtype=None,
                     intermediates=[],
-                    error=f"Could not instantiate equinox module {cls.__name__}: {e}",
+                    error=f"Could not instantiate equinox module {cls.__name__}: {truncate_error(e)}",
                 )
 
         method = getattr(model, func_spec.name)
@@ -570,7 +574,7 @@ def _trace_eqx_method(
             output_shape=None,
             output_dtype=None,
             intermediates=[],
-            error=str(e),
+            error=truncate_error(e),
         )
 
     if hasattr(output_struct, "shape"):

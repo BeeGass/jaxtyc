@@ -58,7 +58,7 @@ class TestBuildFileIndex:
             )
         ]
         idx = build_file_index(source, "test.py", "file:///test.py", func_specs=specs)
-        assert idx.function_specs is specs
+        assert list(idx.function_specs) == specs
         assert len(idx.dim_locations) == 2  # still extracts dims from source
 
 

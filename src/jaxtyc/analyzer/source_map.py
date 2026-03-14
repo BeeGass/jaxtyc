@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from collections.abc import Sequence
 from typing import Any
@@ -10,6 +11,8 @@ import jax
 
 from jaxtyc.analyzer.dim_env import DimEnv
 from jaxtyc.types import IntermediateShape
+
+logger = logging.getLogger(__name__)
 
 _JAX_INTERNAL_MARKERS: tuple[str, ...] = (
     "site-packages/jax",
@@ -83,6 +86,6 @@ def extract_source_mapped_intermediates(
                         )
                     )
     except Exception:
-        pass
+        logger.debug("make_jaxpr failed for source-mapped intermediates", exc_info=True)
 
     return intermediates

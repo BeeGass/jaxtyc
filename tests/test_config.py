@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import logging
 import tempfile
 from pathlib import Path
+
+import pytest
 
 from jaxtyc.config import HintsConfig
 from jaxtyc.config import JaxtycConfig
@@ -30,6 +33,19 @@ class TestDefaultConfig:
         config = JaxtycConfig()
         with pytest.raises(AttributeError):
             config.severity = "warning"
+
+
+class TestLoadConfigLogging:
+    def test_corrupt_toml_logs_warning(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Corrupt pyproject.toml should log a warning and return defaults."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            pyproject = Path(tmpdir) / "pyproject.toml"
+            pyproject.write_bytes(b"[invalid toml content <<<")
+            with caplog.at_level(logging.WARNING, logger="jaxtyc.config"):
+                config = load_config(tmpdir)
+            assert config == JaxtycConfig()
+            assert any("Failed to parse" in r.message for r in caplog.records)
+            assert any(r.levelno == logging.WARNING for r in caplog.records)
 
 
 class TestLoadConfig:
@@ -448,3 +464,49 @@ class TestNavigationConfig:
             )
             cfg = load_config(tmpdir)
             assert cfg.navigation.references_scope == "workspace"
+
+
+class TestConfigTypeValidation:
+    def test_wrong_severity_type_uses_default(self) -> None:
+        """severity = 42 (int instead of str) should be rejected, using default."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            pyproject = Path(tmpdir) / "pyproject.toml"
+            pyproject.write_text("[tool.jaxtyc]\nseverity = 42\n")
+            config = load_config(tmpdir)
+            assert config.severity == "error"  # default
+
+    def test_wrong_debounce_type_uses_default(self) -> None:
+        """debounce_ms = 'fast' (str instead of int) should be rejected."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            pyproject = Path(tmpdir) / "pyproject.toml"
+            pyproject.write_text('[tool.jaxtyc]\ndebounce_ms = "fast"\n')
+            config = load_config(tmpdir)
+            assert config.debounce_ms == 500  # default
+
+    def test_wrong_bool_type_uses_default(self) -> None:
+        """prefer_einops = 'yes' (str instead of bool) should be rejected."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            pyproject = Path(tmpdir) / "pyproject.toml"
+            pyproject.write_text('[tool.jaxtyc]\nprefer_einops = "yes"\n')
+            config = load_config(tmpdir)
+            assert config.prefer_einops is False  # default
+
+    def test_correct_types_accepted(self) -> None:
+        """Correctly typed values should pass validation."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            pyproject = Path(tmpdir) / "pyproject.toml"
+            pyproject.write_text(
+                '[tool.jaxtyc]\nseverity = "warning"\ndebounce_ms = 1000\nprefer_einops = true\n'
+            )
+            config = load_config(tmpdir)
+            assert config.severity == "warning"
+            assert config.debounce_ms == 1000
+            assert config.prefer_einops is True
+
+    def test_nested_config_type_validation(self) -> None:
+        """Nested configs should also reject wrong types."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            pyproject = Path(tmpdir) / "pyproject.toml"
+            pyproject.write_text("[tool.jaxtyc.hints]\nerror_mode = 42\n")
+            config = load_config(tmpdir)
+            assert config.hints.error_mode == "both"  # default

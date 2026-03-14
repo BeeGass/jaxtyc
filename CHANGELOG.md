@@ -5,6 +5,29 @@ All notable changes to jaxtyc are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.6.1] — 2026-03-14
+
+### Changed
+
+- **Frozen `FileIndex`**: `FileIndex` is now `@dataclass(frozen=True)` with tuple fields (was mutable with list fields), consistent with the project convention for immutable value types
+- **Dependency upper bounds**: Added semver caps to all dependencies — `jax>=0.9.0,<0.10`, `jaxtyping>=0.2.28,<0.4`, `pygls>=2.0,<3`, and all optional deps (`watchfiles`, `flax`, `equinox`, `einops`) — to guard against breaking changes in private APIs like `jax._src.mesh.use_abstract_mesh`
+
+### Added
+
+- **Logging infrastructure**: Added `logging.getLogger(__name__)` across analyzer modules (`tracer.py`, `source_map.py`, `pipeline.py`, `config.py`). Silent `except Exception: pass` blocks now log at `debug` or `warning` level with `exc_info=True`
+- **Error truncation**: `truncate_error()` utility in new `analyzer/_errors.py` takes the first line and caps at 500 chars, applied to 10 `str(e)` sites in `pipeline.py`, `tracer.py`, and `cli/main.py`
+- **Config type validation**: `_validate_field_types()` in `config.py` checks TOML values match expected types before constructing `JaxtycConfig`, logging warnings for rejected keys
+- New test suites: `test_pipeline.py` (21 tests), `test_lsp_handlers.py` (26 tests)
+- Extended tests: `test_config.py` (+7), `test_dim_env.py` (+6)
+
+### Fixed
+
+- **Silent exception swallowing**: 4 bare `except Exception: pass` blocks in `tracer.py`, `source_map.py`, and `config.py` now log diagnostics instead of silently discarding errors
+- **Assertions removed from runtime guards**: 9 `assert` statements in `dim_env.py` (6) and `tracer.py` (3) replaced with explicit `ValueError` raises with descriptive messages, surviving `python -O`
+- **TOCTOU race in LSP diagnostic cache**: `_analyze_and_publish` in `server.py` now performs cross-file checking before the cache write, then batch-writes all caches in a single lock acquisition
+
+- Test count: 625 -> 676
+
 ## [v0.6.0] — 2026-03-12
 
 ### Changed
@@ -228,6 +251,7 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Flax NNX and Equinox module support (auto-skips `self`/`cls` parameters)
 - CI workflow and mkdocs documentation site
 
+[v0.6.1]: https://github.com/BeeGass/jaxtyc/compare/v0.6.0...v0.6.1
 [v0.6.0]: https://github.com/BeeGass/jaxtyc/compare/v0.5.0...v0.6.0
 [v0.5.0]: https://github.com/BeeGass/jaxtyc/compare/v0.4.0...v0.5.0
 [v0.4.0]: https://github.com/BeeGass/jaxtyc/compare/v0.3.1...v0.4.0

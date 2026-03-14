@@ -8,6 +8,7 @@ import time
 from pathlib import Path
 
 import jaxtyc
+from jaxtyc.analyzer._errors import truncate_error
 from jaxtyc.analyzer.pipeline import analyze_file
 from jaxtyc.cli.formatters import FORMATTERS
 from jaxtyc.config import filter_diagnostics
@@ -119,7 +120,7 @@ def cmd_trace(args: argparse.Namespace) -> int:
     try:
         module = import_module_from_path(file_path)
     except Exception as e:
-        print(f"Error: could not import {file_path}: {e}", file=sys.stderr)
+        print(f"Error: could not import {file_path}: {truncate_error(e)}", file=sys.stderr)
         return 1
 
     fn = getattr(module, func_name, None)

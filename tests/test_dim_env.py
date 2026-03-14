@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import jax
 import jax.numpy as jnp
+import pytest
 
 from jaxtyc.analyzer.dim_env import DimEnv
 from jaxtyc.types import DimSpec
@@ -276,3 +277,43 @@ class TestSymbolicEvalShape:
         except Exception as e:
             msg = str(e)
             assert "d_model" in msg or "d_ff" in msg
+
+
+class TestMakeShapeValidation:
+    def test_named_with_no_name_raises(self) -> None:
+        env = DimEnv()
+        bad_spec = ShapeSpec(dims=(DimSpec(kind="named", name=None),), dtype="float32")
+        with pytest.raises(ValueError, match="requires name"):
+            env.make_shape(bad_spec)
+
+    def test_fixed_with_no_size_raises(self) -> None:
+        env = DimEnv()
+        bad_spec = ShapeSpec(dims=(DimSpec(kind="fixed", size=None),), dtype="float32")
+        with pytest.raises(ValueError, match="requires size"):
+            env.make_shape(bad_spec)
+
+    def test_variadic_with_no_name_raises(self) -> None:
+        env = DimEnv()
+        bad_spec = ShapeSpec(dims=(DimSpec(kind="variadic", name=None),), dtype="float32")
+        with pytest.raises(ValueError, match="requires name"):
+            env.make_shape(bad_spec)
+
+
+class TestMakeConcreteShapeValidation:
+    def test_named_with_no_name_raises(self) -> None:
+        env = DimEnv()
+        bad_spec = ShapeSpec(dims=(DimSpec(kind="named", name=None),), dtype="float32")
+        with pytest.raises(ValueError, match="requires name"):
+            env.make_concrete_shape(bad_spec)
+
+    def test_fixed_with_no_size_raises(self) -> None:
+        env = DimEnv()
+        bad_spec = ShapeSpec(dims=(DimSpec(kind="fixed", size=None),), dtype="float32")
+        with pytest.raises(ValueError, match="requires size"):
+            env.make_concrete_shape(bad_spec)
+
+    def test_variadic_with_no_name_raises(self) -> None:
+        env = DimEnv()
+        bad_spec = ShapeSpec(dims=(DimSpec(kind="variadic", name=None),), dtype="float32")
+        with pytest.raises(ValueError, match="requires name"):
+            env.make_concrete_shape(bad_spec)
