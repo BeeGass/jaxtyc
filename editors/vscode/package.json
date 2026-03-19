@@ -67,6 +67,12 @@
           "default": [],
           "description": "Extra CLI arguments passed to the server"
         },
+        "jaxtyc.backend": {
+          "type": "string",
+          "enum": ["cpu", "gpu"],
+          "default": "cpu",
+          "markdownDescription": "JAX backend for shape tracing. `cpu` (default) prevents GPU VRAM allocation. `gpu` allows GPU usage for debugging."
+        },
         "jaxtyc.hints.errorMode": {
           "type": "string",
           "enum": [

@@ -410,6 +410,7 @@ async def run_mux(solo: str | None = None) -> None:
             stderr=asyncio.subprocess.DEVNULL,
             cwd=cwd,
         )
+        cpu_env = {**os.environ, "JAX_PLATFORMS": "cpu", "XLA_PYTHON_CLIENT_PREALLOCATE": "false"}
         jaxtyc_proc = await asyncio.create_subprocess_exec(
             sys.executable,
             "-m",
@@ -419,6 +420,7 @@ async def run_mux(solo: str | None = None) -> None:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.DEVNULL,
             cwd=cwd,
+            env=cpu_env,
         )
 
         # Start output reader tasks BEFORE replaying buffered messages so that

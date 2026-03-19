@@ -67,20 +67,30 @@ function discoverServerForFolder(
   return pickServer(candidates, canRun);
 }
 
-function getConfig(): { mode: string; pythonPath: string; args: string[] } {
+function getConfig(): { mode: string; pythonPath: string; args: string[]; backend: string } {
   const cfg = vscode.workspace.getConfiguration("jaxtyc");
   return {
     mode: cfg.get<string>("mode", "lsp"),
     pythonPath: cfg.get<string>("pythonPath", ""),
     args: cfg.get<string[]>("args", []),
+    backend: cfg.get<string>("backend", "cpu"),
   };
+}
+
+function buildServerEnv(backend: string): Record<string, string> {
+  const env: Record<string, string> = { ...process.env } as Record<string, string>;
+  if (backend === "cpu") {
+    env["JAX_PLATFORMS"] = "cpu";
+    env["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false";
+  }
+  return env;
 }
 
 async function startClientForFolder(
   folder: vscode.WorkspaceFolder
 ): Promise<void> {
   const folderUri = folder.uri.toString();
-  const { mode, pythonPath, args } = getConfig();
+  const { mode, pythonPath, args, backend } = getConfig();
 
   const server = buildServerCommand({
     pythonPath,
@@ -103,7 +113,10 @@ async function startClientForFolder(
   const serverOptions: ServerOptions = {
     command: server.command,
     args: server.args,
-    options: { cwd: folder.uri.fsPath },
+    options: {
+      cwd: folder.uri.fsPath,
+      env: buildServerEnv(backend),
+    },
   };
 
   const clientOptions: LanguageClientOptions = {
@@ -383,7 +396,8 @@ export async function activate(
     vscode.workspace.onDidChangeConfiguration((e) => {
       if (
         e.affectsConfiguration("jaxtyc.mode") ||
-        e.affectsConfiguration("jaxtyc.pythonPath")
+        e.affectsConfiguration("jaxtyc.pythonPath") ||
+        e.affectsConfiguration("jaxtyc.backend")
       ) {
         if (configRestartTimer) clearTimeout(configRestartTimer);
         configRestartTimer = setTimeout(async () => {
