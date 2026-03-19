@@ -32,6 +32,10 @@ source_cache: dict[str, str] = {}
 # Trace results cache per URI: function name -> TraceResult
 trace_results_cache: dict[str, dict[str, TraceResult]] = {}
 
+# Content hash cache per URI: sha256 hex digest of source text.
+# Used to skip re-analysis when file content has not changed.
+content_hash_cache: dict[str, str] = {}
+
 # Lock protecting multi-cache updates
 cache_lock: threading.Lock = threading.Lock()
 
