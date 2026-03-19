@@ -5,6 +5,32 @@ All notable changes to jaxtyc are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.6.2] — 2026-03-19
+
+### Changed
+
+- **Abstract-first NNX/equinox tracing**: Model tracing now uses `nnx.eval_shape` and `eqx.filter_eval_shape` for zero-allocation abstract construction instead of creating concrete model instances with real weight tensors. Abstract state is passed as explicit arguments to `jax.eval_shape` and `jax.make_jaxpr` (not captured in closures), so `ShapeDtypeStruct` leaves become proper JAX tracers inside the trace context. Falls back to concrete construction on CPU if abstract tracing fails for a particular model
+- **CPU-only backend**: All CLI entry points (check, trace, watch, lsp, mux) now force `JAX_PLATFORMS=cpu` before any JAX import via `_enforce_cpu_backend()` in `cli/main.py`. This prevents JAX from pre-allocating 75% of GPU VRAM — `jax.eval_shape` and `jax.make_jaxpr` produce identical results on CPU. Override with `JAXTYC_BACKEND=gpu` env var or by setting `JAX_PLATFORMS` directly
+- **NNX tracing refactor**: `_trace_nnx_method` split into `_trace_nnx_abstract` (primary, zero-alloc) and `_trace_nnx_concrete` (fallback, CPU-only). Same for equinox with `_trace_eqx_abstract` and `_trace_eqx_concrete`. Shared helpers `_extract_output_shape`, `_eval_and_extract`, and `_build_mesh_context` eliminate duplicated logic
+
+### Added
+
+- **`backend` config option**: `backend = "cpu"` (default) in `[tool.jaxtyc]` section of `pyproject.toml`. Documents the CPU-only behavior; set to `"gpu"` to allow GPU usage
+- **Content-hash gating**: LSP `_analyze_and_publish` now hashes source text (SHA-256) and skips re-analysis when content is unchanged, avoiding redundant module imports, tracing, and model instantiation on every didChange debounce and didSave event
+- **JAX cache cleanup**: `jax.clear_caches()` called after each LSP analysis cycle and after CLI check/watch to prevent unbounded growth of JAX's internal trace and compilation caches
+- **VSCode extension CPU env vars**: Server process spawned with `JAX_PLATFORMS=cpu` and `XLA_PYTHON_CLIENT_PREALLOCATE=false` as defense-in-depth. New `jaxtyc.backend` setting (cpu/gpu) controls this; server restarts when changed
+- **Mux CPU env vars**: jaxtyc subprocess in mux mode spawned with `JAX_PLATFORMS=cpu` and `XLA_PYTHON_CLIENT_PREALLOCATE=false`
+- **Import CPU guard**: `exec_module` in `importer.py` wrapped with `jax.default_device(cpu)` to prevent user module-level code from allocating on GPU
+- New test files: `test_cpu_backend.py` (5 tests), `test_content_hash.py` (5 tests), `test_cache_cleanup.py` (1 test)
+- Extended tests: `test_pipeline.py` (+7 abstract tracing tests), `test_config.py` (+3 backend tests), `test_importer.py` (+2 sys.modules cleanup tests)
+
+### Fixed
+
+- **VRAM consumption in VSCode extension**: The LSP server no longer consumes GPU VRAM. Previously, JAX auto-detected the GPU on import, NNX/equinox model constructors allocated real weight tensors on GPU, and JAX caches grew unboundedly. Now: abstract tracing eliminates weight allocation, CPU backend prevents GPU initialization, content-hash gating reduces re-analysis, and cache cleanup prevents leak
+- **sys.modules memory leak**: `import_module_from_path()` now removes `_jaxtyc_user_*` modules from `sys.modules` after loading. Previously, modules were added but never removed on success, causing the LSP server to accumulate module objects over its lifetime
+
+- Test count: 676 -> 698
+
 ## [v0.6.1] — 2026-03-14
 
 ### Changed
@@ -251,6 +277,7 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Flax NNX and Equinox module support (auto-skips `self`/`cls` parameters)
 - CI workflow and mkdocs documentation site
 
+[v0.6.2]: https://github.com/BeeGass/jaxtyc/compare/v0.6.1...v0.6.2
 [v0.6.1]: https://github.com/BeeGass/jaxtyc/compare/v0.6.0...v0.6.1
 [v0.6.0]: https://github.com/BeeGass/jaxtyc/compare/v0.5.0...v0.6.0
 [v0.5.0]: https://github.com/BeeGass/jaxtyc/compare/v0.4.0...v0.5.0

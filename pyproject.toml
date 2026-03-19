@@ -1,6 +1,6 @@
 [project]
 name = "jaxtyc"
-version = "0.6.1"
+version = "0.6.2"
 description = "Static array shape checking for JAX powered by eval_shape"
 readme = "README.md"
 requires-python = ">=3.11,!=3.12,<3.15"
