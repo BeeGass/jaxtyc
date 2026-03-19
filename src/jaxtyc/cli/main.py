@@ -3,17 +3,35 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 import time
 from pathlib import Path
 
-import jaxtyc
-from jaxtyc.analyzer._errors import truncate_error
-from jaxtyc.analyzer.pipeline import analyze_file
-from jaxtyc.cli.formatters import FORMATTERS
-from jaxtyc.config import filter_diagnostics
-from jaxtyc.config import load_config
-from jaxtyc.types import FileResult
+
+def _enforce_cpu_backend() -> None:
+    """Force JAX to use CPU backend unless overridden.
+
+    jaxtyc uses only jax.eval_shape and jax.make_jaxpr, which work
+    identically on CPU. Setting JAX_PLATFORMS=cpu prevents GPU VRAM
+    pre-allocation that wastes memory in a static analysis tool.
+
+    Override with JAXTYC_BACKEND=gpu or by setting JAX_PLATFORMS directly.
+    """
+    backend = os.environ.get("JAXTYC_BACKEND", "cpu").strip().lower()
+    if backend != "gpu" and "JAX_PLATFORMS" not in os.environ:
+        os.environ["JAX_PLATFORMS"] = "cpu"
+
+
+_enforce_cpu_backend()
+
+import jaxtyc  # noqa: E402
+from jaxtyc.analyzer._errors import truncate_error  # noqa: E402
+from jaxtyc.analyzer.pipeline import analyze_file  # noqa: E402
+from jaxtyc.cli.formatters import FORMATTERS  # noqa: E402
+from jaxtyc.config import filter_diagnostics  # noqa: E402
+from jaxtyc.config import load_config  # noqa: E402
+from jaxtyc.types import FileResult  # noqa: E402
 
 
 def _apply_exclude(files: list[str], patterns: list[str]) -> list[str]:
@@ -72,6 +90,10 @@ def cmd_check(args: argparse.Namespace) -> int:
     output = formatter(results, elapsed)
     if output.strip():
         print(output)
+
+    import jax
+
+    jax.clear_caches()
 
     # Exit nonzero if any errors
     has_errors = any(d.severity == "error" for r in results for d in r.diagnostics)
@@ -241,6 +263,10 @@ def cmd_watch(args: argparse.Namespace) -> int:
         if output.strip():
             print(output)
             sys.stdout.flush()
+
+        import jax
+
+        jax.clear_caches()
 
     return 0
 
