@@ -5,12 +5,14 @@ from __future__ import annotations
 import tempfile
 import types
 from pathlib import Path
+from unittest.mock import patch
 
 from jaxtyc.analyzer._errors import truncate_error
 from jaxtyc.analyzer.pipeline import _is_eqx_module
 from jaxtyc.analyzer.pipeline import _is_nnx_module
 from jaxtyc.analyzer.pipeline import _resolve_function
 from jaxtyc.analyzer.pipeline import analyze_file
+from jaxtyc.types import TraceResult
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -164,3 +166,63 @@ class TestTruncateError:
     def test_custom_max_len(self) -> None:
         result = truncate_error("abcdefghij", max_len=5)
         assert result == "abcde ..."
+
+
+class TestAbstractTracing:
+    """Test that NNX/equinox modules are traced via abstract (zero-alloc) path."""
+
+    def test_trace_nnx_abstract_exists(self) -> None:
+        """_trace_nnx_abstract function should exist in pipeline."""
+        from jaxtyc.analyzer.pipeline import _trace_nnx_abstract
+
+        assert callable(_trace_nnx_abstract)
+
+    def test_trace_eqx_abstract_exists(self) -> None:
+        """_trace_eqx_abstract function should exist in pipeline."""
+        from jaxtyc.analyzer.pipeline import _trace_eqx_abstract
+
+        assert callable(_trace_eqx_abstract)
+
+    def test_trace_nnx_concrete_exists(self) -> None:
+        """_trace_nnx_concrete fallback function should exist in pipeline."""
+        from jaxtyc.analyzer.pipeline import _trace_nnx_concrete
+
+        assert callable(_trace_nnx_concrete)
+
+    def test_trace_eqx_concrete_exists(self) -> None:
+        """_trace_eqx_concrete fallback function should exist in pipeline."""
+        from jaxtyc.analyzer.pipeline import _trace_eqx_concrete
+
+        assert callable(_trace_eqx_concrete)
+
+    def test_eqx_module_abstract_path_used(self) -> None:
+        """Equinox module analysis should try abstract path first."""
+        with patch("jaxtyc.analyzer.pipeline._trace_eqx_abstract") as mock_abstract:
+            mock_abstract.return_value = None
+            analyze_file(str(FIXTURES / "eqx_module.py"))
+            mock_abstract.assert_called()
+
+    def test_eqx_abstract_produces_correct_shapes(self) -> None:
+        """Abstract equinox tracing should produce valid output shapes."""
+        result = analyze_file(str(FIXTURES / "eqx_module.py"))
+        assert result.functions_checked > 0
+        for tr in result.trace_results:
+            if tr.success and tr.output_shape is not None:
+                assert isinstance(tr.output_shape, tuple)
+                assert len(tr.output_shape) > 0
+
+    def test_fallback_to_concrete_on_abstract_failure(self) -> None:
+        """If abstract tracing returns None, concrete fallback runs."""
+        with (
+            patch("jaxtyc.analyzer.pipeline._trace_eqx_abstract", return_value=None),
+            patch("jaxtyc.analyzer.pipeline._trace_eqx_concrete") as mock_concrete,
+        ):
+            mock_concrete.return_value = TraceResult(
+                function_name="__call__",
+                output_shape=(101, 103),
+                output_dtype="float32",
+                intermediates=[],
+                error=None,
+            )
+            analyze_file(str(FIXTURES / "eqx_module.py"))
+            mock_concrete.assert_called()
