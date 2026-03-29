@@ -131,11 +131,17 @@ def import_module_from_path(file_path: str) -> ModuleType:
     module = importlib.util.module_from_spec(spec)
     sys.modules[unique_name] = module
     try:
-        spec.loader.exec_module(module)
+        import jax
+
+        with jax.default_device(jax.devices("cpu")[0]):
+            spec.loader.exec_module(module)
     except Exception:
         sys.path[:] = saved_path
-        del sys.modules[unique_name]
+        sys.modules.pop(unique_name, None)
         raise
 
     sys.path[:] = saved_path
+    # Remove from sys.modules to prevent memory leaks. The caller holds
+    # a reference to the module object and does not need it registered.
+    sys.modules.pop(unique_name, None)
     return module

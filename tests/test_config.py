@@ -26,6 +26,11 @@ class TestDefaultConfig:
         assert config.exclude == []
         assert config.debounce_ms == 500
 
+    def test_backend_default_is_cpu(self) -> None:
+        """Default backend should be 'cpu'."""
+        config = JaxtycConfig()
+        assert config.backend == "cpu"
+
     def test_frozen(self) -> None:
         """Config should be immutable."""
         import pytest
@@ -317,6 +322,24 @@ class TestShardingConfigMesh:
             config = load_config(tmpdir)
             assert config.sharding.mesh == {"dp": 8}
             assert config.sharding.axis_rules == {}
+
+
+class TestBackendConfig:
+    def test_load_backend_gpu(self) -> None:
+        """backend = 'gpu' should be loaded from pyproject.toml."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            pyproject = Path(tmpdir) / "pyproject.toml"
+            pyproject.write_text('[tool.jaxtyc]\nbackend = "gpu"\n')
+            config = load_config(tmpdir)
+            assert config.backend == "gpu"
+
+    def test_load_backend_cpu(self) -> None:
+        """backend = 'cpu' should be loaded from pyproject.toml."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            pyproject = Path(tmpdir) / "pyproject.toml"
+            pyproject.write_text('[tool.jaxtyc]\nbackend = "cpu"\n')
+            config = load_config(tmpdir)
+            assert config.backend == "cpu"
 
 
 class TestNestedConfig:

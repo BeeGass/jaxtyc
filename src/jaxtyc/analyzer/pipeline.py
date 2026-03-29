@@ -387,6 +387,79 @@ def _collect_dim_kwargs(
     return result
 
 
+def _extract_output_shape(
+    output_struct: Any,
+) -> tuple[tuple[Any, ...] | None, str | None]:
+    """Extract (shape, dtype) from an eval_shape output struct."""
+    import jax
+
+    if hasattr(output_struct, "shape"):
+        return output_struct.shape, str(output_struct.dtype)
+    leaves = jax.tree.leaves(output_struct)
+    if leaves and hasattr(leaves[0], "shape"):
+        return leaves[0].shape, str(leaves[0].dtype)
+    return None, None
+
+
+def _eval_and_extract(
+    pure_fn: Callable[..., Any],
+    all_inputs: dict[str, Any],
+    env: DimEnv,
+    abstract_mesh: Any | None,
+) -> TraceResult | None:
+    """Run eval_shape + make_jaxpr on a pure function and return TraceResult.
+
+    Returns None if eval_shape raises (caller should fall back).
+    """
+    import jax
+
+    from jaxtyc.analyzer.tracer import _extract_intermediates
+
+    try:
+        if abstract_mesh is not None:
+            from jax._src.mesh import use_abstract_mesh
+
+            with use_abstract_mesh(abstract_mesh):
+                output_struct = jax.eval_shape(pure_fn, **all_inputs)
+        else:
+            output_struct = jax.eval_shape(pure_fn, **all_inputs)
+    except Exception:
+        return None
+
+    output_shape, output_dtype = _extract_output_shape(output_struct)
+
+    if abstract_mesh is not None:
+        from jax._src.mesh import use_abstract_mesh
+
+        with use_abstract_mesh(abstract_mesh):
+            intermediates = _extract_intermediates(pure_fn, all_inputs, env)
+    else:
+        intermediates = _extract_intermediates(pure_fn, all_inputs, env)
+
+    return TraceResult(
+        function_name="",  # caller sets this
+        output_shape=output_shape,
+        output_dtype=output_dtype,
+        intermediates=intermediates,
+        error=None,
+    )
+
+
+def _build_mesh_context(
+    mesh_config: dict[str, int] | None,
+    func_spec: FunctionShapeSpec,
+) -> Any | None:
+    """Build an AbstractMesh if sharding is active, else None."""
+    has_sharding = bool(
+        mesh_config and any(spec.has_sharding for spec in func_spec.params.values())
+    )
+    if has_sharding and mesh_config:
+        from jaxtyc.analyzer.tracer import _build_abstract_mesh
+
+        return _build_abstract_mesh(mesh_config)
+    return None
+
+
 def _trace_nnx_method(
     cls: type,
     func_spec: FunctionShapeSpec,
@@ -394,14 +467,9 @@ def _trace_nnx_method(
     mesh_config: dict[str, int] | None = None,
     axis_rules: dict[str, str] | None = None,
 ) -> TraceResult:
-    """Trace a Flax NNX module method using a concrete model with split/merge."""
+    """Trace a Flax NNX module method, preferring abstract (zero-allocation) tracing."""
     import jax
-    from flax import nnx
 
-    from jaxtyc.analyzer.tracer import _extract_intermediates
-
-    # NNX modules need concrete int sizes for construction. Use concrete
-    # shapes for abstract inputs so they match the module's internal weights.
     abstract_inputs: dict[str, jax.ShapeDtypeStruct] = {}
     for pname, pspec in func_spec.params.items():
         if pspec.is_any_shape:
@@ -410,89 +478,123 @@ def _trace_nnx_method(
         dtype = _resolve_jax_dtype(pspec.dtype)
         abstract_inputs[pname] = jax.ShapeDtypeStruct(shape, dtype)
 
-    # Build constructor kwargs from dimension names in annotations.
-    # The model's internal params must match the concrete abstract inputs
-    # so that eval_shape and make_jaxpr produce correct shapes.
     dim_sizes = _collect_dim_kwargs(cls, func_spec, env)
+    abstract_mesh = _build_mesh_context(mesh_config, func_spec)
 
-    # Create concrete model instance (nnx.eval_shape abstract models fail
-    # on self.kernel[...] in newer Flax versions)
+    # --- Try abstract tracing first (zero allocation) ---
     try:
-        concrete_model = cls(**dim_sizes, rngs=nnx.Rngs(0))
+        result = _trace_nnx_abstract(cls, func_spec, env, dim_sizes, abstract_inputs, abstract_mesh)
+        if result is not None:
+            logger.debug("NNX abstract tracing succeeded for %s", func_spec.name)
+            return result
+    except Exception:
+        logger.debug(
+            "NNX abstract tracing failed for %s, falling back to concrete",
+            func_spec.name,
+            exc_info=True,
+        )
+
+    # --- Fallback: concrete construction on CPU ---
+    logger.debug("Using concrete (CPU) tracing for %s", func_spec.name)
+    return _trace_nnx_concrete(cls, func_spec, env, dim_sizes, abstract_inputs, abstract_mesh)
+
+
+def _trace_nnx_abstract(
+    cls: type,
+    func_spec: FunctionShapeSpec,
+    env: DimEnv,
+    dim_sizes: dict[str, int],
+    abstract_inputs: dict[str, Any],
+    abstract_mesh: Any | None,
+) -> TraceResult | None:
+    """Trace NNX module via abstract construction -- zero weight allocation.
+
+    Returns None if abstract construction or tracing fails (caller should fall back).
+    """
+    from flax import nnx
+
+    # Step 1: Abstract construction via nnx.eval_shape
+    try:
+        abstract_model = nnx.eval_shape(lambda: cls(**dim_sizes, rngs=nnx.Rngs(0)))
     except Exception:
         try:
-            concrete_model = cls(rngs=nnx.Rngs(0))
-        except Exception as e:
-            return TraceResult(
-                function_name=func_spec.name,
-                output_shape=None,
-                output_dtype=None,
-                intermediates=[],
-                error=f"Could not instantiate NNX module {cls.__name__}: {truncate_error(e)}",
-            )
+            abstract_model = nnx.eval_shape(lambda: cls(rngs=nnx.Rngs(0)))
+        except Exception:
+            return None
 
-    # Build pure function via split/merge for jax.eval_shape and make_jaxpr
+    # Step 2: Split abstract model into graphdef + abstract state
+    graphdef, abs_state = nnx.split(abstract_model)
+
+    # Step 3: Build pure function with state as EXPLICIT argument
+    def pure_fn(_nnx_state_: Any, **kwargs: Any) -> Any:
+        model = nnx.merge(graphdef, _nnx_state_)
+        return getattr(model, func_spec.name)(**kwargs)
+
+    # Step 4: Combine abstract state + method inputs
+    all_inputs: dict[str, Any] = {"_nnx_state_": abs_state, **abstract_inputs}
+
+    # Step 5: Trace via shared helper
+    result = _eval_and_extract(pure_fn, all_inputs, env, abstract_mesh)
+    if result is None:
+        return None
+
+    return TraceResult(
+        function_name=func_spec.name,
+        output_shape=result.output_shape,
+        output_dtype=result.output_dtype,
+        intermediates=result.intermediates,
+        error=None,
+    )
+
+
+def _trace_nnx_concrete(
+    cls: type,
+    func_spec: FunctionShapeSpec,
+    env: DimEnv,
+    dim_sizes: dict[str, int],
+    abstract_inputs: dict[str, Any],
+    abstract_mesh: Any | None,
+) -> TraceResult:
+    """Fallback: trace NNX module via concrete construction on CPU."""
+    import jax
+    from flax import nnx
+
+    with jax.default_device(jax.devices("cpu")[0]):
+        try:
+            concrete_model = cls(**dim_sizes, rngs=nnx.Rngs(0))
+        except Exception:
+            try:
+                concrete_model = cls(rngs=nnx.Rngs(0))
+            except Exception as e:
+                return TraceResult(
+                    function_name=func_spec.name,
+                    output_shape=None,
+                    output_dtype=None,
+                    intermediates=[],
+                    error=f"Could not instantiate NNX module {cls.__name__}: {truncate_error(e)}",
+                )
+
     graphdef, state = nnx.split(concrete_model)
 
     def pure_fn(**kwargs: Any) -> Any:
         model = nnx.merge(graphdef, state)
         return getattr(model, func_spec.name)(**kwargs)
 
-    # Build mesh context if sharding is active
-    has_sharding = bool(
-        mesh_config and any(spec.has_sharding for spec in func_spec.params.values())
-    )
-    abstract_mesh = None
-    if has_sharding and mesh_config:
-        from jaxtyc.analyzer.tracer import _build_abstract_mesh
-
-        abstract_mesh = _build_abstract_mesh(mesh_config)
-
-    # Trace for output shape
-    try:
-        if abstract_mesh is not None:
-            from jax._src.mesh import use_abstract_mesh
-
-            with use_abstract_mesh(abstract_mesh):
-                output_struct = jax.eval_shape(pure_fn, **abstract_inputs)
-        else:
-            output_struct = jax.eval_shape(pure_fn, **abstract_inputs)
-    except Exception as e:
+    result = _eval_and_extract(pure_fn, abstract_inputs, env, abstract_mesh)
+    if result is None:
         return TraceResult(
             function_name=func_spec.name,
             output_shape=None,
             output_dtype=None,
             intermediates=[],
-            error=truncate_error(e),
+            error=f"eval_shape failed for NNX module {cls.__name__}",
         )
-
-    # Extract output shape
-    if hasattr(output_struct, "shape"):
-        output_shape = output_struct.shape
-        output_dtype = str(output_struct.dtype)
-    else:
-        leaves = jax.tree.leaves(output_struct)
-        if leaves and hasattr(leaves[0], "shape"):
-            output_shape = leaves[0].shape
-            output_dtype = str(leaves[0].dtype)
-        else:
-            output_shape = None
-            output_dtype = None
-
-    # Extract intermediates via make_jaxpr (graceful degradation)
-    if abstract_mesh is not None:
-        from jax._src.mesh import use_abstract_mesh
-
-        with use_abstract_mesh(abstract_mesh):
-            intermediates = _extract_intermediates(pure_fn, abstract_inputs, env)
-    else:
-        intermediates = _extract_intermediates(pure_fn, abstract_inputs, env)
 
     return TraceResult(
         function_name=func_spec.name,
-        output_shape=output_shape,
-        output_dtype=output_dtype,
-        intermediates=intermediates,
+        output_shape=result.output_shape,
+        output_dtype=result.output_dtype,
+        intermediates=result.intermediates,
         error=None,
     )
 
@@ -511,12 +613,9 @@ def _trace_eqx_method(
     mesh_config: dict[str, int] | None = None,
     axis_rules: dict[str, str] | None = None,
 ) -> TraceResult:
-    """Trace an equinox module method using jax.eval_shape with a bound method."""
+    """Trace an equinox module method, preferring abstract (zero-allocation) tracing."""
     import jax
 
-    from jaxtyc.analyzer.tracer import _extract_intermediates
-
-    # Equinox modules need concrete int sizes — use make_concrete_shape
     abstract_inputs: dict[str, jax.ShapeDtypeStruct] = {}
     for pname, pspec in func_spec.params.items():
         if pspec.is_any_shape:
@@ -525,83 +624,133 @@ def _trace_eqx_method(
         dtype = _resolve_jax_dtype(pspec.dtype)
         abstract_inputs[pname] = jax.ShapeDtypeStruct(shape, dtype)
 
-    # Build constructor kwargs from annotation dims so model params
-    # match the concrete abstract inputs
     dim_sizes = _collect_dim_kwargs(cls, func_spec, env)
+    abstract_mesh = _build_mesh_context(mesh_config, func_spec)
 
-    # Build mesh context if sharding is active
-    has_sharding = bool(
-        mesh_config and any(spec.has_sharding for spec in func_spec.params.values())
-    )
-    abstract_mesh = None
-    if has_sharding and mesh_config:
-        from jaxtyc.analyzer.tracer import _build_abstract_mesh
-
-        abstract_mesh = _build_abstract_mesh(mesh_config)
-
-    # Equinox modules are pytrees — instantiate with dimension-matched params
+    # --- Try abstract tracing first (zero allocation) ---
     try:
-        key = jax.random.key(0)
+        result = _trace_eqx_abstract(cls, func_spec, env, dim_sizes, abstract_inputs, abstract_mesh)
+        if result is not None:
+            logger.debug("Equinox abstract tracing succeeded for %s", func_spec.name)
+            return result
+    except Exception:
+        logger.debug(
+            "Equinox abstract tracing failed for %s, falling back to concrete",
+            func_spec.name,
+            exc_info=True,
+        )
+
+    # --- Fallback: concrete construction on CPU ---
+    logger.debug("Using concrete (CPU) tracing for %s", func_spec.name)
+    return _trace_eqx_concrete(cls, func_spec, env, dim_sizes, abstract_inputs, abstract_mesh)
+
+
+def _trace_eqx_abstract(
+    cls: type,
+    func_spec: FunctionShapeSpec,
+    env: DimEnv,
+    dim_sizes: dict[str, int],
+    abstract_inputs: dict[str, Any],
+    abstract_mesh: Any | None,
+) -> TraceResult | None:
+    """Trace equinox module via abstract construction -- zero weight allocation.
+
+    Returns None if abstract construction or tracing fails (caller should fall back).
+    """
+    import jax
+
+    try:
+        import equinox as eqx
+    except ImportError:
+        return None
+
+    # Step 1: Abstract construction via filter_eval_shape
+    try:
+        abstract_model = eqx.filter_eval_shape(
+            lambda key: cls(**dim_sizes, key=key), jax.random.key(0)
+        )
+    except Exception:
         try:
-            model = cls(**dim_sizes, key=key)
+            abstract_model = eqx.filter_eval_shape(lambda key: cls(key=key), jax.random.key(0))
         except Exception:
+            return None
+
+    # Step 2: Build pure function with model as EXPLICIT argument
+    def pure_fn(_eqx_model_: Any, **kwargs: Any) -> Any:
+        return getattr(_eqx_model_, func_spec.name)(**kwargs)
+
+    # Step 3: Combine abstract model + method inputs
+    all_inputs: dict[str, Any] = {"_eqx_model_": abstract_model, **abstract_inputs}
+
+    # Step 4: Trace via shared helper
+    result = _eval_and_extract(pure_fn, all_inputs, env, abstract_mesh)
+    if result is None:
+        return None
+
+    return TraceResult(
+        function_name=func_spec.name,
+        output_shape=result.output_shape,
+        output_dtype=result.output_dtype,
+        intermediates=result.intermediates,
+        error=None,
+    )
+
+
+def _trace_eqx_concrete(
+    cls: type,
+    func_spec: FunctionShapeSpec,
+    env: DimEnv,
+    dim_sizes: dict[str, int],
+    abstract_inputs: dict[str, Any],
+    abstract_mesh: Any | None,
+) -> TraceResult:
+    """Fallback: trace equinox module via concrete construction on CPU."""
+    import jax
+
+    with jax.default_device(jax.devices("cpu")[0]):
+        try:
+            key = jax.random.key(0)
             try:
-                model = cls(key=key)
-            except Exception as e:
-                return TraceResult(
-                    function_name=func_spec.name,
-                    output_shape=None,
-                    output_dtype=None,
-                    intermediates=[],
-                    error=f"Could not instantiate equinox module {cls.__name__}: {truncate_error(e)}",
-                )
+                model = cls(**dim_sizes, key=key)
+            except Exception:
+                try:
+                    model = cls(key=key)
+                except Exception as e:
+                    return TraceResult(
+                        function_name=func_spec.name,
+                        output_shape=None,
+                        output_dtype=None,
+                        intermediates=[],
+                        error=f"Could not instantiate equinox module {cls.__name__}: {truncate_error(e)}",
+                    )
+        except Exception as e:
+            return TraceResult(
+                function_name=func_spec.name,
+                output_shape=None,
+                output_dtype=None,
+                intermediates=[],
+                error=truncate_error(e),
+            )
 
-        method = getattr(model, func_spec.name)
+    method = getattr(model, func_spec.name)
 
-        def wrapper(**kwargs: Any) -> Any:
-            return method(**kwargs)
+    def wrapper(**kwargs: Any) -> Any:
+        return method(**kwargs)
 
-        if abstract_mesh is not None:
-            from jax._src.mesh import use_abstract_mesh
-
-            with use_abstract_mesh(abstract_mesh):
-                output_struct = jax.eval_shape(wrapper, **abstract_inputs)
-        else:
-            output_struct = jax.eval_shape(wrapper, **abstract_inputs)
-    except Exception as e:
+    result = _eval_and_extract(wrapper, abstract_inputs, env, abstract_mesh)
+    if result is None:
         return TraceResult(
             function_name=func_spec.name,
             output_shape=None,
             output_dtype=None,
             intermediates=[],
-            error=truncate_error(e),
+            error=f"eval_shape failed for equinox module {cls.__name__}",
         )
-
-    if hasattr(output_struct, "shape"):
-        output_shape = output_struct.shape
-        output_dtype = str(output_struct.dtype)
-    else:
-        leaves = jax.tree.leaves(output_struct)
-        if leaves and hasattr(leaves[0], "shape"):
-            output_shape = leaves[0].shape
-            output_dtype = str(leaves[0].dtype)
-        else:
-            output_shape = None
-            output_dtype = None
-
-    # Extract intermediates via make_jaxpr (graceful degradation)
-    if abstract_mesh is not None:
-        from jax._src.mesh import use_abstract_mesh
-
-        with use_abstract_mesh(abstract_mesh):
-            intermediates = _extract_intermediates(wrapper, abstract_inputs, env)
-    else:
-        intermediates = _extract_intermediates(wrapper, abstract_inputs, env)
 
     return TraceResult(
         function_name=func_spec.name,
-        output_shape=output_shape,
-        output_dtype=output_dtype,
-        intermediates=intermediates,
+        output_shape=result.output_shape,
+        output_dtype=result.output_dtype,
+        intermediates=result.intermediates,
         error=None,
     )

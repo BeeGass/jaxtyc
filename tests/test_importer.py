@@ -38,14 +38,25 @@ class TestImportModuleFromPath:
         for entry in new_entries:
             assert "site-packages" in entry  # Only venv additions allowed
 
-    def test_unique_module_name(self) -> None:
+    def test_module_removed_from_sys_modules(self) -> None:
+        """After import, the user module should NOT remain in sys.modules."""
         module = import_module_from_path(str(FIXTURES / "correct_attention.py"))
-        # Should be in sys.modules with a unique name
+        assert hasattr(module, "attention")
         found = any(
-            name.endswith("correct_attention") and name.startswith("_jaxtyc_user_")
+            name.startswith("_jaxtyc_user_") and name.endswith("correct_attention")
             for name in sys.modules
         )
-        assert found
+        assert not found, "User module should be removed from sys.modules after import"
+
+    def test_repeated_imports_no_sys_modules_leak(self) -> None:
+        """Importing the same file multiple times should not leak modules."""
+        before_count = sum(1 for name in sys.modules if name.startswith("_jaxtyc_user_"))
+        for _ in range(5):
+            import_module_from_path(str(FIXTURES / "correct_attention.py"))
+        after_count = sum(1 for name in sys.modules if name.startswith("_jaxtyc_user_"))
+        assert after_count == before_count, (
+            f"Leaked {after_count - before_count} modules into sys.modules"
+        )
 
     def test_multiple_imports_no_collision(self) -> None:
         m1 = import_module_from_path(str(FIXTURES / "correct_attention.py"))

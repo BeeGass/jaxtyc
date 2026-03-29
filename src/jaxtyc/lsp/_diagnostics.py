@@ -76,6 +76,7 @@ def did_close(ls: LanguageServer, params: types.DidCloseTextDocumentParams) -> N
         _state.error_hints_cache.pop(uri, None)
         _state.source_cache.pop(uri, None)
         _state.trace_results_cache.pop(uri, None)
+        _state.content_hash_cache.pop(uri, None)
     # Cancel any pending debounce timer
     with _state.debounce_lock:
         existing = _state.debounce_timers.pop(uri, None)

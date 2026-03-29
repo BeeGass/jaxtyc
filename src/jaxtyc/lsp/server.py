@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import logging
 import tempfile
 import threading
@@ -248,6 +249,16 @@ def _analyze_and_publish(ls: LanguageServer, uri: str, source: str | None = None
     with _state.cache_lock:
         _state.source_cache[uri] = source_text
 
+    # --- Content-hash gating: skip analysis when content is unchanged ---
+    content_hash = hashlib.sha256(source_text.encode("utf-8")).hexdigest()
+    with _state.cache_lock:
+        prev_hash = _state.content_hash_cache.get(uri)
+    if content_hash == prev_hash:
+        if token is not None:
+            with contextlib.suppress(Exception):
+                ls.work_done_progress.end(token, types.WorkDoneProgressEnd(message="No changes"))
+        return
+
     if source is not None:
         # Write in-memory content to temp file for analysis
         suffix = Path(file_path).suffix
@@ -473,6 +484,7 @@ def _analyze_and_publish(ls: LanguageServer, uri: str, source: str | None = None
         _state.trace_results_cache[uri] = trace_results_by_name
         if hover_env is not None:
             _state.dim_env_cache[uri] = hover_env
+        _state.content_hash_cache[uri] = content_hash
 
     ls.text_document_publish_diagnostics(
         types.PublishDiagnosticsParams(
@@ -488,6 +500,14 @@ def _analyze_and_publish(ls: LanguageServer, uri: str, source: str | None = None
                 token,
                 types.WorkDoneProgressEnd(message="Analysis complete"),
             )
+
+    # Clear JAX internal caches to prevent unbounded memory growth.
+    try:
+        import jax
+
+        jax.clear_caches()
+    except Exception:
+        pass
 
 
 def _schedule_debounced_analysis(ls: LanguageServer, uri: str, source: str) -> None:

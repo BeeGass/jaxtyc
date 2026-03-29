@@ -1,10 +1,11 @@
 [project]
 name = "jaxtyc"
-version = "0.6.1"
+version = "0.6.2"
 description = "Static array shape checking for JAX powered by eval_shape"
 readme = "README.md"
 requires-python = ">=3.11,!=3.12,<3.15"
-license = { text = "MIT" }
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [{ name = "Bryan Gass", email = "bryank123@live.com" }]
 keywords = [
     "jax",
@@ -19,7 +20,6 @@ classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.13",
@@ -89,7 +89,8 @@ packages = ["src/jaxtyc"]
 [tool.uv]
 package = true
 default-groups = ["dev"]
-required-version = ">=0.10"
+required-version = ">=0.11"
+add-bounds = "major"
 environments = ["implementation_name == 'cpython'"]
 
 # =============================================================================
