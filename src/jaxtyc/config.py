@@ -116,6 +116,7 @@ class JaxtycConfig:
     exclude: list[str] = field(default_factory=list)
     debounce_ms: int = 500
     prefer_einops: bool = False
+    einops_hints: bool = True
     hover_compact: bool = True
     hints: HintsConfig = field(default_factory=HintsConfig)
     sharding: ShardingConfig = field(default_factory=ShardingConfig)
@@ -227,6 +228,10 @@ def load_config(project_root: str | Path) -> JaxtycConfig:
     # Environment variable override for einops preference
     if os.environ.get("JAXTYC_PREFER_EINOPS", "").strip() in ("1", "true"):
         filtered["prefer_einops"] = True
+
+    # Environment variable override for einops hints
+    if os.environ.get("JAXTYC_EINOPS_HINTS", "").strip() in ("0", "false"):
+        filtered["einops_hints"] = False
 
     return JaxtycConfig(**filtered)
 
