@@ -1,6 +1,6 @@
 [project]
 name = "jaxtyc"
-version = "0.6.2"
+version = "0.7.0"
 description = "Static array shape checking for JAX powered by eval_shape"
 readme = "README.md"
 requires-python = ">=3.11,!=3.12,<3.15"
@@ -43,6 +43,7 @@ dependencies = [
 # CPU-only (Linux/macOS)
 cpu = [
     "jax>=0.9.0 ; sys_platform == 'linux' or sys_platform == 'darwin'",
+    "jax[cpu]>=0.9.0 ; sys_platform == 'linux' or sys_platform == 'darwin'",
     "jaxlib>=0.9.0 ; sys_platform == 'linux' or sys_platform == 'darwin'",
 ]
 # CPU-only nightly -- keep >=0.9.0 floor for nightly prerelease resolution
@@ -52,12 +53,11 @@ cpu-nightly = [
 ]
 # Apple Silicon GPU via jax-mps PJRT plugin (third-party, experimental).
 # jax-mps translates StableHLO to MLX ops and requires jaxlib 0.9.x bytecode.
-# Wheels are currently published for cp313 on macOS ARM64; cp311/cp312 are
-# built by cibuildwheel but not yet on PyPI -- the resolver will handle this.
+# Wheels are currently published for cp313 on macOS ARM64 only.
 mac = [
-    "jax>=0.9.0 ; sys_platform == 'darwin' and platform_machine == 'arm64'",
-    "jaxlib>=0.9.0 ; sys_platform == 'darwin' and platform_machine == 'arm64'",
-    "jax-mps>=0.9.0 ; sys_platform == 'darwin' and platform_machine == 'arm64'",
+    "jax>=0.4.34 ; sys_platform == 'darwin'",
+    "jaxlib>=0.4.34 ; sys_platform == 'darwin'",
+    "jax-mps>=0.9.12 ; sys_platform == 'darwin' and platform_machine == 'arm64' and python_version == '3.13'",
 ]
 # Stable PyPI CUDA 12
 cuda12 = [
@@ -97,14 +97,14 @@ tpu-nightly = [
     "jax[tpu]>=0.9.0 ; sys_platform == 'linux'",
     "jaxlib>=0.9.0 ; sys_platform == 'linux'",
 ]
-# AMD ROCm -- explicit deps because jax's rocm7-local extra is broken upstream:
-# jax 0.9.2 declares rocm7-local requiring jax-rocm7-plugin==0.9.2.* which was
-# never published (latest is 0.9.1.post3). Using jax[rocm7-local] silently
-# resolves to CPU-only JAX. Instead we list the plugin directly.
+# AMD ROCm (from GitHub wheel releases) -- wheels only exist for Python 3.11-3.13.
+# jax's rocm7-local extra is broken upstream (jax-rocm7-plugin==0.9.2.* never
+# published), so we list the plugin and PJRT packages directly with URL sources.
 rocm = [
-    "jax>=0.9.0 ; sys_platform == 'linux' and platform_machine == 'x86_64'",
-    "jaxlib>=0.9.0 ; sys_platform == 'linux' and platform_machine == 'x86_64'",
-    "jax-rocm7-plugin>=0.9.0 ; sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "jax>=0.7.1 ; sys_platform == 'linux' and platform_machine == 'x86_64' and python_version < '3.14'",
+    "jaxlib>=0.8.0 ; sys_platform == 'linux' and platform_machine == 'x86_64' and python_version < '3.14'",
+    "jax-rocm7-pjrt ; sys_platform == 'linux' and platform_machine == 'x86_64' and python_version < '3.14'",
+    "jax-rocm7-plugin ; sys_platform == 'linux' and platform_machine == 'x86_64' and python_version < '3.14'",
 ]
 # --- Library integration extras ---
 watch = ["watchfiles>=1.0,<2"]
@@ -198,6 +198,12 @@ name = "jax-nightly"
 url = "https://us-python.pkg.dev/ml-oss-artifacts-published/jax-public-nightly-artifacts-registry/simple/"
 explicit = true
 
+# ROCm JAX releases for jaxlib wheels
+[[tool.uv.index]]
+name = "rocm-jax"
+url = "https://github.com/ROCm/rocm-jax/releases/expanded_assets/rocm-jax-v0.8.0"
+explicit = true
+
 # JAX source routing -- stable extras from PyPI, nightly extras from jax-nightly
 [tool.uv.sources]
 jax = [
@@ -220,12 +226,16 @@ jaxlib = [
     { index = "pypi", extra = "cuda13", marker = "sys_platform == 'linux'" },
     { index = "jax-nightly", extra = "cuda12-nightly", marker = "sys_platform == 'linux'" },
     { index = "jax-nightly", extra = "cuda13-nightly", marker = "sys_platform == 'linux'" },
-    { index = "pypi", extra = "rocm", marker = "sys_platform == 'linux'" },
+    # ROCm uses direct wheel URLs (not on PyPI at 0.9.x)
+    { url = "https://github.com/ROCm/rocm-jax/releases/download/rocm-jax-v0.8.0/jaxlib-0.8.0+rocm7.1.0-cp311-cp311-manylinux_2_27_x86_64.whl", extra = "rocm", marker = "python_version == '3.11' and sys_platform == 'linux' and platform_machine == 'x86_64'" },
+    { url = "https://github.com/ROCm/rocm-jax/releases/download/rocm-jax-v0.8.0/jaxlib-0.8.0+rocm7.1.0-cp312-cp312-manylinux_2_27_x86_64.whl", extra = "rocm", marker = "python_version == '3.12' and sys_platform == 'linux' and platform_machine == 'x86_64'" },
+    { url = "https://github.com/ROCm/rocm-jax/releases/download/rocm-jax-v0.8.0/jaxlib-0.8.0+rocm7.1.0-cp313-cp313-manylinux_2_27_x86_64.whl", extra = "rocm", marker = "python_version == '3.13' and sys_platform == 'linux' and platform_machine == 'x86_64'" },
+    { url = "https://github.com/ROCm/rocm-jax/releases/download/rocm-jax-v0.8.0/jaxlib-0.8.0+rocm7.1.0-cp314-cp314-manylinux_2_27_x86_64.whl", extra = "rocm", marker = "python_version == '3.14' and sys_platform == 'linux' and platform_machine == 'x86_64'" },
     { index = "pypi", extra = "tpu", marker = "sys_platform == 'linux'" },
     { index = "jax-nightly", extra = "tpu-nightly", marker = "sys_platform == 'linux'" },
 ]
 jax-mps = [
-    { index = "pypi", extra = "mac", marker = "sys_platform == 'darwin' and platform_machine == 'arm64'" },
+    { index = "pypi", extra = "mac", marker = "sys_platform == 'darwin' and platform_machine == 'arm64' and python_version == '3.13'" },
 ]
 jax-cuda12-plugin = [
     { index = "jax-nightly", extra = "cuda12-nightly" },
@@ -238,6 +248,15 @@ jax-cuda13-plugin = [
 ]
 jax-cuda13-pjrt = [
     { index = "jax-nightly", extra = "cuda13-nightly" },
+]
+jax-rocm7-pjrt = [
+    { url = "https://github.com/ROCm/rocm-jax/releases/download/rocm-jax-v0.8.0/jax_rocm7_pjrt-0.8.0+rocm7.1.0-py3-none-manylinux_2_28_x86_64.whl", extra = "rocm", marker = "sys_platform == 'linux' and platform_machine == 'x86_64'" },
+]
+jax-rocm7-plugin = [
+    { url = "https://github.com/ROCm/rocm-jax/releases/download/rocm-jax-v0.8.0/jax_rocm7_plugin-0.8.0+rocm7.1.0-cp311-cp311-manylinux_2_28_x86_64.whl", extra = "rocm", marker = "python_version == '3.11' and sys_platform == 'linux' and platform_machine == 'x86_64'" },
+    { url = "https://github.com/ROCm/rocm-jax/releases/download/rocm-jax-v0.8.0/jax_rocm7_plugin-0.8.0+rocm7.1.0-cp312-cp312-manylinux_2_28_x86_64.whl", extra = "rocm", marker = "python_version == '3.12' and sys_platform == 'linux' and platform_machine == 'x86_64'" },
+    { url = "https://github.com/ROCm/rocm-jax/releases/download/rocm-jax-v0.8.0/jax_rocm7_plugin-0.8.0+rocm7.1.0-cp313-cp313-manylinux_2_28_x86_64.whl", extra = "rocm", marker = "python_version == '3.13' and sys_platform == 'linux' and platform_machine == 'x86_64'" },
+    { url = "https://github.com/ROCm/rocm-jax/releases/download/rocm-jax-v0.8.0/jax_rocm7_plugin-0.8.0+rocm7.1.0-cp314-cp314-manylinux_2_28_x86_64.whl", extra = "rocm", marker = "python_version == '3.14' and sys_platform == 'linux' and platform_machine == 'x86_64'" },
 ]
 
 # =============================================================================
