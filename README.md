@@ -6,6 +6,18 @@ Static array shape checking for JAX powered by `jax.eval_shape`.
 
 Reads [jaxtyping](https://docs.kidger.site/jaxtyping/) annotations and verifies shapes at analysis time -- no runtime cost, no FLOPs. Each named dimension is assigned a unique prime number, making shape mismatches unambiguous.
 
+<p align="center">
+  <img src="docs/assets/vscode-inlay-hints.png" alt="VS Code inlay hints showing sharding annotations and shape overlays" width="600">
+</p>
+
+<p align="center">
+  <img src="docs/assets/cli-diagnostics.png" alt="CLI diagnostics showing shape mismatches in Claude Code" width="600">
+</p>
+
+<p align="center">
+  <a href="docs/assets/demo.mov">Watch the demo video</a>
+</p>
+
 ## Features
 
 - **Zero runtime cost** -- `jax.eval_shape` only; no arrays allocated, no computation executed
