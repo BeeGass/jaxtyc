@@ -88,7 +88,7 @@ The extension auto-discovers your Python environment (`.venv`, `VIRTUAL_ENV`, or
 
 ### Other Editors
 
-jaxtyc works in any editor that supports LSP (Neovim, Helix, etc.). See the [editor setup docs](https://beegass.github.io/jaxtyc/editors/editors/) for configuration.
+jaxtyc works in any editor that supports LSP (Neovim, Helix, etc.). See the [editor setup docs](docs/editors/editors.md) for configuration.
 
 ## CLI
 
@@ -103,7 +103,7 @@ jaxtyc version                   # Print version
 
 ## Documentation
 
-Full docs at [beegass.github.io/jaxtyc](https://beegass.github.io/jaxtyc/).
+Full docs in the [docs/](docs/) directory.
 
 ## License
 

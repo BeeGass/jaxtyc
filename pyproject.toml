@@ -137,7 +137,7 @@ jaxtyc = "jaxtyc.cli.main:main"
 
 [project.urls]
 Homepage = "https://github.com/BeeGass/jaxtyc"
-Documentation = "https://beegass.github.io/jaxtyc/"
+Documentation = "https://github.com/BeeGass/jaxtyc/tree/main/docs"
 Repository = "https://github.com/BeeGass/jaxtyc"
 Changelog = "https://github.com/BeeGass/jaxtyc/blob/main/CHANGELOG.md"
 "Bug Tracker" = "https://github.com/BeeGass/jaxtyc/issues"
