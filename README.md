@@ -31,7 +31,7 @@ uv add jaxtyc
 | `jaxtyc[watch]` | `watchfiles` | `jaxtyc watch` -- re-check on file save |
 | `jaxtyc[flax]` | `flax >=0.10` | Flax NNX module tracing |
 | `jaxtyc[equinox]` | `equinox >=0.11` | Equinox module tracing |
-| `jaxtyc[einops]` | `einops >=0.8` | einops-style fix suggestions |
+| `jaxtyc[einops]` | `einops >=0.8` | einops-style fix suggestions + inlay hints with pattern dim names |
 | `jaxtyc[all]` | All of the above | Everything |
 
 ## Quick Start

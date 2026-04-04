@@ -31,10 +31,12 @@ src/jaxtyc/
     tracer.py              # jax.eval_shape + jax.make_jaxpr tracing (with sharded support)
     checker.py             # Shape comparison: expected vs actual
     divergence.py          # Divergence detection: find first shape deviation
+    einops_parser.py       # Parse einops pattern strings into output dim names
+    einops_detector.py     # AST-based detection of einops.rearrange/reduce/repeat calls
     sharding_checker.py    # Sharding validation: rank, axis, conflict, io-mismatch, propagation, annotation
     mesh_resolver.py       # AST-based mesh shape and axis_rules inference
     importer.py            # Import Python files as modules (CPU guard, sys.modules cleanup)
-    pipeline.py            # End-to-end: parse -> import -> trace -> check (abstract-first)
+    pipeline.py            # End-to-end: parse -> import -> trace -> check (abstract-first, einops post-process)
     suppressions.py        # Inline # jaxtyc: ignore comments
 
   cli/

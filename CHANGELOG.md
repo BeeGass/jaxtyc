@@ -5,6 +5,23 @@ All notable changes to jaxtyc are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.7.0] — 2026-04-04
+
+### Added
+
+- **Einops inline hints**: Inlay hints now display dimension names from einops pattern strings instead of raw symbolic sizes. When a function contains `einops.rearrange(x, 'b c h w -> b (c h) w')`, the inlay hint shows `f32[b, c*h, w]` instead of anonymous primes. Supports `rearrange`, `reduce`, and `repeat` with both `import einops` and `from einops import rearrange` styles. Enabled by default; disable with `einops_hints = false` in `[tool.jaxtyc]` or `JAXTYC_EINOPS_HINTS=0`
+- New modules: `analyzer/einops_parser.py` (pattern string parsing), `analyzer/einops_detector.py` (AST-based call detection)
+- New config: `einops_hints` (bool, default `true`) gates einops dimension name detection independently from `prefer_einops`
+- Einops frames added to `_INTERNAL_PATHS` in tracer so JAXPR tracebacks resolve to user call sites instead of einops internals
+- New tests: `test_einops_parser.py` (16 tests), `test_einops_detector.py` (10 tests)
+- New fixture: `tests/fixtures/einops_rearrange.py`
+
+### Changed
+
+- **JAX backend extras overhaul**: `mac` extra now uses `jax>=0.4.34` floor and constrains `jax-mps` to `python_version == '3.13'` (only published wheel). `rocm` extra rewritten with direct GitHub wheel URLs for jaxlib, jax-rocm7-pjrt, and jax-rocm7-plugin since ROCm wheels are not on PyPI at 0.9.x. `cpu` extra adds explicit `jax[cpu]` dependency. New `rocm-jax` uv index for ROCm wheel source routing
+- `_INTERNAL_PATHS` in `tracer.py` expanded to include `einops/` and `site-packages/einops`
+- `pipeline.py` post-processes trace results to apply einops dimension name overrides before cross-function propagation
+
 ## [v0.6.2] — 2026-03-19
 
 ### Changed
