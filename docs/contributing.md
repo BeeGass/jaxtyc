@@ -5,25 +5,33 @@
 ```bash
 git clone https://github.com/BeeGass/jaxtyc.git
 cd jaxtyc
-uv sync
+uv sync --group dev
+prek install              # install pre-commit hooks
+prek install --hook-type commit-msg  # install commitlint hook
 ```
 
-This installs all dev dependencies (ruff, ty, pytest, pytest-cov) and jaxtyc itself in editable mode.
+This installs all dev dependencies (ruff, ty, pytest, pytest-cov) and jaxtyc itself in editable mode. The pre-commit hooks run ruff and ty on every commit, and commitlint enforces conventional commit messages.
 
 ## Running Checks
 
 ```bash
 # Tests
-uv run pytest
+uv run pytest --tb=short -q
+
+# Tests with coverage (must be >= 80%)
+uv run pytest --cov --cov-fail-under=80 -q
 
 # Lint
 uv run ruff check . && uv run ruff format --check .
 
 # Type check
 uv run ty check
+
+# All pre-commit hooks
+prek run --all-files
 ```
 
-All three must pass before submitting a PR.
+All checks must pass before submitting a PR. CI runs these automatically.
 
 ## Project Structure
 
@@ -155,12 +163,43 @@ tests/
 
 3. **Add tests** in `tests/test_annotations.py` covering parsing of the new pattern, and in `tests/test_integration.py` with a fixture that uses it end-to-end.
 
+## Branch Workflow
+
+- **`dev`** is the active development branch. All work happens here.
+- **`main`** is the stable release branch. It only receives updates via `just pr-to-main`.
+- AI assistant config files (`.claude/`, `.codex/`) live on `dev` only and are stripped before merging to `main`.
+
+## Commit Messages
+
+This project uses [Conventional Commits](https://www.conventionalcommits.org/). The commitlint pre-commit hook enforces this format:
+
+```
+<type>(<scope>): <subject>
+
+<body>
+```
+
+Types: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, `revert`
+
 ## PR Process
 
 1. Fork the repository.
-2. Create a feature branch from `main`.
+2. Create a feature branch from `dev` (not `main`).
 3. Make your changes. Run all checks (`pytest`, `ruff`, `ty`).
-4. Submit a pull request against `main`.
+4. Submit a pull request against `dev`.
+
+CI will auto-lint your PR with ruff. The following checks must pass:
+
+- `lint-and-type-check` (ruff + ty)
+- `test (3.11)` and `test (3.13)` (pytest with 80% coverage on 3.13)
+- `pre-commit` (prek hooks)
 
 !!! tip
     Keep PRs focused -- one diagnostic rule or annotation pattern per PR. This simplifies review and makes the commit history useful for bisecting.
+
+## Releases
+
+Releases are automated. When a version bump in `pyproject.toml` is merged to `main`:
+
+- **Patch/minor bumps** create a GitHub Release automatically, which triggers PyPI publishing.
+- **Major bumps** create a draft release requiring manual approval before publishing.

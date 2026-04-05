@@ -5,25 +5,29 @@ All notable changes to jaxtyc are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [v0.7.1] -- 2026-04-05
 
 ### Added
 
 - GitHub issue templates (bug report, feature request) with structured YAML forms
 - Pull request template with review checklist
-- Security policy (SECURITY.md) with vulnerability reporting instructions
+- Security policy (SECURITY.md) with vulnerability reporting via GitHub private advisories
 - CONTRIBUTING.md at repo root linking to full contributing guide
 - CODEOWNERS file for automatic PR review assignment
-- Dependabot configuration for Python, GitHub Actions, and npm dependency updates
+- Dependabot configuration with native `uv` ecosystem, GitHub Actions, and npm updates
 - `.gitattributes` for line ending normalization, binary markers, and linguist overrides
 - Commitlint pre-commit hook for conventional commit enforcement
-- PyPI release workflow with OIDC trusted publisher (no API tokens)
+- PyPI release workflow with OIDC trusted publisher via `uv publish` (no API tokens)
 - VS Code Marketplace release workflow triggered by `vscode-v*` tags
+- Auto-release workflow: patch/minor auto-publish, major creates draft for manual approval
 - CI coverage enforcement (80% threshold on Python 3.13)
-- Coverage XML artifact upload in CI
+- Guard workflow blocking AI config files from main branch
+- Auto-lint workflow for ruff fixes on PRs
+- `just pr-to-main` recipe for clean dev-to-main merges (strips AI config files)
 - CI badge in README
 - `pip install jaxtyc` alongside `uv add` in README
 - Contributing section in README
+- 66 new LSP tests (semantic tokens, linked editing, code actions, completion, signature help, folding, navigation, diagnostics, configuration)
 
 ### Changed
 
@@ -31,17 +35,18 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Made `analyze_file` import lazy in `__init__.py` to fix CPU backend enforcement on Apple Silicon
 - Fixed `site_url` in mkdocs.yml to point to deployed GitHub Pages site
 - Fixed Documentation URL in pyproject.toml to point to deployed docs
-- Bumped `setup-uv` from v4/v5 to v8 in all workflows (Astral recommended)
+- Bumped `setup-uv` from v4/v5 to v7 across all workflows
 - Switched Dependabot from `pip` to native `uv` ecosystem
-- Simplified PyPI publish workflow to use `uv publish` instead of `pypa/gh-action-pypi-publish`
 - Consolidated `setup-uv` `python-version` input (replaces separate `uv python install` steps)
-- Updated CI guide docs to reference `setup-uv@v7`
+- Updated contributing guide with branch workflow, commit conventions, and release process
+- Replaced personal email with GitHub noreply address in pyproject.toml and SECURITY.md
 
 ### Fixed
 
 - 5 `TestDetectProjectRoot` failures on macOS caused by `/var` -> `/private/var` symlink resolution
 - 8 NNX test failures caused by Flax 0.11.2 / JAX 0.9.2 version incompatibility
 - 1 CPU backend test failure caused by eager JAX import in `__init__.py`
+- Flaky benchmark threshold (1ms -> 3ms) for CI runner timing jitter
 
 ## [v0.7.0] — 2026-04-04
 
