@@ -1,0 +1,134 @@
+name: Auto-release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "pyproject.toml"
+
+permissions:
+  contents: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      bumped: ${{ steps.version.outputs.bumped }}
+      current: ${{ steps.version.outputs.current }}
+      major: ${{ steps.version.outputs.major }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for version bump
+        id: version
+        run: |
+          CURRENT=$(grep '^version = ' pyproject.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+
+          echo "current=v$CURRENT" >> "$GITHUB_OUTPUT"
+          echo "latest_tag=$LATEST_TAG" >> "$GITHUB_OUTPUT"
+
+          if [ "v$CURRENT" = "$LATEST_TAG" ]; then
+            echo "bumped=false" >> "$GITHUB_OUTPUT"
+            echo "major=false" >> "$GITHUB_OUTPUT"
+            echo "Version v$CURRENT matches latest tag. No release needed."
+            exit 0
+          fi
+
+          echo "bumped=true" >> "$GITHUB_OUTPUT"
+
+          # Detect major version bump (X changed in X.Y.Z)
+          CURRENT_MAJOR=$(echo "$CURRENT" | cut -d. -f1)
+          PREV_MAJOR=$(echo "$LATEST_TAG" | sed 's/^v//' | cut -d. -f1)
+
+          if [ "$CURRENT_MAJOR" != "$PREV_MAJOR" ]; then
+            echo "major=true" >> "$GITHUB_OUTPUT"
+            echo "Major version bump detected: $LATEST_TAG -> v$CURRENT. Manual release required."
+          else
+            echo "major=false" >> "$GITHUB_OUTPUT"
+            echo "Minor/patch bump: $LATEST_TAG -> v$CURRENT. Auto-releasing."
+          fi
+
+  # Patch and minor releases are published automatically.
+  auto-release:
+    needs: check
+    if: needs.check.outputs.bumped == 'true' && needs.check.outputs.major == 'false'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract changelog section
+        env:
+          VERSION: ${{ needs.check.outputs.current }}
+        run: |
+          python3 -c "
+          import re, os
+
+          version = os.environ['VERSION']
+          text = open('CHANGELOG.md').read()
+
+          pattern = rf'## \[{re.escape(version)}\].*?\n(.*?)(?=\n## \[|$)'
+          match = re.search(pattern, text, re.DOTALL)
+
+          body = match.group(1).strip() if match else 'See CHANGELOG.md for details.'
+
+          with open('release_body.md', 'w') as f:
+              f.write(body)
+
+          print(f'Extracted {len(body)} chars for {version}')
+          "
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.check.outputs.current }}
+        run: |
+          gh release create "$TAG" \
+            --title "$TAG" \
+            --notes-file release_body.md \
+            --target main
+
+  # Major releases create a draft that must be manually reviewed and published.
+  draft-major-release:
+    needs: check
+    if: needs.check.outputs.bumped == 'true' && needs.check.outputs.major == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract changelog section
+        env:
+          VERSION: ${{ needs.check.outputs.current }}
+        run: |
+          python3 -c "
+          import re, os
+
+          version = os.environ['VERSION']
+          text = open('CHANGELOG.md').read()
+
+          pattern = rf'## \[{re.escape(version)}\].*?\n(.*?)(?=\n## \[|$)'
+          match = re.search(pattern, text, re.DOTALL)
+
+          body = match.group(1).strip() if match else 'See CHANGELOG.md for details.'
+
+          header = '> **Major release** — review the changelog and publish this release manually.\n\n'
+
+          with open('release_body.md', 'w') as f:
+              f.write(header + body)
+
+          print(f'Extracted {len(body)} chars for {version}')
+          "
+
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.check.outputs.current }}
+        run: |
+          gh release create "$TAG" \
+            --title "$TAG" \
+            --notes-file release_body.md \
+            --target main \
+            --draft
+          echo "Draft release created for $TAG. Publish it manually to trigger PyPI upload."

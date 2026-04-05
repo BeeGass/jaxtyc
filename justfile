@@ -95,6 +95,5 @@ pr-to-main:
     EOF
     )"
 
-    echo ""
-    echo "PR created. After merge, clean up with:"
-    echo "  git checkout dev && git branch -d $BRANCH"
+    # Switch back to dev (release branch is auto-deleted after merge)
+    git checkout dev
