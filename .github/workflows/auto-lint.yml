@@ -1,0 +1,42 @@
+name: Auto-lint
+
+on:
+  pull_request:
+    paths:
+      - "**.py"
+
+permissions:
+  contents: write
+
+jobs:
+  auto-lint:
+    runs-on: ubuntu-latest
+    env:
+      HEAD_REF: ${{ github.head_ref }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v8
+        with:
+          enable-cache: true
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: uv sync --group lint
+
+      - name: Run ruff fix and format
+        run: |
+          uv run ruff check --fix .
+          uv run ruff format .
+
+      - name: Commit changes
+        run: |
+          git diff --quiet && exit 0
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "style: auto-lint with ruff"
+          git push
