@@ -15,7 +15,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4  # Node.js only (no uv needed for VS Code extension)
+      - uses: actions/setup-node@v6  # Node.js only (no uv needed for VS Code extension)
         with:
           node-version: "20"
           cache: "npm"
