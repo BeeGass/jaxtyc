@@ -8,38 +8,31 @@ jobs:
   check-ai-config:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+
       - name: Check for AI assistant config files
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
-          # Files/dirs that must not be merged into main
-          BLOCKED_PATTERNS=(
-            "^\.claude/"
-            "^\.claude-plugin/"
-            "^\.codex/"
-            "^\.opencode/"
-            "^CLAUDE\.md$"
-            "^AGENTS\.md$"
+          # Paths that must not exist on main
+          BLOCKED=(
+            .claude
+            .claude-plugin
+            .codex
+            .opencode
+            CLAUDE.md
+            AGENTS.md
           )
 
-          # Get all files changed in this PR
-          FILES=$(gh pr diff "$PR_NUMBER" --name-only --repo "$GITHUB_REPOSITORY")
-
           FOUND=()
-          for pattern in "${BLOCKED_PATTERNS[@]}"; do
-            MATCHES=$(echo "$FILES" | grep -E "$pattern" || true)
-            if [ -n "$MATCHES" ]; then
-              while IFS= read -r f; do
-                FOUND+=("$f")
-              done <<< "$MATCHES"
+          for path in "${BLOCKED[@]}"; do
+            if [ -e "$path" ]; then
+              FOUND+=("$path")
             fi
           done
 
           if [ ${#FOUND[@]} -gt 0 ]; then
             echo "::error::AI assistant config files must not be merged into main."
             echo ""
-            echo "The following files are not allowed on main:"
+            echo "The following paths exist on this branch but are not allowed on main:"
             for f in "${FOUND[@]}"; do
               echo "  - $f"
             done
@@ -48,4 +41,4 @@ jobs:
             exit 1
           fi
 
-          echo "No AI config files in PR. OK."
+          echo "No AI config files on branch. OK."
