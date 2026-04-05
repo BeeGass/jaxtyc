@@ -21,7 +21,7 @@ jobs:
           cache: "npm"
           cache-dependency-path: editors/vscode/package-lock.json
 
-      - run: npm ci
+      - run: npm install
 
       - name: TypeScript compile check
         run: npx tsc --noEmit
