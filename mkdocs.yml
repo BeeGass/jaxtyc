@@ -1,5 +1,5 @@
 site_name: jaxtyc
-site_url: https://github.com/BeeGass/jaxtyc/tree/main/docs
+site_url: https://beegass.github.io/jaxtyc/
 site_description: Static array shape checking for JAX powered by eval_shape
 site_author: Bryan Gass
 repo_url: https://github.com/BeeGass/jaxtyc

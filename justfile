@@ -48,3 +48,53 @@ typecheck:
 # Run pre-commit hooks on all files
 check:
     prek run --all-files
+
+# Create a clean PR from dev to main (strips AI assistant config files)
+pr-to-main:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    # Files/dirs to exclude from main
+    EXCLUDE=(
+        .claude
+        .claude-plugin
+        .codex
+        .opencode
+        CLAUDE.md
+        AGENTS.md
+    )
+
+    BRANCH="release/$(date +%Y%m%d-%H%M%S)"
+
+    echo "Creating clean release branch: $BRANCH"
+    git checkout -b "$BRANCH" dev
+
+    # Remove AI config files
+    REMOVED=false
+    for path in "${EXCLUDE[@]}"; do
+        if git ls-files --error-unmatch "$path" >/dev/null 2>&1; then
+            git rm -rf "$path"
+            REMOVED=true
+        fi
+    done
+
+    if [ "$REMOVED" = true ]; then
+        git commit -m "chore: remove AI assistant config files for main"
+    fi
+
+    git push -u origin "$BRANCH"
+    gh pr create --base main --head "$BRANCH" \
+        --title "Merge dev into main" \
+        --body "$(cat <<'EOF'
+    ## Summary
+
+    Merge latest changes from `dev` into `main`.
+
+    AI assistant configuration files (`.claude/`, `.codex/`, etc.) have been
+    stripped from this branch. They remain on `dev` for development use.
+    EOF
+    )"
+
+    echo ""
+    echo "PR created. After merge, clean up with:"
+    echo "  git checkout dev && git branch -d $BRANCH"

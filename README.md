@@ -1,4 +1,4 @@
-[![PyPI](https://img.shields.io/pypi/v/jaxtyc)](https://pypi.org/project/jaxtyc/) [![Python](https://img.shields.io/pypi/pyversions/jaxtyc)](https://pypi.org/project/jaxtyc/) [![License](https://img.shields.io/github/license/BeeGass/jaxtyc)](https://github.com/BeeGass/jaxtyc/blob/main/LICENSE)
+[![PyPI](https://img.shields.io/pypi/v/jaxtyc)](https://pypi.org/project/jaxtyc/) [![Python](https://img.shields.io/pypi/pyversions/jaxtyc)](https://pypi.org/project/jaxtyc/) [![CI](https://github.com/BeeGass/jaxtyc/actions/workflows/ci.yml/badge.svg)](https://github.com/BeeGass/jaxtyc/actions/workflows/ci.yml) [![License](https://img.shields.io/github/license/BeeGass/jaxtyc)](https://github.com/BeeGass/jaxtyc/blob/main/LICENSE)
 
 # jaxtyc
 
@@ -33,6 +33,8 @@ Reads [jaxtyping](https://docs.kidger.site/jaxtyping/) annotations and verifies 
 ## Installation
 
 ```bash
+pip install jaxtyc
+# or
 uv add jaxtyc
 ```
 
@@ -103,7 +105,11 @@ jaxtyc version                   # Print version
 
 ## Documentation
 
-Full docs in the [docs/](docs/) directory.
+Full docs at [beegass.github.io/jaxtyc](https://beegass.github.io/jaxtyc/).
+
+## Contributing
+
+Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ## License
 
