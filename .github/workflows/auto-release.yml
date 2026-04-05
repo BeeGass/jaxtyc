@@ -18,7 +18,7 @@ jobs:
       current: ${{ steps.version.outputs.current }}
       major: ${{ steps.version.outputs.major }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
@@ -61,7 +61,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: pypi
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
@@ -112,7 +112,7 @@ jobs:
     if: needs.check.outputs.bumped == 'true' && needs.check.outputs.major == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Extract changelog section
         env:
