@@ -15,6 +15,7 @@ If no `pyproject.toml` exists or the `[tool.jaxtyc]` section is absent, all defa
 | `exclude` | `list[str]` | `[]` | Glob patterns for files to skip during analysis. Matched with `fnmatch`. |
 | `debounce_ms` | `int` | `500` | Delay in milliseconds before the LSP server re-analyzes after an edit. |
 | `prefer_einops` | `bool` | `false` | When `true`, einops-style suggestions appear first in code actions. Overridable with `JAXTYC_PREFER_EINOPS=1`. Requires the `einops` extra. |
+| `einops_hints` | `bool` | `true` | When `true`, inlay hints on einops operations (`rearrange`, `reduce`, `repeat`) display the dimension names from the pattern string instead of anonymous symbolic sizes. Disable with `JAXTYC_EINOPS_HINTS=0`. |
 | `hover_compact` | `bool` | `true` | When `true`, compacts hover text in multiplexer mode (strips escape sequences, collapses blank lines, truncates at 1500 chars). |
 
 ---

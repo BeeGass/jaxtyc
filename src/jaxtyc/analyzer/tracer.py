@@ -70,10 +70,12 @@ _INTERNAL_PATHS: tuple[str, ...] = (
     "jaxlib/",
     "flax/",
     "equinox/",
+    "einops/",
     "site-packages/jax",
     "site-packages/jaxlib",
     "site-packages/flax",
     "site-packages/equinox",
+    "site-packages/einops",
 )
 
 

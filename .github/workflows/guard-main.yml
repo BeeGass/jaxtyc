@@ -1,0 +1,44 @@
+name: Guard main branch
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  check-ai-config:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for AI assistant config files
+        run: |
+          # Paths that must not exist on main
+          BLOCKED=(
+            .claude
+            .claude-plugin
+            .codex
+            .opencode
+            CLAUDE.md
+            AGENTS.md
+          )
+
+          FOUND=()
+          for path in "${BLOCKED[@]}"; do
+            if [ -e "$path" ]; then
+              FOUND+=("$path")
+            fi
+          done
+
+          if [ ${#FOUND[@]} -gt 0 ]; then
+            echo "::error::AI assistant config files must not be merged into main."
+            echo ""
+            echo "The following paths exist on this branch but are not allowed on main:"
+            for f in "${FOUND[@]}"; do
+              echo "  - $f"
+            done
+            echo ""
+            echo "Use 'just pr-to-main' to create a clean PR that excludes these files."
+            exit 1
+          fi
+
+          echo "No AI config files on branch. OK."

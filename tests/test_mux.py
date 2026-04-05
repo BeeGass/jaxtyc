@@ -495,7 +495,7 @@ class TestDetectProjectRoot:
             test_file = subdir / "test.py"
             test_file.write_text("")
             root = _detect_project_root(str(test_file))
-            assert root == tmpdir
+            assert root == str(Path(tmpdir).resolve())
 
     def test_finds_pyproject_toml(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -505,7 +505,7 @@ class TestDetectProjectRoot:
             test_file = subdir / "test.py"
             test_file.write_text("")
             root = _detect_project_root(str(test_file))
-            assert root == tmpdir
+            assert root == str(Path(tmpdir).resolve())
 
     def test_finds_git_directory(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -515,7 +515,7 @@ class TestDetectProjectRoot:
             test_file = subdir / "test.py"
             test_file.write_text("")
             root = _detect_project_root(str(test_file))
-            assert root == tmpdir
+            assert root == str(Path(tmpdir).resolve())
 
     def test_venv_takes_priority_over_pyproject(self) -> None:
         """In monorepo-like structures, .venv should be found before nested pyproject.toml."""
@@ -530,7 +530,7 @@ class TestDetectProjectRoot:
             test_file.write_text("")
             root = _detect_project_root(str(test_file))
             # Should find .venv at root, not pyproject.toml at nested
-            assert root == tmpdir
+            assert root == str(Path(tmpdir).resolve())
 
     def test_returns_none_for_root(self) -> None:
         root = _detect_project_root("/tmp/standalone_file.py")
@@ -546,7 +546,7 @@ class TestDetectProjectRoot:
             test_file = subdir / "test.py"
             test_file.write_text("")
             root = _detect_project_root(str(test_file))
-            assert root == tmpdir
+            assert root == str(Path(tmpdir).resolve())
 
 
 # ---------------------------------------------------------------------------

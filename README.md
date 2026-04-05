@@ -1,10 +1,22 @@
-[![PyPI](https://img.shields.io/pypi/v/jaxtyc)](https://pypi.org/project/jaxtyc/) [![Python](https://img.shields.io/pypi/pyversions/jaxtyc)](https://pypi.org/project/jaxtyc/) [![License](https://img.shields.io/github/license/BeeGass/jaxtyc)](https://github.com/BeeGass/jaxtyc/blob/main/LICENSE)
+[![PyPI](https://img.shields.io/pypi/v/jaxtyc)](https://pypi.org/project/jaxtyc/) [![Python](https://img.shields.io/pypi/pyversions/jaxtyc)](https://pypi.org/project/jaxtyc/) [![CI](https://github.com/BeeGass/jaxtyc/actions/workflows/ci.yml/badge.svg)](https://github.com/BeeGass/jaxtyc/actions/workflows/ci.yml) [![License](https://img.shields.io/github/license/BeeGass/jaxtyc)](https://github.com/BeeGass/jaxtyc/blob/main/LICENSE)
 
 # jaxtyc
 
 Static array shape checking for JAX powered by `jax.eval_shape`.
 
 Reads [jaxtyping](https://docs.kidger.site/jaxtyping/) annotations and verifies shapes at analysis time -- no runtime cost, no FLOPs. Each named dimension is assigned a unique prime number, making shape mismatches unambiguous.
+
+<p align="center">
+  <img src="docs/assets/vscode-inlay-hints.png" alt="VS Code inlay hints showing sharding annotations and shape overlays" width="600">
+</p>
+
+<p align="center">
+  <img src="docs/assets/cli-diagnostics.png" alt="CLI diagnostics showing shape mismatches in Claude Code" width="600">
+</p>
+
+<p align="center">
+  <a href="docs/assets/demo.mov">Watch the demo video</a>
+</p>
 
 ## Features
 
@@ -21,6 +33,8 @@ Reads [jaxtyping](https://docs.kidger.site/jaxtyping/) annotations and verifies 
 ## Installation
 
 ```bash
+pip install jaxtyc
+# or
 uv add jaxtyc
 ```
 
@@ -31,7 +45,7 @@ uv add jaxtyc
 | `jaxtyc[watch]` | `watchfiles` | `jaxtyc watch` -- re-check on file save |
 | `jaxtyc[flax]` | `flax >=0.10` | Flax NNX module tracing |
 | `jaxtyc[equinox]` | `equinox >=0.11` | Equinox module tracing |
-| `jaxtyc[einops]` | `einops >=0.8` | einops-style fix suggestions |
+| `jaxtyc[einops]` | `einops >=0.8` | einops-style fix suggestions + inlay hints with pattern dim names |
 | `jaxtyc[all]` | All of the above | Everything |
 
 ## Quick Start
@@ -76,7 +90,7 @@ The extension auto-discovers your Python environment (`.venv`, `VIRTUAL_ENV`, or
 
 ### Other Editors
 
-jaxtyc works in any editor that supports LSP (Neovim, Helix, etc.). See the [editor setup docs](https://beegass.github.io/jaxtyc/editors/editors/) for configuration.
+jaxtyc works in any editor that supports LSP (Neovim, Helix, etc.). See the [editor setup docs](docs/editors/editors.md) for configuration.
 
 ## CLI
 
@@ -92,6 +106,10 @@ jaxtyc version                   # Print version
 ## Documentation
 
 Full docs at [beegass.github.io/jaxtyc](https://beegass.github.io/jaxtyc/).
+
+## Contributing
+
+Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ## License
 

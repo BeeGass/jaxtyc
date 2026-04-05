@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import dataclasses
 import logging
 from collections.abc import Callable
 from pathlib import Path
@@ -20,6 +21,7 @@ from jaxtyc.analyzer.annotations import extract_function_specs
 from jaxtyc.analyzer.checker import check_call_site
 from jaxtyc.analyzer.checker import check_function
 from jaxtyc.analyzer.dim_env import DimEnv
+from jaxtyc.analyzer.einops_detector import extract_einops_calls
 from jaxtyc.analyzer.importer import import_module_from_path
 from jaxtyc.analyzer.mesh_resolver import MeshInfo
 from jaxtyc.analyzer.mesh_resolver import resolve_mesh
@@ -33,6 +35,7 @@ from jaxtyc.analyzer.tracer import trace_function
 from jaxtyc.types import Diagnostic
 from jaxtyc.types import FileResult
 from jaxtyc.types import FunctionShapeSpec
+from jaxtyc.types import IntermediateShape
 from jaxtyc.types import TraceResult
 
 logger = logging.getLogger(__name__)
@@ -112,6 +115,12 @@ def analyze_file(file_path: str) -> FileResult:
             diagnostics=diagnostics,
             trace_results=trace_results,
         )
+
+    # Detect einops calls for dimension name hints
+    einops_by_line: dict[int, object] = {}
+    einops_calls = extract_einops_calls(source)
+    if einops_calls:
+        einops_by_line = {call.line: call for call in einops_calls}
 
     # Infer mesh shape and axis rules from source AST (consumed by sharded tracing)
     try:
@@ -257,6 +266,14 @@ def analyze_file(file_path: str) -> FileResult:
                 )
             )
 
+    # Apply einops dimension names to traced intermediates
+    if einops_by_line:
+        trace_results = [_apply_einops_to_trace(tr, einops_by_line) for tr in trace_results]
+        traced = {
+            name: (spec, _apply_einops_to_trace(tr, einops_by_line))
+            for name, (spec, tr) in traced.items()
+        }
+
     # Cross-function shape propagation
 
     known_functions = {s.name for s in func_specs}
@@ -284,6 +301,51 @@ def analyze_file(file_path: str) -> FileResult:
         diagnostics=diagnostics,
         trace_results=trace_results,
     )
+
+
+def _apply_einops_to_trace(
+    trace: TraceResult,
+    einops_by_line: dict[int, object],
+) -> TraceResult:
+    """Apply einops dimension names to a trace result's intermediates.
+
+    For each einops call line, finds the last intermediate at that line and
+    overrides its ``named_shape`` with the parsed einops output dim names
+    (only when the output rank matches).
+
+    Returns the original trace if no overrides were applied.
+    """
+    new_intermediates = _apply_einops_names(trace.intermediates, einops_by_line)
+    if new_intermediates is trace.intermediates:
+        return trace
+    return dataclasses.replace(trace, intermediates=new_intermediates)
+
+
+def _apply_einops_names(
+    intermediates: list[IntermediateShape],
+    einops_by_line: dict[int, object],
+) -> list[IntermediateShape]:
+    """Override named_shape on the last intermediate at each einops call line."""
+    if not einops_by_line:
+        return intermediates
+
+    # Find the last intermediate index for each einops line
+    last_at_line: dict[int, int] = {}
+    for i, inter in enumerate(intermediates):
+        if inter.source_line in einops_by_line:
+            last_at_line[inter.source_line] = i
+
+    if not last_at_line:
+        return intermediates
+
+    result = list(intermediates)
+    for line, idx in last_at_line.items():
+        info = einops_by_line[line]
+        inter = result[idx]
+        output_names = info.output_names  # type: ignore[union-attr]
+        if len(inter.shape) == len(output_names):
+            result[idx] = dataclasses.replace(inter, named_shape=output_names)
+    return result
 
 
 def _resolve_function(

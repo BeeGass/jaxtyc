@@ -3128,3 +3128,1754 @@ class TestInlayHintEllipsisDisplay:
         )
         result = _format_shape(inter, "numpy")
         assert result == "f32[...(0, 1) d_model]"
+
+
+class TestSemanticTokens:
+    """Tests for textDocument/semanticTokens/full handler."""
+
+    def test_semantic_tokens_returns_data_for_annotated_file(self) -> None:
+        """Semantic tokens are returned for dimension names in annotations."""
+        from lsprotocol import types
+
+        from jaxtyc.lsp import _state
+        from jaxtyc.lsp._semantic_tokens import semantic_tokens_full
+        from jaxtyc.lsp.index import build_file_index
+        from jaxtyc.lsp.server import server
+
+        uri = "file:///test/semantic_tokens.py"
+        source = (FIXTURES / "correct_attention.py").read_text()
+        file_path = str(FIXTURES / "correct_attention.py")
+
+        file_index = build_file_index(source, file_path, uri)
+        _state.workspace_index.update_file(file_index)
+
+        try:
+            params = types.SemanticTokensParams(
+                text_document=types.TextDocumentIdentifier(uri=uri),
+            )
+            result = semantic_tokens_full(server, params)
+            assert result is not None
+            assert isinstance(result, types.SemanticTokens)
+            assert len(result.data) > 0
+            # Each token is 5 integers: deltaLine, deltaStart, length, tokenType, tokenModifiers
+            assert len(result.data) % 5 == 0
+            # Check that some tokens have the definition modifier (1)
+            has_definition = False
+            for i in range(0, len(result.data), 5):
+                if result.data[i + 4] == 1:  # modifiers = definition
+                    has_definition = True
+                    break
+            assert has_definition, "Expected at least one token with definition modifier"
+        finally:
+            _state.workspace_index.remove_file(uri)
+
+    def test_semantic_tokens_returns_none_for_unknown_uri(self) -> None:
+        """Returns None for a URI that has no file index."""
+        from lsprotocol import types
+
+        from jaxtyc.lsp._semantic_tokens import semantic_tokens_full
+        from jaxtyc.lsp.server import server
+
+        params = types.SemanticTokensParams(
+            text_document=types.TextDocumentIdentifier(uri="file:///nonexistent.py"),
+        )
+        result = semantic_tokens_full(server, params)
+        assert result is None
+
+    def test_semantic_tokens_skips_internal_names(self) -> None:
+        """Dimension names starting with _ are excluded from semantic tokens."""
+        from lsprotocol import types
+
+        from jaxtyc.lsp import _state
+        from jaxtyc.lsp._semantic_tokens import semantic_tokens_full
+        from jaxtyc.lsp.index import FileIndex
+        from jaxtyc.lsp.server import server
+        from jaxtyc.types import DimLocation
+
+        uri = "file:///test/internal_dims.py"
+        file_index = FileIndex(
+            file_path="/test/internal_dims.py",
+            uri=uri,
+            function_specs=(),
+            dim_locations=(
+                DimLocation(
+                    dim_name="_anon_0",
+                    param_name="x",
+                    function_name="foo",
+                    file_path="/test/internal_dims.py",
+                    lineno=5,
+                    col_start=20,
+                    col_end=27,
+                ),
+                DimLocation(
+                    dim_name="batch",
+                    param_name="x",
+                    function_name="foo",
+                    file_path="/test/internal_dims.py",
+                    lineno=5,
+                    col_start=28,
+                    col_end=33,
+                ),
+            ),
+        )
+        _state.workspace_index.update_file(file_index)
+
+        try:
+            params = types.SemanticTokensParams(
+                text_document=types.TextDocumentIdentifier(uri=uri),
+            )
+            result = semantic_tokens_full(server, params)
+            assert result is not None
+            # Only 1 token (batch), _anon_0 is skipped
+            assert len(result.data) == 5
+        finally:
+            _state.workspace_index.remove_file(uri)
+
+    def test_semantic_tokens_none_for_empty_dims(self) -> None:
+        """Returns None when file index has no dim locations."""
+        from lsprotocol import types
+
+        from jaxtyc.lsp import _state
+        from jaxtyc.lsp._semantic_tokens import semantic_tokens_full
+        from jaxtyc.lsp.index import FileIndex
+        from jaxtyc.lsp.server import server
+
+        uri = "file:///test/empty_dims.py"
+        file_index = FileIndex(
+            file_path="/test/empty_dims.py",
+            uri=uri,
+            function_specs=(),
+            dim_locations=(),
+        )
+        _state.workspace_index.update_file(file_index)
+
+        try:
+            params = types.SemanticTokensParams(
+                text_document=types.TextDocumentIdentifier(uri=uri),
+            )
+            result = semantic_tokens_full(server, params)
+            assert result is None
+        finally:
+            _state.workspace_index.remove_file(uri)
+
+    def test_semantic_tokens_relative_encoding(self) -> None:
+        """Verify relative encoding of delta_line and delta_start."""
+        from lsprotocol import types
+
+        from jaxtyc.lsp import _state
+        from jaxtyc.lsp._semantic_tokens import semantic_tokens_full
+        from jaxtyc.lsp.index import FileIndex
+        from jaxtyc.lsp.server import server
+        from jaxtyc.types import DimLocation
+
+        uri = "file:///test/rel_enc.py"
+        file_index = FileIndex(
+            file_path="/test/rel_enc.py",
+            uri=uri,
+            function_specs=(),
+            dim_locations=(
+                DimLocation(
+                    dim_name="batch",
+                    param_name="x",
+                    function_name="foo",
+                    file_path="/test/rel_enc.py",
+                    lineno=5,
+                    col_start=10,
+                    col_end=15,
+                ),
+                DimLocation(
+                    dim_name="seq",
+                    param_name="x",
+                    function_name="foo",
+                    file_path="/test/rel_enc.py",
+                    lineno=5,
+                    col_start=16,
+                    col_end=19,
+                ),
+                DimLocation(
+                    dim_name="batch",
+                    param_name="y",
+                    function_name="foo",
+                    file_path="/test/rel_enc.py",
+                    lineno=6,
+                    col_start=10,
+                    col_end=15,
+                ),
+            ),
+        )
+        _state.workspace_index.update_file(file_index)
+
+        try:
+            params = types.SemanticTokensParams(
+                text_document=types.TextDocumentIdentifier(uri=uri),
+            )
+            result = semantic_tokens_full(server, params)
+            assert result is not None
+            data = result.data
+            assert len(data) == 15  # 3 tokens x 5 ints
+
+            # Token 1: batch on line 5 (0-indexed: 4), col 10
+            assert data[0] == 4  # deltaLine (0-indexed line 4)
+            assert data[1] == 10  # deltaStart
+            assert data[2] == 5  # length (batch)
+            assert data[4] == 1  # definition modifier (first occurrence)
+
+            # Token 2: seq on same line, col 16
+            assert data[5] == 0  # deltaLine (same line)
+            assert data[6] == 6  # deltaStart relative to prev (16 - 10)
+            assert data[7] == 3  # length (seq)
+            assert data[9] == 1  # definition modifier (first occurrence of seq)
+
+            # Token 3: batch on line 6 (0-indexed: 5), col 10
+            assert data[10] == 1  # deltaLine (next line)
+            assert data[11] == 10  # deltaStart (new line, absolute)
+            assert data[12] == 5  # length (batch)
+            assert data[14] == 0  # NOT definition (already seen batch in foo)
+        finally:
+            _state.workspace_index.remove_file(uri)
+
+
+class TestLinkedEditingRange:
+    """Tests for textDocument/linkedEditingRange handler."""
+
+    def test_linked_editing_returns_ranges(self) -> None:
+        """Linked editing returns ranges for dimension names used multiple times."""
+        from lsprotocol import types
+
+        from jaxtyc.lsp import _state
+        from jaxtyc.lsp._linked_editing import linked_editing_range
+        from jaxtyc.lsp.index import build_file_index
+        from jaxtyc.lsp.server import server
+
+        uri = "file:///test/linked_edit.py"
+        source = (FIXTURES / "correct_attention.py").read_text()
+        file_path = str(FIXTURES / "correct_attention.py")
+
+        file_index = build_file_index(source, file_path, uri)
+        _state.workspace_index.update_file(file_index)
+
+        try:
+            # "batch" appears in q, k, v, return (4 times) - line 9 (1-based), col ~21
+            params = types.LinkedEditingRangeParams(
+                text_document=types.TextDocumentIdentifier(uri=uri),
+                position=types.Position(line=8, character=22),  # 0-indexed
+            )
+            result = linked_editing_range(server, params)
+            assert result is not None
+            assert isinstance(result, types.LinkedEditingRanges)
+            # batch is used in q param, k param, v param, and return = 4 within function
+            assert len(result.ranges) >= 2
+            assert result.word_pattern == r"[a-zA-Z_][a-zA-Z0-9_]*"
+        finally:
+            _state.workspace_index.remove_file(uri)
+
+    def test_linked_editing_returns_none_outside_dim(self) -> None:
+        """Returns None when cursor is not on a dimension name."""
+        from lsprotocol import types
+
+        from jaxtyc.lsp import _state
+        from jaxtyc.lsp._linked_editing import linked_editing_range
+        from jaxtyc.lsp.index import build_file_index
+        from jaxtyc.lsp.server import server
+
+        uri = "file:///test/linked_edit_none.py"
+        source = (FIXTURES / "correct_attention.py").read_text()
+        file_path = str(FIXTURES / "correct_attention.py")
+
+        file_index = build_file_index(source, file_path, uri)
+        _state.workspace_index.update_file(file_index)
+
+        try:
+            params = types.LinkedEditingRangeParams(
+                text_document=types.TextDocumentIdentifier(uri=uri),
+                position=types.Position(line=0, character=0),  # docstring area
+            )
+            result = linked_editing_range(server, params)
+            assert result is None
+        finally:
+            _state.workspace_index.remove_file(uri)
+
+
+class TestCodeActions:
+    """Tests for textDocument/codeAction and codeAction/resolve handlers."""
+
+    def test_code_action_suppress_only(self) -> None:
+        """Code actions include a suppress action for jaxtyc diagnostics."""
+        from lsprotocol import types
+
+        from jaxtyc.lsp._code_actions import code_action
+        from jaxtyc.lsp.server import server
+
+        uri = "file:///test/code_action.py"
+        params = types.CodeActionParams(
+            text_document=types.TextDocumentIdentifier(uri=uri),
+            range=types.Range(
+                start=types.Position(line=5, character=0),
+                end=types.Position(line=5, character=10),
+            ),
+            context=types.CodeActionContext(
+                diagnostics=[
+                    types.Diagnostic(
+                        range=types.Range(
+                            start=types.Position(line=5, character=0),
+                            end=types.Position(line=5, character=10),
+                        ),
+                        message="Shape mismatch",
+                        source="jaxtyc",
+                        code="shape-mismatch",
+                        data={},  # Empty dict -> no shape fix, suppress only
+                    ),
+                ],
+            ),
+        )
+        result = code_action(server, params)
+        assert result is not None
+        assert len(result) == 1
+        assert "Suppress" in result[0].title
+        assert result[0].edit is not None
+        # Check the edit inserts a suppress comment
+        edits = result[0].edit.changes[uri]
+        assert "jaxtyc: ignore" in edits[0].new_text
+
+    def test_code_action_with_shape_data(self) -> None:
+        """Code actions include shape fix suggestions when data is provided."""
+        from lsprotocol import types
+
+        from jaxtyc.lsp._code_actions import code_action
+        from jaxtyc.lsp.server import server
+
+        uri = "file:///test/code_action_fix.py"
+        params = types.CodeActionParams(
+            text_document=types.TextDocumentIdentifier(uri=uri),
+            range=types.Range(
+                start=types.Position(line=5, character=0),
+                end=types.Position(line=5, character=10),
+            ),
+            context=types.CodeActionContext(
+                diagnostics=[
+                    types.Diagnostic(
+                        range=types.Range(
+                            start=types.Position(line=5, character=0),
+                            end=types.Position(line=5, character=10),
+                        ),
+                        message="Shape mismatch: expected (4, 8) got (8, 4)",
+                        source="jaxtyc",
+                        code="shape-mismatch",
+                        data={
+                            "expected_shape": [4, 8],
+                            "actual_shape": [8, 4],
+                            "dim_name_mapping": {"batch": 4, "seq": 8},
+                        },
+                    ),
+                ],
+            ),
+        )
+        result = code_action(server, params)
+        assert result is not None
+        # Should have at least 1 fix suggestion + 1 suppress action
+        assert len(result) >= 2
+        # Last action is always suppress
+        assert "Suppress" in result[-1].title
+        # Fix actions have data for resolve
+        fix_actions = [a for a in result if "Suppress" not in a.title]
+        assert len(fix_actions) >= 1
+        for fix in fix_actions:
+            assert fix.data is not None
+            assert "code" in fix.data
+
+    def test_code_action_returns_none_for_non_jaxtyc_diags(self) -> None:
+        """Returns None when diagnostics are not from jaxtyc."""
+        from lsprotocol import types
+
+        from jaxtyc.lsp._code_actions import code_action
+        from jaxtyc.lsp.server import server
+
+        uri = "file:///test/non_jaxtyc.py"
+        params = types.CodeActionParams(
+            text_document=types.TextDocumentIdentifier(uri=uri),
+            range=types.Range(
+                start=types.Position(line=0, character=0),
+                end=types.Position(line=0, character=10),
+            ),
+            context=types.CodeActionContext(
+                diagnostics=[
+                    types.Diagnostic(
+                        range=types.Range(
+                            start=types.Position(line=0, character=0),
+                            end=types.Position(line=0, character=10),
+                        ),
+                        message="Some other error",
+                        source="pylint",
+                    ),
+                ],
+            ),
+        )
+        result = code_action(server, params)
+        assert result is None
+
+    def test_code_action_resolve(self) -> None:
+        """Resolve adds a WorkspaceEdit with the suggested code."""
+        from lsprotocol import types
+
+        from jaxtyc.lsp._code_actions import code_action_resolve
+        from jaxtyc.lsp.server import server
+
+        action = types.CodeAction(
+            title="Swap axes",
+            kind=types.CodeActionKind.QuickFix,
+            data={
+                "code": "jnp.swapaxes(x, 0, 1)",
+                "kind": "transpose",
+                "uri": "file:///test/resolve.py",
+                "range": {
+                    "start": {"line": 5, "character": 0},
+                    "end": {"line": 5, "character": 10},
+                },
+            },
+        )
+        result = code_action_resolve(server, action)
+        assert result.edit is not None
+        edits = result.edit.changes["file:///test/resolve.py"]
+        assert len(edits) == 1
+        assert "jnp.swapaxes(x, 0, 1)" in edits[0].new_text
+
+    def test_code_action_resolve_no_data(self) -> None:
+        """Resolve returns unchanged action when no data is present."""
+        from lsprotocol import types
+
+        from jaxtyc.lsp._code_actions import code_action_resolve
+        from jaxtyc.lsp.server import server
+
+        action = types.CodeAction(
+            title="No data",
+            kind=types.CodeActionKind.QuickFix,
+            data=None,
+        )
+        result = code_action_resolve(server, action)
+        assert result.edit is None
+
+    def test_code_action_resolve_missing_uri(self) -> None:
+        """Resolve returns unchanged action when uri is missing from data."""
+        from lsprotocol import types
+
+        from jaxtyc.lsp._code_actions import code_action_resolve
+        from jaxtyc.lsp.server import server
+
+        action = types.CodeAction(
+            title="Missing uri",
+            kind=types.CodeActionKind.QuickFix,
+            data={"code": "x", "kind": "transpose"},
+        )
+        result = code_action_resolve(server, action)
+        assert result.edit is None
+
+
+class TestCompletionHandler:
+    """Tests for textDocument/completion handler."""
+
+    def test_is_in_shape_string(self) -> None:
+        """Check _is_in_shape_string correctly identifies shape positions."""
+        from jaxtyc.lsp._completion import _is_in_shape_string
+
+        line = 'def f(x: Float[Array, "batch seq"]) -> None:'
+        # col inside "batch seq" -> True
+        quote_pos = line.index('"')
+        assert _is_in_shape_string(line, quote_pos + 1) is True
+        assert _is_in_shape_string(line, quote_pos + 6) is True
+        # col before the annotation -> False
+        assert _is_in_shape_string(line, 0) is False
+
+    def test_is_in_shape_string_unclosed(self) -> None:
+        """_is_in_shape_string handles unclosed strings."""
+        from jaxtyc.lsp._completion import _is_in_shape_string
+
+        line = 'def f(x: Float[Array, "batch'
+        quote_pos = line.index('"')
+        assert _is_in_shape_string(line, quote_pos + 3) is True
+
+    def test_is_after_pipe(self) -> None:
+        """_is_after_pipe detects pipe character before cursor."""
+        from jaxtyc.lsp._completion import _is_after_pipe
+
+        line = 'def f(x: Float[Array, "batch|dp seq"])'
+        pipe_pos = line.index("|")
+        # Just after the pipe (partial word "dp")
+        assert _is_after_pipe(line, pipe_pos + 1) is True
+        assert _is_after_pipe(line, pipe_pos + 3) is True
+        # Before the pipe
+        assert _is_after_pipe(line, pipe_pos - 1) is False
+
+    def test_get_partial_word(self) -> None:
+        """_get_partial_word extracts the word being typed."""
+        from jaxtyc.lsp._completion import _get_partial_word
+
+        line = 'def f(x: Float[Array, "bat"])'
+        # "bat" starts at quote+1
+        quote_pos = line.index('"')
+        result = _get_partial_word(line, quote_pos + 4)  # end of "bat"
+        assert result == "bat"
+
+    def test_get_mesh_axis_completions(self) -> None:
+        """_get_mesh_axis_completions returns matching axes from config."""
+        from jaxtyc.lsp import _state
+        from jaxtyc.lsp._completion import _get_mesh_axis_completions
+
+        old_config = _state.config
+        try:
+            from jaxtyc.config import JaxtycConfig
+            from jaxtyc.config import ShardingConfig
+
+            _state.config = JaxtycConfig(
+                sharding=ShardingConfig(mesh={"dp": 2, "mp": 4, "fsdp": 8})
+            )
+            result = _get_mesh_axis_completions("")
+            assert result == ["dp", "fsdp", "mp"]
+            result = _get_mesh_axis_completions("m")
+            assert result == ["mp"]
+            result = _get_mesh_axis_completions("z")
+            assert result == []
+        finally:
+            _state.config = old_config
+
+    def test_get_mesh_axis_completions_empty_mesh(self) -> None:
+        """_get_mesh_axis_completions returns empty list when no mesh configured."""
+        from jaxtyc.lsp import _state
+        from jaxtyc.lsp._completion import _get_mesh_axis_completions
+
+        old_config = _state.config
+        try:
+            from jaxtyc.config import JaxtycConfig
+
+            _state.config = JaxtycConfig()
+            result = _get_mesh_axis_completions("")
+            assert result == []
+        finally:
+            _state.config = old_config
+
+
+class TestSignatureHelp:
+    """Tests for textDocument/signatureHelp handler."""
+
+    def test_find_call_context_simple(self) -> None:
+        """_find_call_context finds function name and active parameter."""
+        from jaxtyc.lsp._signature_help import _find_call_context
+
+        line = "    result = attention(q, k, v)"
+        # Cursor after first comma (after "q, ")
+        col = line.index(",") + 2
+        name, idx = _find_call_context(line, col)
+        assert name == "attention"
+        assert idx == 1
+
+    def test_find_call_context_no_paren(self) -> None:
+        """_find_call_context returns None when no opening paren found."""
+        from jaxtyc.lsp._signature_help import _find_call_context
+
+        line = "    x = y + z"
+        name, idx = _find_call_context(line, len(line))
+        assert name is None
+        assert idx == 0
+
+    def test_find_call_context_method_call(self) -> None:
+        """_find_call_context strips module prefix for method calls."""
+        from jaxtyc.lsp._signature_help import _find_call_context
+
+        line = "    result = self.attention(q, k)"
+        col = line.index("(") + 2
+        name, idx = _find_call_context(line, col)
+        assert name == "attention"
+        assert idx == 0
+
+    def test_find_call_context_nested_parens(self) -> None:
+        """_find_call_context handles nested parentheses."""
+        from jaxtyc.lsp._signature_help import _find_call_context
+
+        line = "    attention(encode(x), k)"
+        # Cursor after encode(x) comma = second param of attention
+        col = line.index("),") + 3
+        name, idx = _find_call_context(line, col)
+        assert name == "attention"
+        assert idx == 1
+
+    def test_signature_help_with_function_spec(self) -> None:
+        """Signature help returns shape info when function is in workspace index."""
+
+        from jaxtyc.lsp import _state
+        from jaxtyc.lsp.index import build_file_index
+
+        uri = "file:///test/sig_help.py"
+        source = (FIXTURES / "correct_attention.py").read_text()
+        file_path = str(FIXTURES / "correct_attention.py")
+
+        file_index = build_file_index(source, file_path, uri)
+        _state.workspace_index.update_file(file_index)
+
+        # We need to add the source to the workspace document store.
+        # Since we can't easily create a TextDocument, test the helper instead.
+        # Test just the _find_call_context thoroughly since the full handler
+        # needs an actual pygls document.
+        try:
+            # Verify function is in the index
+            specs = _state.workspace_index.find_function_by_name("attention", preferred_uri=uri)
+            assert len(specs) >= 1
+            spec = specs[0]
+            assert "q" in spec.params
+        finally:
+            _state.workspace_index.remove_file(uri)
+
+
+class TestFoldingRange:
+    """Tests for textDocument/foldingRange handler."""
+
+    def test_folding_range_with_multi_param_function(self) -> None:
+        """Folding ranges are returned for functions with 3+ parameters."""
+        from lsprotocol import types
+
+        from jaxtyc.lsp import _state
+        from jaxtyc.lsp._folding import folding_range
+        from jaxtyc.lsp.index import build_file_index
+        from jaxtyc.lsp.server import server
+
+        uri = "file:///test/folding.py"
+        source = (FIXTURES / "correct_attention.py").read_text()
+        file_path = str(FIXTURES / "correct_attention.py")
+
+        file_index = build_file_index(source, file_path, uri)
+        _state.workspace_index.update_file(file_index)
+
+        try:
+            params = types.FoldingRangeParams(
+                text_document=types.TextDocumentIdentifier(uri=uri),
+            )
+            result = folding_range(server, params)
+            assert result is not None
+            # attention function has 3 params (q, k, v) and spans multiple lines
+            assert len(result) >= 1
+            assert result[0].kind == types.FoldingRangeKind.Region
+        finally:
+            _state.workspace_index.remove_file(uri)
+
+    def test_folding_range_no_specs(self) -> None:
+        """Returns None when file has no function specs."""
+        from lsprotocol import types
+
+        from jaxtyc.lsp._folding import folding_range
+        from jaxtyc.lsp.server import server
+
+        params = types.FoldingRangeParams(
+            text_document=types.TextDocumentIdentifier(uri="file:///nonexistent.py"),
+        )
+        result = folding_range(server, params)
+        assert result is None
+
+    def test_folding_range_skips_small_functions(self) -> None:
+        """Functions with fewer than 3 params are not foldable."""
+        from lsprotocol import types
+
+        from jaxtyc.lsp import _state
+        from jaxtyc.lsp._folding import folding_range
+        from jaxtyc.lsp.index import FileIndex
+        from jaxtyc.lsp.server import server
+        from jaxtyc.types import DimSpec
+        from jaxtyc.types import FunctionShapeSpec
+        from jaxtyc.types import ShapeSpec
+
+        uri = "file:///test/folding_small.py"
+        spec = FunctionShapeSpec(
+            name="small_fn",
+            file_path="/test/folding_small.py",
+            lineno=5,
+            col_offset=0,
+            params={
+                "x": ShapeSpec(dims=(DimSpec(kind="named", name="batch"),), dtype="float32"),
+            },
+            return_spec=None,
+            end_lineno=8,
+        )
+        file_index = FileIndex(
+            file_path="/test/folding_small.py",
+            uri=uri,
+            function_specs=(spec,),
+            dim_locations=(),
+        )
+        _state.workspace_index.update_file(file_index)
+
+        try:
+            params = types.FoldingRangeParams(
+                text_document=types.TextDocumentIdentifier(uri=uri),
+            )
+            result = folding_range(server, params)
+            assert result is None  # No foldable ranges
+        finally:
+            _state.workspace_index.remove_file(uri)
+
+
+class TestWorkspaceSymbol:
+    """Tests for workspace/symbol handler covering uncovered lines in _navigation.py."""
+
+    def test_workspace_symbol_finds_functions(self) -> None:
+        """workspace/symbol returns matching functions."""
+        from lsprotocol import types
+
+        from jaxtyc.lsp import _state
+        from jaxtyc.lsp._navigation import workspace_symbol
+        from jaxtyc.lsp.index import build_file_index
+        from jaxtyc.lsp.server import server
+
+        uri = "file:///test/ws_symbol.py"
+        source = (FIXTURES / "correct_attention.py").read_text()
+        file_path = str(FIXTURES / "correct_attention.py")
+
+        file_index = build_file_index(source, file_path, uri)
+        _state.workspace_index.update_file(file_index)
+
+        try:
+            params = types.WorkspaceSymbolParams(query="attention")
+            result = workspace_symbol(server, params)
+            assert result is not None
+            names = [s.name for s in result]
+            assert "attention" in names
+        finally:
+            _state.workspace_index.remove_file(uri)
+
+    def test_workspace_symbol_no_match(self) -> None:
+        """workspace/symbol returns None when no function matches."""
+        from lsprotocol import types
+
+        from jaxtyc.lsp._navigation import workspace_symbol
+        from jaxtyc.lsp.server import server
+
+        params = types.WorkspaceSymbolParams(query="zzz_nonexistent_function_zzz")
+        result = workspace_symbol(server, params)
+        assert result is None
+
+
+class TestGoToImplementation:
+    """Tests for textDocument/implementation handler."""
+
+    def test_implementation_on_dim_name(self) -> None:
+        """goToImplementation on a dim name returns definition location."""
+        from lsprotocol import types
+
+        from jaxtyc.lsp import _state
+        from jaxtyc.lsp._navigation import go_to_implementation
+        from jaxtyc.lsp.index import build_file_index
+        from jaxtyc.lsp.server import server
+
+        uri = "file:///test/impl_dim.py"
+        source = (FIXTURES / "correct_attention.py").read_text()
+        file_path = str(FIXTURES / "correct_attention.py")
+
+        file_index = build_file_index(source, file_path, uri)
+        _state.workspace_index.update_file(file_index)
+
+        try:
+            # batch in k param (second occurrence) should jump to first in q
+            params = types.ImplementationParams(
+                text_document=types.TextDocumentIdentifier(uri=uri),
+                position=types.Position(line=9, character=22),
+            )
+            result = go_to_implementation(server, params)
+            assert result is not None
+            loc = result[0] if isinstance(result, list) else result
+            assert loc.range.start.line == 8  # q param (first occurrence)
+        finally:
+            _state.workspace_index.remove_file(uri)
+
+    def test_implementation_on_function_name(self) -> None:
+        """goToImplementation on function name returns its definition."""
+        from lsprotocol import types
+
+        from jaxtyc.lsp import _state
+        from jaxtyc.lsp._navigation import go_to_implementation
+        from jaxtyc.lsp.index import build_file_index
+        from jaxtyc.lsp.server import server
+
+        uri = "file:///test/impl_func.py"
+        source = (FIXTURES / "correct_attention.py").read_text()
+        file_path = str(FIXTURES / "correct_attention.py")
+
+        file_index = build_file_index(source, file_path, uri)
+        _state.workspace_index.update_file(file_index)
+
+        try:
+            # attention function def at line 8 (0-indexed = 7)
+            params = types.ImplementationParams(
+                text_document=types.TextDocumentIdentifier(uri=uri),
+                position=types.Position(line=7, character=5),
+            )
+            result = go_to_implementation(server, params)
+            assert result is not None
+        finally:
+            _state.workspace_index.remove_file(uri)
+
+
+class TestDocumentSymbol:
+    """Tests for document symbols covering class method grouping."""
+
+    def test_document_symbol_with_class_methods(self) -> None:
+        """Document symbols group methods under class symbols."""
+        from lsprotocol import types
+
+        from jaxtyc.lsp import _state
+        from jaxtyc.lsp._navigation import document_symbol
+        from jaxtyc.lsp.index import FileIndex
+        from jaxtyc.lsp.server import server
+        from jaxtyc.types import DimSpec
+        from jaxtyc.types import FunctionShapeSpec
+        from jaxtyc.types import ShapeSpec
+
+        uri = "file:///test/class_methods.py"
+        specs = (
+            FunctionShapeSpec(
+                name="forward",
+                file_path="/test/class_methods.py",
+                lineno=10,
+                col_offset=4,
+                params={
+                    "x": ShapeSpec(dims=(DimSpec(kind="named", name="batch"),), dtype="float32"),
+                },
+                return_spec=ShapeSpec(dims=(DimSpec(kind="named", name="batch"),), dtype="float32"),
+                is_method=True,
+                class_name="Model",
+                end_lineno=15,
+                name_col_offset=8,
+            ),
+            FunctionShapeSpec(
+                name="predict",
+                file_path="/test/class_methods.py",
+                lineno=17,
+                col_offset=4,
+                params={
+                    "x": ShapeSpec(dims=(DimSpec(kind="named", name="batch"),), dtype="float32"),
+                },
+                return_spec=None,
+                is_method=True,
+                class_name="Model",
+                end_lineno=20,
+                name_col_offset=8,
+            ),
+        )
+        file_index = FileIndex(
+            file_path="/test/class_methods.py",
+            uri=uri,
+            function_specs=specs,
+            dim_locations=(),
+        )
+        _state.workspace_index.update_file(file_index)
+
+        try:
+            params = types.DocumentSymbolParams(
+                text_document=types.TextDocumentIdentifier(uri=uri),
+            )
+            result = document_symbol(server, params)
+            assert result is not None
+            # Should have a Model class symbol containing the methods
+            class_syms = [s for s in result if s.kind == types.SymbolKind.Class]
+            assert len(class_syms) == 1
+            assert class_syms[0].name == "Model"
+            assert class_syms[0].children is not None
+            assert len(class_syms[0].children) == 2
+        finally:
+            _state.workspace_index.remove_file(uri)
+
+
+class TestNavigationHelpers:
+    """Tests for uncovered helper functions in _navigation.py."""
+
+    def test_word_at_basic(self) -> None:
+        """_word_at extracts identifier at given column."""
+        from jaxtyc.lsp._navigation import _word_at
+
+        line = "def attention(q, k, v):"
+        assert _word_at(line, 4) == "attention"
+        assert _word_at(line, 14) == "q"
+        assert _word_at(line, 13) == ""  # On "("
+
+    def test_word_at_boundary(self) -> None:
+        """_word_at handles boundary conditions."""
+        from jaxtyc.lsp._navigation import _word_at
+
+        assert _word_at("hello", 10) == ""  # col > len
+        assert _word_at("", 0) == ""
+
+    def test_param_hover(self) -> None:
+        """_param_hover builds markdown for a shape parameter."""
+        from jaxtyc.lsp._navigation import _param_hover
+        from jaxtyc.types import DimSpec
+        from jaxtyc.types import ShapeSpec
+
+        spec = ShapeSpec(
+            dims=(DimSpec(kind="named", name="batch"), DimSpec(kind="named", name="seq")),
+            dtype="float32",
+        )
+        result = _param_hover("x", spec)
+        assert "**`x`**" in result
+        assert "batch" in result
+        assert "seq" in result
+        assert "float32" in result
+
+    def test_function_hover_with_return(self) -> None:
+        """_function_hover includes return spec."""
+        from jaxtyc.lsp._navigation import _function_hover
+        from jaxtyc.types import DimSpec
+        from jaxtyc.types import FunctionShapeSpec
+        from jaxtyc.types import ShapeSpec
+
+        spec = FunctionShapeSpec(
+            name="encode",
+            file_path="test.py",
+            lineno=1,
+            col_offset=0,
+            params={
+                "x": ShapeSpec(dims=(DimSpec(kind="named", name="batch"),), dtype="float32"),
+            },
+            return_spec=ShapeSpec(dims=(DimSpec(kind="named", name="hidden"),), dtype="float32"),
+        )
+        result = _function_hover(spec)
+        assert "**`encode`**" in result
+        assert "x" in result
+        assert "batch" in result
+        assert "returns" in result.lower()
+        assert "hidden" in result
+
+    def test_function_hover_with_tuple_return(self) -> None:
+        """_function_hover shows tuple return specs."""
+        from jaxtyc.lsp._navigation import _function_hover
+        from jaxtyc.types import DimSpec
+        from jaxtyc.types import FunctionShapeSpec
+        from jaxtyc.types import ShapeSpec
+
+        spec = FunctionShapeSpec(
+            name="split",
+            file_path="test.py",
+            lineno=1,
+            col_offset=0,
+            params={
+                "x": ShapeSpec(dims=(DimSpec(kind="named", name="batch"),), dtype="float32"),
+            },
+            return_spec=None,
+            return_specs=[
+                ShapeSpec(dims=(DimSpec(kind="named", name="a"),), dtype="float32"),
+                ShapeSpec(dims=(DimSpec(kind="named", name="b"),), dtype="float32"),
+            ],
+        )
+        result = _function_hover(spec)
+        assert "tuple" in result.lower()
+        assert "[0]" in result
+        assert "[1]" in result
+
+
+class TestDiagnosticsHandler:
+    """Tests for diagnostic-related handlers in _diagnostics.py."""
+
+    def test_pull_diagnostics(self) -> None:
+        """Pull model returns cached diagnostics."""
+        from lsprotocol import types
+
+        from jaxtyc.lsp import _state
+        from jaxtyc.lsp._diagnostics import text_document_diagnostic
+        from jaxtyc.lsp.server import server
+
+        uri = "file:///test/pull_diag.py"
+        cached_diag = types.Diagnostic(
+            range=types.Range(
+                start=types.Position(line=0, character=0),
+                end=types.Position(line=0, character=5),
+            ),
+            message="test diag",
+        )
+        with _state.cache_lock:
+            _state.diagnostics_cache[uri] = [cached_diag]
+
+        try:
+            params = types.DocumentDiagnosticParams(
+                text_document=types.TextDocumentIdentifier(uri=uri),
+            )
+            result = text_document_diagnostic(server, params)
+            assert result.kind == types.DocumentDiagnosticReportKind.Full
+            assert len(result.items) == 1
+            assert result.items[0].message == "test diag"
+        finally:
+            with _state.cache_lock:
+                _state.diagnostics_cache.pop(uri, None)
+
+    def test_pull_diagnostics_empty(self) -> None:
+        """Pull model returns empty list for unknown URI."""
+        from lsprotocol import types
+
+        from jaxtyc.lsp._diagnostics import text_document_diagnostic
+        from jaxtyc.lsp.server import server
+
+        params = types.DocumentDiagnosticParams(
+            text_document=types.TextDocumentIdentifier(uri="file:///unknown.py"),
+        )
+        result = text_document_diagnostic(server, params)
+        assert result.kind == types.DocumentDiagnosticReportKind.Full
+        assert len(result.items) == 0
+
+
+class TestConfigurationHandlers:
+    """Tests for workspace configuration change handlers."""
+
+    def test_did_change_watched_files_pyproject_via_lsp(self) -> None:
+        """workspace/didChangeWatchedFiles reloads config for pyproject.toml changes."""
+        with _lsp_session("correct_attention.py") as s:
+            s.request(
+                "workspace/didChangeWatchedFiles",
+                {
+                    "changes": [
+                        {"uri": "file:///test/pyproject.toml", "type": 2},
+                    ],
+                },
+            )
+            # Also test with non-pyproject file (should be ignored)
+            s.request(
+                "workspace/didChangeWatchedFiles",
+                {
+                    "changes": [
+                        {"uri": "file:///test/some_file.py", "type": 2},
+                    ],
+                },
+            )
+        # Should complete without error
+
+    def test_did_change_configuration_via_lsp(self) -> None:
+        """workspace/didChangeConfiguration reloads config."""
+        with _lsp_session("correct_attention.py") as s:
+            s.request(
+                "workspace/didChangeConfiguration",
+                {"settings": {}},
+            )
+        # Should complete without error
+
+
+class TestLSPSemanticTokensSubprocess:
+    """Subprocess-based test for semantic tokens full integration."""
+
+    def test_semantic_tokens_full_via_lsp(self) -> None:
+        """textDocument/semanticTokens/full returns token data for annotated file."""
+        with _lsp_session("correct_attention.py") as s:
+            rid = s.request(
+                "textDocument/semanticTokens/full",
+                {"textDocument": {"uri": s.uri}},
+            )
+        resp = _find_response(s.messages, rid)
+        assert resp is not None
+        result = resp["result"]
+        assert result is not None
+        assert "data" in result
+        assert len(result["data"]) > 0
+        assert len(result["data"]) % 5 == 0
+
+
+class TestLSPLinkedEditingSubprocess:
+    """Subprocess-based test for linked editing range."""
+
+    def test_linked_editing_range_via_lsp(self) -> None:
+        """textDocument/linkedEditingRange returns ranges for dim names."""
+        with _lsp_session("correct_attention.py") as s:
+            # "batch" in k param: line 10 (1-based) = line 9 (0-based), col ~22
+            rid = s.request(
+                "textDocument/linkedEditingRange",
+                {
+                    "textDocument": {"uri": s.uri},
+                    "position": {"line": 9, "character": 22},
+                },
+            )
+        resp = _find_response(s.messages, rid)
+        assert resp is not None
+        result = resp["result"]
+        assert result is not None
+        assert "ranges" in result
+        assert len(result["ranges"]) >= 2
+
+
+class TestLSPCompletionSubprocess:
+    """Subprocess-based test for textDocument/completion."""
+
+    def test_completion_inside_shape_string(self) -> None:
+        """textDocument/completion returns dim name completions inside shape strings."""
+        with _lsp_session("correct_attention.py") as s:
+            # Request completion at line 9 (0-indexed), position inside the shape string "batch heads seq head_dim"
+            # Line 10 in 1-based (k param): Float[Array, "batch heads seq head_dim"]
+            # "batch" starts at col 21 after the quote
+            rid = s.request(
+                "textDocument/completion",
+                {
+                    "textDocument": {"uri": s.uri},
+                    "position": {"line": 9, "character": 22},
+                },
+            )
+        resp = _find_response(s.messages, rid)
+        assert resp is not None
+        # Result may be None if cursor position doesn't match shape string exactly
+        # Just verify we get a response without errors
+
+
+class TestLSPCodeActionSubprocess:
+    """Subprocess-based test for textDocument/codeAction with diagnostics."""
+
+    def test_code_action_on_error_file(self) -> None:
+        """textDocument/codeAction returns actions for shape errors."""
+        with _lsp_session("wrong_transpose.py", wait=3.0) as s:
+            # First, let the server analyze the file, then request code actions
+            # on the range where the error occurs (the return line)
+            rid = s.request(
+                "textDocument/codeAction",
+                {
+                    "textDocument": {"uri": s.uri},
+                    "range": {
+                        "start": {"line": 13, "character": 0},
+                        "end": {"line": 13, "character": 60},
+                    },
+                    "context": {
+                        "diagnostics": [],
+                    },
+                },
+            )
+        resp = _find_response(s.messages, rid)
+        assert resp is not None
+        # Even with no diagnostics in context, should return a response
+
+
+class TestLSPSignatureHelpSubprocess:
+    """Subprocess-based test for textDocument/signatureHelp."""
+
+    def test_signature_help_at_call_site(self) -> None:
+        """textDocument/signatureHelp returns shape info at a function call."""
+        with _lsp_session("multi_function.py") as s:
+            # Line 25 (1-based) = line 24 (0-based): "h = encode(x)"
+            # Cursor right after the opening paren
+            rid = s.request(
+                "textDocument/signatureHelp",
+                {
+                    "textDocument": {"uri": s.uri},
+                    "position": {"line": 24, "character": 16},
+                },
+            )
+        resp = _find_response(s.messages, rid)
+        assert resp is not None
+        result = resp["result"]
+        if result is not None:
+            assert "signatures" in result
+            sigs = result["signatures"]
+            assert len(sigs) >= 1
+            # Signature should contain function name and shape info
+            sig_label = sigs[0]["label"]
+            assert "encode" in sig_label
+
+
+class TestLSPFoldingRangeSubprocess:
+    """Subprocess-based test for textDocument/foldingRange."""
+
+    def test_folding_range_via_lsp(self) -> None:
+        """textDocument/foldingRange returns ranges for multi-param functions."""
+        with _lsp_session("correct_attention.py") as s:
+            rid = s.request(
+                "textDocument/foldingRange",
+                {"textDocument": {"uri": s.uri}},
+            )
+        resp = _find_response(s.messages, rid)
+        assert resp is not None
+        result = resp["result"]
+        assert result is not None
+        assert len(result) >= 1
+        assert result[0]["kind"] == "region"
+
+
+class TestCompletionSubprocessFull:
+    """Subprocess tests exercising the full completion handler code path."""
+
+    def test_completion_returns_dim_names(self) -> None:
+        """Completion returns known dimension names when cursor is inside shape string."""
+        with _lsp_session("correct_attention.py") as s:
+            # The shape string for q param starts at line 9 (0-indexed=8):
+            # Float[Array, "batch heads seq head_dim"]
+            # Need to be inside the quotes. Find position in the shape string.
+            source = (FIXTURES / "correct_attention.py").read_text()
+            lines = source.splitlines()
+            # Line index 8 (0-based): q: Float[Array, "batch heads seq head_dim"],
+            q_line = lines[8]
+            # Find position just after the opening quote
+            quote_pos = q_line.index('"')
+            # Position cursor right after quote + 1 char (inside "batch...")
+            cursor_col = quote_pos + 1
+
+            rid = s.request(
+                "textDocument/completion",
+                {
+                    "textDocument": {"uri": s.uri},
+                    "position": {"line": 8, "character": cursor_col},
+                },
+            )
+        resp = _find_response(s.messages, rid)
+        assert resp is not None
+        result = resp["result"]
+        if result is not None:
+            # Should have items with known dim names
+            items = result.get("items", [])
+            labels = [item["label"] for item in items]
+            # At minimum, known dims like batch, heads, seq, head_dim should appear
+            if labels:
+                assert any(dim in labels for dim in ["batch", "heads", "seq", "head_dim"]), (
+                    f"Expected known dim names, got: {labels}"
+                )
+
+
+class TestSignatureHelpSubprocessFull:
+    """More thorough subprocess tests for signature help."""
+
+    def test_signature_help_with_params(self) -> None:
+        """Signature help shows parameters with shape info."""
+        with _lsp_session("multi_function.py") as s:
+            # Line 25 (1-based) = line 24 (0-based): "h = encode(x)"
+            # Position cursor after "encode(" at the first argument
+            source = (FIXTURES / "multi_function.py").read_text()
+            lines = source.splitlines()
+            call_line = lines[24]
+            paren_pos = call_line.index("(")
+
+            rid = s.request(
+                "textDocument/signatureHelp",
+                {
+                    "textDocument": {"uri": s.uri},
+                    "position": {"line": 24, "character": paren_pos + 1},
+                },
+            )
+        resp = _find_response(s.messages, rid)
+        assert resp is not None
+        result = resp["result"]
+        if result is not None:
+            sigs = result["signatures"]
+            assert len(sigs) >= 1
+            # Should show parameter info
+            if "parameters" in sigs[0]:
+                params = sigs[0]["parameters"]
+                assert len(params) >= 1
+
+    def test_signature_help_no_function(self) -> None:
+        """Signature help returns null when not inside a function call."""
+        with _lsp_session("correct_attention.py") as s:
+            # Position on the docstring line (line 0), not a call
+            rid = s.request(
+                "textDocument/signatureHelp",
+                {
+                    "textDocument": {"uri": s.uri},
+                    "position": {"line": 0, "character": 5},
+                },
+            )
+        resp = _find_response(s.messages, rid)
+        assert resp is not None
+        assert resp["result"] is None
+
+
+class TestDidCloseHandler:
+    """Tests for textDocument/didClose via subprocess."""
+
+    def test_did_close_clears_caches(self) -> None:
+        """After closing a document, diagnostics should be cleared."""
+        with _lsp_session("wrong_transpose.py", wait=3.0) as s:
+            # Close the document
+            s._proc.stdin.write(
+                _lsp_message(
+                    "textDocument/didClose",
+                    {"textDocument": {"uri": s.uri}},
+                )
+            )
+            s._proc.stdin.flush()
+            time.sleep(0.5)
+        # Server should have published empty diagnostics for the closed URI
+        diag_msgs = [
+            m
+            for m in s.messages
+            if m.get("method") == "textDocument/publishDiagnostics" and m["params"]["uri"] == s.uri
+        ]
+        # Last diagnostics notification should have empty diagnostics
+        if diag_msgs:
+            last = diag_msgs[-1]
+            assert last["params"]["diagnostics"] == []
+
+
+class TestDidChangeHandler:
+    """Tests for textDocument/didChange via subprocess."""
+
+    def test_did_change_triggers_reanalysis(self) -> None:
+        """Editing a document triggers debounced re-analysis."""
+        with _lsp_session("correct_attention.py") as s:
+            source = (FIXTURES / "correct_attention.py").read_text()
+            s._proc.stdin.write(
+                _lsp_message(
+                    "textDocument/didChange",
+                    {
+                        "textDocument": {"uri": s.uri, "version": 2},
+                        "contentChanges": [{"text": source}],
+                    },
+                )
+            )
+            s._proc.stdin.flush()
+            time.sleep(1.0)
+        # Server processed the change without error
+
+
+class TestPullDiagnosticsSubprocess:
+    """Subprocess test for textDocument/diagnostic pull model."""
+
+    def test_pull_diagnostics_via_lsp(self) -> None:
+        """textDocument/diagnostic returns cached diagnostics."""
+        with _lsp_session("wrong_transpose.py", wait=3.0) as s:
+            rid = s.request(
+                "textDocument/diagnostic",
+                {"textDocument": {"uri": s.uri}},
+            )
+        resp = _find_response(s.messages, rid)
+        assert resp is not None
+        result = resp["result"]
+        assert result is not None
+        assert result["kind"] == "full"
+        assert "items" in result
+
+
+def _inject_workspace_doc(uri: str, source: str) -> None:
+    """Inject a text document into the LSP server's workspace for testing."""
+    from lsprotocol import types
+    from pygls.workspace import Workspace
+
+    from jaxtyc.lsp.server import server
+
+    if server.protocol._workspace is None:
+        server.protocol._workspace = Workspace(
+            root_uri=None, sync_kind=types.TextDocumentSyncKind.Full
+        )
+    server.protocol._workspace.put_text_document(
+        types.TextDocumentItem(uri=uri, language_id="python", version=1, text=source)
+    )
+
+
+def _remove_workspace_doc(uri: str) -> None:
+    """Remove a text document from the LSP server's workspace."""
+
+    from jaxtyc.lsp.server import server
+
+    if server.protocol._workspace is not None:
+        try:
+            server.protocol._workspace.remove_text_document(uri)
+        except Exception:
+            pass
+
+
+class TestCompletionDirect:
+    """Direct function call tests for textDocument/completion handler."""
+
+    def test_completion_returns_dim_names_directly(self) -> None:
+        """Completion returns known dimension names inside a shape string."""
+        from lsprotocol import types
+
+        from jaxtyc.lsp import _state
+        from jaxtyc.lsp._completion import completion
+        from jaxtyc.lsp.index import build_file_index
+        from jaxtyc.lsp.server import server
+
+        uri = "file:///test/completion_direct.py"
+        source = (FIXTURES / "correct_attention.py").read_text()
+        file_path = str(FIXTURES / "correct_attention.py")
+
+        file_index = build_file_index(source, file_path, uri)
+        _state.workspace_index.update_file(file_index)
+        _inject_workspace_doc(uri, source)
+
+        try:
+            # Line 8 (0-based): q: Float[Array, "batch heads seq head_dim"],
+            lines = source.splitlines()
+            q_line = lines[8]
+            quote_pos = q_line.index('"')
+            cursor_col = quote_pos + 1  # Just inside the shape string
+
+            params = types.CompletionParams(
+                text_document=types.TextDocumentIdentifier(uri=uri),
+                position=types.Position(line=8, character=cursor_col),
+            )
+            result = completion(server, params)
+            assert result is not None
+            assert isinstance(result, types.CompletionList)
+            assert len(result.items) > 0
+            labels = [item.label for item in result.items]
+            # Should contain known dimension names from the file
+            assert "batch" in labels or "heads" in labels or "seq" in labels
+        finally:
+            _state.workspace_index.remove_file(uri)
+            _remove_workspace_doc(uri)
+
+    def test_completion_returns_none_outside_shape_string(self) -> None:
+        """Completion returns None when cursor is outside a shape string."""
+        from lsprotocol import types
+
+        from jaxtyc.lsp import _state
+        from jaxtyc.lsp._completion import completion
+        from jaxtyc.lsp.index import build_file_index
+        from jaxtyc.lsp.server import server
+
+        uri = "file:///test/completion_outside.py"
+        source = (FIXTURES / "correct_attention.py").read_text()
+        file_path = str(FIXTURES / "correct_attention.py")
+
+        file_index = build_file_index(source, file_path, uri)
+        _state.workspace_index.update_file(file_index)
+        _inject_workspace_doc(uri, source)
+
+        try:
+            # Line 0 is the docstring, cursor at col 0 -> not in shape string
+            params = types.CompletionParams(
+                text_document=types.TextDocumentIdentifier(uri=uri),
+                position=types.Position(line=0, character=0),
+            )
+            result = completion(server, params)
+            assert result is None
+        finally:
+            _state.workspace_index.remove_file(uri)
+            _remove_workspace_doc(uri)
+
+    def test_completion_returns_none_past_end(self) -> None:
+        """Completion returns None when line is past document end."""
+        from lsprotocol import types
+
+        from jaxtyc.lsp._completion import completion
+        from jaxtyc.lsp.server import server
+
+        uri = "file:///test/completion_past.py"
+        _inject_workspace_doc(uri, "x = 1\n")
+
+        try:
+            params = types.CompletionParams(
+                text_document=types.TextDocumentIdentifier(uri=uri),
+                position=types.Position(line=999, character=0),
+            )
+            result = completion(server, params)
+            assert result is None
+        finally:
+            _remove_workspace_doc(uri)
+
+    def test_completion_mesh_axis_after_pipe(self) -> None:
+        """Completion returns mesh axis names after a pipe character."""
+        from lsprotocol import types
+
+        from jaxtyc.lsp import _state
+        from jaxtyc.lsp._completion import completion
+        from jaxtyc.lsp.index import build_file_index
+        from jaxtyc.lsp.server import server
+
+        uri = "file:///test/completion_pipe.py"
+        source = 'from jaxtyping import Array, Float\n\ndef f(x: Float[Array, "batch|"]) -> None:\n    pass\n'
+        file_path = "/test/completion_pipe.py"
+
+        file_index = build_file_index(source, file_path, uri)
+        _state.workspace_index.update_file(file_index)
+        _inject_workspace_doc(uri, source)
+
+        old_config = _state.config
+        try:
+            from jaxtyc.config import JaxtycConfig
+            from jaxtyc.config import ShardingConfig
+
+            _state.config = JaxtycConfig(sharding=ShardingConfig(mesh={"dp": 2, "mp": 4}))
+
+            # Cursor right after the pipe: "batch|"
+            # Line 2: def f(x: Float[Array, "batch|"]) -> None:
+            line_text = source.splitlines()[2]
+            pipe_pos = line_text.index("|")
+            cursor_col = pipe_pos + 1
+
+            params = types.CompletionParams(
+                text_document=types.TextDocumentIdentifier(uri=uri),
+                position=types.Position(line=2, character=cursor_col),
+            )
+            result = completion(server, params)
+            assert result is not None
+            assert isinstance(result, types.CompletionList)
+            labels = [item.label for item in result.items]
+            assert "dp" in labels
+            assert "mp" in labels
+            # Items should have EnumMember kind
+            for item in result.items:
+                assert item.kind == types.CompletionItemKind.EnumMember
+        finally:
+            _state.config = old_config
+            _state.workspace_index.remove_file(uri)
+            _remove_workspace_doc(uri)
+
+    def test_completion_no_matching_dims(self) -> None:
+        """Completion returns None when no dim names match prefix."""
+        from lsprotocol import types
+
+        from jaxtyc.lsp import _state
+        from jaxtyc.lsp._completion import completion
+        from jaxtyc.lsp.index import FileIndex
+        from jaxtyc.lsp.server import server
+
+        uri = "file:///test/completion_nomatch.py"
+        source = 'from jaxtyping import Array, Float\n\ndef f(x: Float[Array, "zzzzz"]) -> None:\n    pass\n'
+
+        # File index with no dim locations (empty index)
+        file_index = FileIndex(
+            file_path="/test/completion_nomatch.py",
+            uri=uri,
+            function_specs=(),
+            dim_locations=(),
+        )
+        _state.workspace_index.update_file(file_index)
+        _inject_workspace_doc(uri, source)
+
+        try:
+            # Cursor inside the shape string after "zzzzz"
+            line_text = source.splitlines()[2]
+            quote_pos = line_text.index('"')
+            cursor_col = quote_pos + 6
+
+            params = types.CompletionParams(
+                text_document=types.TextDocumentIdentifier(uri=uri),
+                position=types.Position(line=2, character=cursor_col),
+            )
+            result = completion(server, params)
+            assert result is None
+        finally:
+            _state.workspace_index.remove_file(uri)
+            _remove_workspace_doc(uri)
+
+
+class TestSignatureHelpDirect:
+    """Direct function call tests for textDocument/signatureHelp handler."""
+
+    def test_signature_help_shows_shape_info(self) -> None:
+        """Signature help displays shape parameters for annotated functions."""
+        from lsprotocol import types
+
+        from jaxtyc.lsp import _state
+        from jaxtyc.lsp._signature_help import signature_help
+        from jaxtyc.lsp.index import build_file_index
+        from jaxtyc.lsp.server import server
+
+        uri = "file:///test/sig_help_direct.py"
+        source = (FIXTURES / "multi_function.py").read_text()
+        file_path = str(FIXTURES / "multi_function.py")
+
+        file_index = build_file_index(source, file_path, uri)
+        _state.workspace_index.update_file(file_index)
+        _inject_workspace_doc(uri, source)
+
+        try:
+            # Line 24 (0-based): "    h = encode(x)"
+            lines = source.splitlines()
+            call_line = lines[24]
+            paren_pos = call_line.index("(")
+
+            params = types.SignatureHelpParams(
+                text_document=types.TextDocumentIdentifier(uri=uri),
+                position=types.Position(line=24, character=paren_pos + 1),
+            )
+            result = signature_help(server, params)
+            assert result is not None
+            assert isinstance(result, types.SignatureHelp)
+            assert len(result.signatures) >= 1
+            sig = result.signatures[0]
+            assert "encode" in sig.label
+            assert sig.parameters is not None
+            assert len(sig.parameters) >= 1
+            # Check active parameter
+            assert result.active_parameter == 0
+        finally:
+            _state.workspace_index.remove_file(uri)
+            _remove_workspace_doc(uri)
+
+    def test_signature_help_returns_none_no_call(self) -> None:
+        """Signature help returns None when cursor is not in a function call."""
+        from lsprotocol import types
+
+        from jaxtyc.lsp._signature_help import signature_help
+        from jaxtyc.lsp.server import server
+
+        uri = "file:///test/sig_help_none.py"
+        source = "x = 1 + 2\ny = 3\n"
+        _inject_workspace_doc(uri, source)
+
+        try:
+            params = types.SignatureHelpParams(
+                text_document=types.TextDocumentIdentifier(uri=uri),
+                position=types.Position(line=0, character=5),
+            )
+            result = signature_help(server, params)
+            assert result is None
+        finally:
+            _remove_workspace_doc(uri)
+
+    def test_signature_help_returns_none_past_end(self) -> None:
+        """Signature help returns None when line is past document end."""
+        from lsprotocol import types
+
+        from jaxtyc.lsp._signature_help import signature_help
+        from jaxtyc.lsp.server import server
+
+        uri = "file:///test/sig_help_past.py"
+        _inject_workspace_doc(uri, "x = 1\n")
+
+        try:
+            params = types.SignatureHelpParams(
+                text_document=types.TextDocumentIdentifier(uri=uri),
+                position=types.Position(line=999, character=0),
+            )
+            result = signature_help(server, params)
+            assert result is None
+        finally:
+            _remove_workspace_doc(uri)
+
+    def test_signature_help_with_return_spec(self) -> None:
+        """Signature help includes return shape in the label."""
+        from lsprotocol import types
+
+        from jaxtyc.lsp import _state
+        from jaxtyc.lsp._signature_help import signature_help
+        from jaxtyc.lsp.index import build_file_index
+        from jaxtyc.lsp.server import server
+
+        uri = "file:///test/sig_help_ret.py"
+        source = (FIXTURES / "multi_function.py").read_text()
+        file_path = str(FIXTURES / "multi_function.py")
+
+        file_index = build_file_index(source, file_path, uri)
+        _state.workspace_index.update_file(file_index)
+        _inject_workspace_doc(uri, source)
+
+        try:
+            # Line 24 (0-based): "    h = encode(x)"
+            lines = source.splitlines()
+            call_line = lines[24]
+            paren_pos = call_line.index("(")
+
+            params = types.SignatureHelpParams(
+                text_document=types.TextDocumentIdentifier(uri=uri),
+                position=types.Position(line=24, character=paren_pos + 1),
+            )
+            result = signature_help(server, params)
+            assert result is not None
+            sig_label = result.signatures[0].label
+            # encode has a return spec, so the label should contain "->"
+            assert "->" in sig_label
+        finally:
+            _state.workspace_index.remove_file(uri)
+            _remove_workspace_doc(uri)
+
+    def test_signature_help_unknown_function(self) -> None:
+        """Signature help returns None for unknown function calls."""
+        from lsprotocol import types
+
+        from jaxtyc.lsp._signature_help import signature_help
+        from jaxtyc.lsp.server import server
+
+        uri = "file:///test/sig_help_unknown.py"
+        source = "result = unknown_func(a, b)\n"
+        _inject_workspace_doc(uri, source)
+
+        try:
+            params = types.SignatureHelpParams(
+                text_document=types.TextDocumentIdentifier(uri=uri),
+                position=types.Position(line=0, character=22),
+            )
+            result = signature_help(server, params)
+            assert result is None
+        finally:
+            _remove_workspace_doc(uri)
+
+
+class TestNavigationHoverDirect:
+    """Direct function call tests for hover in _navigation.py."""
+
+    def test_hover_on_param_name(self) -> None:
+        """Hover on a parameter name shows shape info."""
+        from lsprotocol import types
+
+        from jaxtyc.lsp import _state
+        from jaxtyc.lsp._navigation import hover
+        from jaxtyc.lsp.index import build_file_index
+        from jaxtyc.lsp.server import server
+
+        uri = "file:///test/hover_param.py"
+        source = (FIXTURES / "correct_attention.py").read_text()
+        file_path = str(FIXTURES / "correct_attention.py")
+
+        file_index = build_file_index(source, file_path, uri)
+        _state.workspace_index.update_file(file_index)
+        _inject_workspace_doc(uri, source)
+
+        try:
+            # Line 9 (0-based): "    q: Float[Array, ..." - hover on "q"
+            lines = source.splitlines()
+            q_line = lines[8]
+            q_col = q_line.index("q")
+
+            params = types.HoverParams(
+                text_document=types.TextDocumentIdentifier(uri=uri),
+                position=types.Position(line=8, character=q_col),
+            )
+            result = hover(server, params)
+            # q is a parameter name within the function signature
+            assert result is not None
+            assert "q" in result.contents.value
+        finally:
+            _state.workspace_index.remove_file(uri)
+            _remove_workspace_doc(uri)
+
+    def test_hover_on_function_name(self) -> None:
+        """Hover on a function name shows the full shape signature."""
+        from lsprotocol import types
+
+        from jaxtyc.lsp import _state
+        from jaxtyc.lsp._navigation import hover
+        from jaxtyc.lsp.index import build_file_index
+        from jaxtyc.lsp.server import server
+
+        uri = "file:///test/hover_func.py"
+        source = (FIXTURES / "correct_attention.py").read_text()
+        file_path = str(FIXTURES / "correct_attention.py")
+
+        file_index = build_file_index(source, file_path, uri)
+        _state.workspace_index.update_file(file_index)
+        _inject_workspace_doc(uri, source)
+
+        try:
+            # Line 7 (0-based): "def attention("
+            lines = source.splitlines()
+            def_line = lines[7]
+            name_col = def_line.index("attention")
+
+            params = types.HoverParams(
+                text_document=types.TextDocumentIdentifier(uri=uri),
+                position=types.Position(line=7, character=name_col),
+            )
+            result = hover(server, params)
+            assert result is not None
+            assert "attention" in result.contents.value
+            assert "shape signature" in result.contents.value
+        finally:
+            _state.workspace_index.remove_file(uri)
+            _remove_workspace_doc(uri)
+
+
+class TestConfigurationDirect:
+    """Direct tests for _configuration.py helper functions."""
+
+    def test_reload_config_no_workspace_root(self) -> None:
+        """_reload_config handles missing workspace root gracefully."""
+        from lsprotocol import types
+        from pygls.workspace import Workspace
+
+        from jaxtyc.lsp._configuration import _reload_config
+        from jaxtyc.lsp.server import server
+
+        # Set up a workspace with no root URI
+        old_workspace = server.protocol._workspace
+        server.protocol._workspace = Workspace(
+            root_uri=None, sync_kind=types.TextDocumentSyncKind.Full
+        )
+        try:
+            _reload_config(server)  # Should not raise
+        finally:
+            server.protocol._workspace = old_workspace

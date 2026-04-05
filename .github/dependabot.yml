@@ -1,0 +1,43 @@
+version: 2
+updates:
+  - package-ecosystem: "uv"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    commit-message:
+      prefix: "build(deps)"
+    labels:
+      - "dependencies"
+    groups:
+      jax-ecosystem:
+        patterns:
+          - "jax*"
+          - "jaxtyping"
+      dev-tools:
+        patterns:
+          - "ruff"
+          - "ty"
+          - "pytest*"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    commit-message:
+      prefix: "ci(deps)"
+    labels:
+      - "dependencies"
+      - "ci"
+
+  - package-ecosystem: "npm"
+    directory: "/editors/vscode"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    commit-message:
+      prefix: "build(deps)"
+    labels:
+      - "dependencies"
+      - "vscode"
