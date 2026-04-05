@@ -35,7 +35,7 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Switched Dependabot from `pip` to native `uv` ecosystem
 - Simplified PyPI publish workflow to use `uv publish` instead of `pypa/gh-action-pypi-publish`
 - Consolidated `setup-uv` `python-version` input (replaces separate `uv python install` steps)
-- Updated CI guide docs to reference `setup-uv@v8`
+- Updated CI guide docs to reference `setup-uv@v7`
 
 ### Fixed
 
