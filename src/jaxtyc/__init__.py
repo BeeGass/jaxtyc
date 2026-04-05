@@ -1,6 +1,12 @@
 """jaxtyc - Static array shape checking for JAX powered by eval_shape."""
 
+from __future__ import annotations
+
 from importlib.metadata import version as _pkg_version
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from jaxtyc.analyzer.pipeline import analyze_file as analyze_file
 
 from jaxtyc.types import Diagnostic
 from jaxtyc.types import FileResult

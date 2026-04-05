@@ -5,6 +5,14 @@ All notable changes to jaxtyc are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.7.2] -- 2026-04-05
+
+### Fixed
+
+- API docs build failure caused by lazy `analyze_file` import not being visible to mkdocstrings/griffe static analysis
+- PyPI auto-publish not triggering because `GITHUB_TOKEN` events don't fire other workflows (moved publish into auto-release workflow)
+- GitHub release template added for categorized release notes
+
 ## [v0.7.1] -- 2026-04-05
 
 ### Added
