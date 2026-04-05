@@ -1,0 +1,86 @@
+name: Bug Report
+description: Report a bug in jaxtyc
+labels: ["bug"]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: Describe the bug
+      description: A clear description of what the bug is.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Minimal code example that reproduces the issue.
+      placeholder: |
+        ```python
+        from jaxtyping import Array, Float
+
+        def f(x: Float[Array, "batch dim"]) -> Float[Array, "batch dim"]:
+            return x
+        ```
+        ```bash
+        jaxtyc check example.py
+        ```
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior / error output
+    validations:
+      required: true
+
+  - type: input
+    id: jaxtyc-version
+    attributes:
+      label: jaxtyc version
+      placeholder: "0.7.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install-method
+    attributes:
+      label: Installation method
+      options:
+        - uv add
+        - pip install
+        - from source
+
+  - type: input
+    id: python-version
+    attributes:
+      label: Python version
+      placeholder: "3.13"
+
+  - type: input
+    id: jax-version
+    attributes:
+      label: JAX version
+      placeholder: "0.9.2"
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Linux
+        - macOS
+        - Windows (WSL)
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
