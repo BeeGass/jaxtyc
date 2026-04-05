@@ -1,0 +1,75 @@
+name: Auto-release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "pyproject.toml"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for version bump
+        id: version
+        run: |
+          CURRENT=$(grep '^version = ' pyproject.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "none")
+
+          echo "current=v$CURRENT" >> "$GITHUB_OUTPUT"
+          echo "latest_tag=$LATEST_TAG" >> "$GITHUB_OUTPUT"
+
+          if [ "v$CURRENT" = "$LATEST_TAG" ]; then
+            echo "bumped=false" >> "$GITHUB_OUTPUT"
+            echo "Version v$CURRENT matches latest tag. No release needed."
+          else
+            echo "bumped=true" >> "$GITHUB_OUTPUT"
+            echo "Version v$CURRENT differs from latest tag $LATEST_TAG. Creating release."
+          fi
+
+      - name: Extract changelog section
+        if: steps.version.outputs.bumped == 'true'
+        env:
+          VERSION: ${{ steps.version.outputs.current }}
+        run: |
+          # Extract the changelog section for this version.
+          # Looks for ## [vX.Y.Z] and captures everything until the next ## [
+          python3 -c "
+          import re, os
+
+          version = os.environ['VERSION']
+          text = open('CHANGELOG.md').read()
+
+          # Match ## [vX.Y.Z] or ## [X.Y.Z] section
+          pattern = rf'## \[{re.escape(version)}\].*?\n(.*?)(?=\n## \[|$)'
+          match = re.search(pattern, text, re.DOTALL)
+
+          if match:
+              body = match.group(1).strip()
+          else:
+              body = 'See CHANGELOG.md for details.'
+
+          # Write to file for gh release
+          with open('release_body.md', 'w') as f:
+              f.write(body)
+
+          print(f'Extracted {len(body)} chars for {version}')
+          "
+
+      - name: Create release
+        if: steps.version.outputs.bumped == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.current }}
+        run: |
+          gh release create "$TAG" \
+            --title "$TAG" \
+            --notes-file release_body.md \
+            --target main
