@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: write
+  id-token: write
 
 jobs:
   check:
@@ -51,13 +52,22 @@ jobs:
             echo "Minor/patch bump: $LATEST_TAG -> v$CURRENT. Auto-releasing."
           fi
 
-  # Patch and minor releases are published automatically.
+  # Patch and minor releases: create release and publish to PyPI.
+  # PyPI publish is inline because GITHUB_TOKEN events don't trigger
+  # other workflows (GitHub security feature).
   auto-release:
     needs: check
     if: needs.check.outputs.bumped == 'true' && needs.check.outputs.major == 'false'
     runs-on: ubuntu-latest
+    environment: pypi
     steps:
       - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          python-version: "3.13"
 
       - name: Extract changelog section
         env:
@@ -90,7 +100,13 @@ jobs:
             --notes-file release_body.md \
             --target main
 
+      - name: Build and publish to PyPI
+        run: |
+          uv build
+          uv publish
+
   # Major releases create a draft that must be manually reviewed and published.
+  # PyPI publish is handled by publish-pypi.yml when the draft is manually published.
   draft-major-release:
     needs: check
     if: needs.check.outputs.bumped == 'true' && needs.check.outputs.major == 'true'
