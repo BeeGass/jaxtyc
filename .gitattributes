@@ -1,0 +1,12 @@
+# Auto-detect text files and normalize line endings
+* text=auto
+
+# Binary assets
+docs/assets/*.png binary
+docs/assets/*.mov binary
+editors/vscode/icon.png binary
+
+# Linguist overrides for GitHub language statistics
+editors/vscode/** linguist-vendored
+docs/** linguist-documentation
+*.lock linguist-generated

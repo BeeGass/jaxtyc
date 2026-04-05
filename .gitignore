@@ -11,3 +11,17 @@ build/
 htmlcov/
 uv.lock
 site/
+
+# IDE
+.idea/
+.vscode/
+
+# OS
+.DS_Store
+
+# Environment
+.env
+.env.local
+
+# Coverage artifacts
+coverage.xml
