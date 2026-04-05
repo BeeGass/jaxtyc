@@ -2,7 +2,6 @@
 
 from importlib.metadata import version as _pkg_version
 
-from jaxtyc.analyzer.pipeline import analyze_file
 from jaxtyc.types import Diagnostic
 from jaxtyc.types import FileResult
 from jaxtyc.types import NamedShape
@@ -19,3 +18,16 @@ __all__ = [
     "TraceResult",
     "analyze_file",
 ]
+
+
+def __getattr__(name: str) -> object:
+    """Lazy import for analyze_file to avoid eager JAX initialization.
+
+    This allows the CLI's _enforce_cpu_backend() to set JAX_PLATFORMS=cpu
+    before JAX is first imported.
+    """
+    if name == "analyze_file":
+        from jaxtyc.analyzer.pipeline import analyze_file
+
+        return analyze_file
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

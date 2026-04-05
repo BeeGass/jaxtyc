@@ -108,7 +108,7 @@ rocm = [
 ]
 # --- Library integration extras ---
 watch = ["watchfiles>=1.0,<2"]
-flax = ["flax>=0.10.0,<0.12"]
+flax = ["flax>=0.10.0,<0.10.3"]
 equinox = ["equinox>=0.11,<0.13"]
 einops = ["einops>=0.8,<0.9"]
 all = ["jaxtyc[watch,flax,equinox,einops]"]
@@ -137,7 +137,7 @@ jaxtyc = "jaxtyc.cli.main:main"
 
 [project.urls]
 Homepage = "https://github.com/BeeGass/jaxtyc"
-Documentation = "https://github.com/BeeGass/jaxtyc/tree/main/docs"
+Documentation = "https://beegass.github.io/jaxtyc/"
 Repository = "https://github.com/BeeGass/jaxtyc"
 Changelog = "https://github.com/BeeGass/jaxtyc/blob/main/CHANGELOG.md"
 "Bug Tracker" = "https://github.com/BeeGass/jaxtyc/issues"
