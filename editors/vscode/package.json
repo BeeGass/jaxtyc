@@ -2,7 +2,7 @@
   "name": "jaxtyc",
   "displayName": "jaxtyc",
   "description": "Static array shape checking for JAX",
-  "version": "0.3.0",
+  "version": "0.7.2",
   "publisher": "beegass",
   "license": "MIT",
   "icon": "icon.png",
@@ -115,12 +115,12 @@
         "jaxtyc.sharding.display": {
           "type": "string",
           "enum": [
-            "append",
+            "all",
             "constrained_only",
             "off"
           ],
-          "default": "append",
-          "markdownDescription": "How to show sharding info in inlay hints. `append` shows P(...) after dtype, `constrained_only` only for sharding constraints, `off` disables."
+          "default": "all",
+          "markdownDescription": "How to show sharding info in inlay hints. `all` shows dim|axis on every line, `constrained_only` only for sharding constraints, `off` disables."
         },
         "jaxtyc.sharding.rules": {
           "type": "array",
@@ -130,14 +130,22 @@
               "sharding-rank-mismatch",
               "sharding-axis-unknown",
               "sharding-conflict",
-              "sharding-io-mismatch"
+              "sharding-io-mismatch",
+              "sharding-propagation-mismatch",
+              "sharding-annotation-incomplete",
+              "sharding-dim-conflict",
+              "sharding-mesh-undefined"
             ]
           },
           "default": [
             "sharding-rank-mismatch",
             "sharding-axis-unknown",
             "sharding-conflict",
-            "sharding-io-mismatch"
+            "sharding-io-mismatch",
+            "sharding-propagation-mismatch",
+            "sharding-annotation-incomplete",
+            "sharding-dim-conflict",
+            "sharding-mesh-undefined"
           ],
           "markdownDescription": "Allow-list of sharding diagnostic rules to enable."
         }
