@@ -151,12 +151,10 @@ def _check_cross_file_calls(
 
             related_info: list[types.DiagnosticRelatedInformation] | None = None
             if diag.data is not None and diag.data.related_locations:
-                from pathlib import PurePosixPath
-
                 related_info = [
                     types.DiagnosticRelatedInformation(
                         location=types.Location(
-                            uri=PurePosixPath(rl.file_path).as_uri(),
+                            uri=Path(rl.file_path).as_uri(),
                             range=types.Range(
                                 start=types.Position(line=max(0, rl.line - 1), character=rl.col),
                                 end=types.Position(line=max(0, rl.line - 1), character=rl.end_col),
@@ -280,6 +278,7 @@ def _analyze_and_publish(ls: LanguageServer, uri: str, source: str | None = None
                     severity=d.severity,
                     message=d.message,
                     rule=d.rule,
+                    data=d.data,
                 )
             )
         from jaxtyc.types import FileResult
@@ -328,11 +327,9 @@ def _analyze_and_publish(ls: LanguageServer, uri: str, source: str | None = None
 
         related_info: list[types.DiagnosticRelatedInformation] | None = None
         if diag.data is not None and diag.data.related_locations:
-            from pathlib import PurePosixPath
-
             related_info = []
             for rl in diag.data.related_locations:
-                rl_uri = PurePosixPath(rl.file_path).as_uri()
+                rl_uri = Path(rl.file_path).as_uri()
                 related_info.append(
                     types.DiagnosticRelatedInformation(
                         location=types.Location(

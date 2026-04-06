@@ -35,7 +35,7 @@ def did_open(ls: LanguageServer, params: types.DidOpenTextDocumentParams) -> Non
     """Analyze on open (runs in thread pool to avoid blocking event loop)."""
     from jaxtyc.lsp.server import _analyze_and_publish
 
-    _analyze_and_publish(ls, params.text_document.uri)
+    _analyze_and_publish(ls, params.text_document.uri, params.text_document.text)
 
 
 @server.thread()

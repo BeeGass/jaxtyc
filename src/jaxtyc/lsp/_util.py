@@ -87,11 +87,11 @@ def format_named_shape(
             indices: list[str] = []
             while (
                 i < len(named_shape)
-                and named_shape[i] is not None
-                and named_shape[i].startswith("_ellipsis_")  # type: ignore[union-attr]
+                and (elem := named_shape[i]) is not None
+                and elem.startswith("_ellipsis_")
             ):
                 # Extract index from _ellipsis_N; fall back to str(shape) for concrete
-                idx = named_shape[i].split("_ellipsis_")[1]  # type: ignore[union-attr]
+                idx = elem.split("_ellipsis_")[1]
                 indices.append(idx)
                 i += 1
             parts.append(f"...({', '.join(indices)})")
@@ -102,8 +102,8 @@ def format_named_shape(
             var_name = name.split("_var_")[1].rsplit("_", 1)[0]
             while (
                 i < len(named_shape)
-                and named_shape[i] is not None
-                and named_shape[i].startswith(f"_var_{var_name}_")  # type: ignore[union-attr]
+                and (elem := named_shape[i]) is not None
+                and elem.startswith(f"_var_{var_name}_")
             ):
                 i += 1
             parts.append(f"*{var_name}")
