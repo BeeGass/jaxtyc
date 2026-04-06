@@ -47,9 +47,13 @@ src/jaxtyc/
     importer.py            # Dynamic module import with venv auto-discovery
     tracer.py              # jax.eval_shape / jax.make_jaxpr tracing
     source_map.py          # Jaxpr source_info frame extraction
-    checker.py             # Shape comparison and diagnostic emission (14 rules)
+    checker.py             # Shape comparison and diagnostic emission (18 rules)
     divergence.py          # Divergence detection: find first shape deviation
     sharding_checker.py    # Sharding validation: rank, axis, conflict, io-mismatch
+    einops_parser.py       # Parse einops pattern strings into output dim names
+    einops_detector.py     # AST-based detection of einops rearrange/reduce/repeat calls
+    mesh_resolver.py       # AST-based mesh shape and axis_rules inference
+    _errors.py             # Error message truncation utilities
     suppressions.py        # Inline # jaxtyc: ignore comment parsing
     pipeline.py            # End-to-end orchestration (analyze_file)
 
@@ -90,6 +94,8 @@ tests/
     nnx_module.py          # Flax NNX module fixture
     eqx_module.py          # Equinox module fixture
     nnx_sharded.py         # Flax NNX module with sharding constraints
+    nnx_multihead.py       # Flax NNX multi-head attention fixture
+    einops_rearrange.py    # Einops rearrange pattern fixture
     sharded_rank_mismatch.py  # Sharding rank mismatch trigger
     ellipsis_patterns.py   # Variadic and ellipsis annotation tests
     int_annotations.py     # Int dtype annotations
@@ -100,7 +106,7 @@ tests/
     untraceable.py         # Non-jaxtyping files (silently skipped)
   test_annotations.py      # Annotation parser tests
   test_dim_env.py          # DimEnv prime assignment tests
-  test_checker.py          # Shape checker tests (all 10 rules)
+  test_checker.py          # Diagnostic rule tests
   test_integration.py      # Full pipeline tests (analyze_file on fixtures)
   test_cli.py              # CLI invocation tests
   test_config.py           # Configuration loading tests
@@ -121,6 +127,11 @@ tests/
   test_index.py            # WorkspaceIndex tests
   test_self_analysis.py    # Self-analysis (jaxtyc checking its own fixtures)
   test_benchmarks.py       # Performance benchmarks
+  test_einops_parser.py    # Einops pattern parser tests
+  test_einops_detector.py  # Einops detector tests
+  test_cpu_backend.py      # CPU backend enforcement tests
+  test_mesh_resolver.py    # Mesh resolver tests
+  test_pipeline.py         # End-to-end pipeline tests
 ```
 
 ## Adding a New Diagnostic Rule

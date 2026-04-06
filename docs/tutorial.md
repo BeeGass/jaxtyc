@@ -64,7 +64,7 @@ Found 1 error(s) in 1 function(s) checked (0.03s)
 ```
 
 !!! warning "Why this is subtle"
-    If `seq` and `head_dim` happen to be equal at runtime (e.g., both 64), a unit test with concrete values would pass. jaxtyc uses distinct primes for each name, so `seq=5` and `head_dim=7` can never collide.
+    If `seq` and `head_dim` happen to be equal at runtime (e.g., both 64), a unit test with concrete values would pass. jaxtyc uses distinct symbolic dimensions for each name, so `seq` and `head_dim` can never collide regardless of their concrete sizes.
 
 ---
 
@@ -90,18 +90,18 @@ attention(q: float32[batch, heads, seq, head_dim], k: float32[batch, heads, seq,
 !!! info "Reading the trace"
     Each line shows a JAX primitive (`transpose`, `dot_general`, `exp`, etc.), its output shape with dimension names resolved, and the source line it maps to. The final `[matches]` confirms the traced output equals the annotated return shape.
 
-### How prime mapping works
+### How symbolic dimension tracing works
 
-When jaxtyc builds abstract inputs, it assigns each dimension name a unique prime starting at 101 (to avoid collisions with small fixed sizes in annotations):
+When jaxtyc builds abstract inputs, it assigns each unique dimension name a distinct symbolic dimension via `jax.export.symbolic_shape`. For example, the four dimensions in the attention function become four symbolic values:
 
-| Dimension | Prime |
-|-----------|-------|
-| `batch` | 101 |
-| `heads` | 103 |
-| `seq` | 107 |
-| `head_dim` | 109 |
+- `batch` -> a unique symbolic `_DimExpr` for "batch"
+- `heads` -> a unique symbolic `_DimExpr` for "heads"
+- `seq` -> a unique symbolic `_DimExpr` for "seq"
+- `head_dim` -> a unique symbolic `_DimExpr` for "head_dim"
 
-JAX's `eval_shape` propagates these sizes through the computation graph without executing any FLOPs. At the output, jaxtyc reverse-maps each prime back to its name. If the output contains `109` where the annotation says `107`, that is `head_dim` where `seq` was expected -- a shape mismatch, reported with the exact dimension names rather than opaque integers.
+These symbolic dimensions are abstract values that JAX traces through computations without allocating real arrays or executing any FLOPs. At the output, jaxtyc compares the symbolic values against the return annotation. If the output contains the symbolic value for `head_dim` where the annotation says `seq`, jaxtyc detects the mismatch because these are distinct symbolic objects -- reported with exact dimension names rather than opaque integers.
+
+No arrays are allocated and no computation is executed. Shapes are checked purely symbolically.
 
 !!! tip "When to use trace"
     `jaxtyc trace` is most useful for debugging *why* a shape mismatch occurs. The intermediate shapes show exactly which operation introduced the wrong dimension.

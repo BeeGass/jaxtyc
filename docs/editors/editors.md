@@ -12,7 +12,7 @@ jaxtyc lsp
 
 The server communicates over stdio and provides:
 
-- **Diagnostics** -- shape errors (`shape-mismatch`, `rank-mismatch`, `trace-error`, `cross-function-mismatch`, `param-inconsistency`, `return-count-mismatch`) and sharding errors (`sharding-rank-mismatch`, `sharding-axis-unknown`, `sharding-conflict`, `sharding-io-mismatch`) appear as editor diagnostics on open, save, and change. Both push and pull diagnostic models are supported. Changes are debounced (default 500ms).
+- **Diagnostics** -- shape errors (`shape-mismatch`, `rank-mismatch`, `trace-error`, `cross-function-mismatch`, `param-inconsistency`, `return-count-mismatch`) and sharding errors (`sharding-rank-mismatch`, `sharding-axis-unknown`, `sharding-conflict`, `sharding-io-mismatch`, `sharding-propagation-mismatch`, `sharding-annotation-incomplete`, `sharding-dim-conflict`, `sharding-mesh-undefined`) appear as editor diagnostics on open, save, and change. Both push and pull diagnostic models are supported. Changes are debounced (default 500ms).
 - **Hover** -- hover over any line in a traced function to see intermediate JAX operation shapes, or hover over a dimension name in a shape string to see its symbolic prime size, usage count, and all reference locations.
 - **CodeLens** -- a virtual annotation above each jaxtyping-annotated function showing traced input/output shapes.
 - **Go to Definition / Find References** -- navigate to dimension name definitions and find all references across the workspace, including cross-file.
@@ -34,7 +34,9 @@ The server communicates over stdio and provides:
 
 === "VS Code"
 
-    Install the jaxtyc extension from the `.vsix` file in `editors/vscode/`:
+    Install from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=beegass.jaxtyc) or search for "jaxtyc" in the Extensions view.
+
+    Alternatively, build and install from source:
 
     ```bash
     cd editors/vscode && npm install && npm run bundle
@@ -66,7 +68,7 @@ The server communicates over stdio and provides:
     | `jaxtyc.hints.errorMode` | `both` | `both` shows shape and error, `replace` shows only error |
     | `jaxtyc.hints.errorLocation` | `divergence` | Where to place error hints |
     | `jaxtyc.hints.errorStyle` | `pipe` | Separator style between shape and error text |
-    | `jaxtyc.sharding.display` | `append` | Sharding display mode |
+    | `jaxtyc.sharding.display` | `all` | Sharding display mode |
     | `jaxtyc.sharding.rules` | all enabled | Allow-list of sharding diagnostic rules |
 
     **Commands:**
