@@ -1,0 +1,2200 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Static array shape checking for JAX powered by eval_shape">
+      
+      
+        <meta name="author" content="Bryan Gass">
+      
+      
+        <link rel="canonical" href="https://beegass.github.io/jaxtyc/architecture/internals/">
+      
+      
+        <link rel="prev" href="../overview/">
+      
+      
+        <link rel="next" href="../../contributing/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Internals - jaxtyc</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,300i,400,400i,700,700i%7CJetBrains+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Inter";--md-code-font:"JetBrains Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/_mkdocstrings.css">
+    
+      <link rel="stylesheet" href="../../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="deep-purple" data-md-color-accent="amber">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#internals" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="jaxtyc" class="md-header__button md-logo" aria-label="jaxtyc" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            jaxtyc
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Internals
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="deep-purple" data-md-color-accent="amber"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="deep-purple" data-md-color-accent="amber"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/BeeGass/jaxtyc" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    BeeGass/jaxtyc
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+    
+      
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../tutorial/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Tutorial
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../guide/annotations/" class="md-tabs__link">
+          
+  
+  
+  Guide
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../reference/api/" class="md-tabs__link">
+          
+  
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../editors/editors/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Editors
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../overview/" class="md-tabs__link">
+          
+  
+  
+  Architecture
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../contributing/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Contributing
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../changelog/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Changelog
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+    
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="jaxtyc" class="md-nav__button md-logo" aria-label="jaxtyc" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    jaxtyc
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/BeeGass/jaxtyc" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    BeeGass/jaxtyc
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tutorial/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tutorial
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/annotations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Annotations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guide/ci/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CI Integration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Python API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/diagnostics/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Diagnostic Rules
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../editors/editors/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Editors
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Internals
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Internals
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#symbolic-dimensions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Symbolic Dimensions
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Symbolic Dimensions">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-problem" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Problem
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-solution" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Solution
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#implementation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Implementation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#concrete-fallback-for-modules" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Concrete Fallback for Modules
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#synthetic-name-cleanup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Synthetic Name Cleanup
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#jaxeval_shape-tracing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        jax.eval_shape Tracing
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="jax.eval_shape Tracing">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#how-it-works" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How It Works
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#input-construction" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Input Construction
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mesh-context" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Mesh Context
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#output-extraction" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Output Extraction
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#error-handling" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Error Handling
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#flax-nnx-and-equinox-support" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Flax NNX and Equinox Support
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#make_jaxpr-for-intermediates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        make_jaxpr for Intermediates
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#source-mapping" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Source Mapping
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Source Mapping">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-problem_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Problem
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#frame-filtering" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Frame Filtering
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#lsp-integration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LSP Integration
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cross-function-shape-propagation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cross-Function Shape Propagation
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Cross-Function Shape Propagation">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#how-it-works_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How It Works
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#shared-dimenv" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Shared DimEnv
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#inline-suppressions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Inline Suppressions
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Inline Suppressions">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#syntax" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Syntax
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#matching-logic" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Matching Logic
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sharding-validation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sharding Validation
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Sharding Validation">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Overview
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#annotation-parsing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Annotation Parsing
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mesh-resolution" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Mesh Resolution
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#sharding-diagnostic-rules" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sharding Diagnostic Rules
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#graceful-fallback" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Graceful Fallback
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#sharding-in-lsp" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sharding in LSP
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#lsp-multiplexer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LSP Multiplexer
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="LSP Multiplexer">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#diagnostic-filtering" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Diagnostic Filtering
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#symbolic-dimensions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Symbolic Dimensions
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Symbolic Dimensions">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-problem" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Problem
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-solution" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Solution
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#implementation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Implementation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#concrete-fallback-for-modules" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Concrete Fallback for Modules
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#synthetic-name-cleanup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Synthetic Name Cleanup
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#jaxeval_shape-tracing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        jax.eval_shape Tracing
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="jax.eval_shape Tracing">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#how-it-works" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How It Works
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#input-construction" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Input Construction
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mesh-context" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Mesh Context
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#output-extraction" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Output Extraction
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#error-handling" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Error Handling
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#flax-nnx-and-equinox-support" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Flax NNX and Equinox Support
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#make_jaxpr-for-intermediates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        make_jaxpr for Intermediates
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#source-mapping" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Source Mapping
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Source Mapping">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-problem_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Problem
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#frame-filtering" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Frame Filtering
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#lsp-integration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LSP Integration
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cross-function-shape-propagation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cross-Function Shape Propagation
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Cross-Function Shape Propagation">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#how-it-works_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How It Works
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#shared-dimenv" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Shared DimEnv
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#inline-suppressions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Inline Suppressions
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Inline Suppressions">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#syntax" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Syntax
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#matching-logic" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Matching Logic
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sharding-validation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sharding Validation
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Sharding Validation">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Overview
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#annotation-parsing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Annotation Parsing
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mesh-resolution" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Mesh Resolution
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#sharding-diagnostic-rules" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sharding Diagnostic Rules
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#graceful-fallback" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Graceful Fallback
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#sharding-in-lsp" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sharding in LSP
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#lsp-multiplexer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LSP Multiplexer
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="LSP Multiplexer">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#diagnostic-filtering" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Diagnostic Filtering
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="internals">Internals<a class="headerlink" href="#internals" title="Permanent link">&para;</a></h1>
+<h2 id="symbolic-dimensions">Symbolic Dimensions<a class="headerlink" href="#symbolic-dimensions" title="Permanent link">&para;</a></h2>
+<h3 id="the-problem">The Problem<a class="headerlink" href="#the-problem" title="Permanent link">&para;</a></h3>
+<p>If two named dimensions happen to share the same concrete size, shape bugs become invisible. Consider multi-head attention where <code>batch=4</code> and <code>head_dim=4</code>. A transpose that swaps <code>batch</code> and <code>head_dim</code> produces the same shape tuple <code>(4, ...)</code> -- the checker cannot distinguish the two dimensions and reports no error.</p>
+<h3 id="the-solution">The Solution<a class="headerlink" href="#the-solution" title="Permanent link">&para;</a></h3>
+<p>Each named dimension is assigned a unique symbolic dimension object via <code>jax.export.symbolic_shape</code>:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="p">(</span><span class="n">batch_dim</span><span class="p">,)</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">export</span><span class="o">.</span><span class="n">symbolic_shape</span><span class="p">(</span><span class="s2">&quot;batch&quot;</span><span class="p">,</span> <span class="n">scope</span><span class="o">=</span><span class="n">scope</span><span class="p">)</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="p">(</span><span class="n">seq_dim</span><span class="p">,)</span>   <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">export</span><span class="o">.</span><span class="n">symbolic_shape</span><span class="p">(</span><span class="s2">&quot;seq&quot;</span><span class="p">,</span> <span class="n">scope</span><span class="o">=</span><span class="n">scope</span><span class="p">)</span>
+</span></code></pre></div>
+<p>Symbolic dimensions (<code>_DimExpr</code> objects) are distinct by construction. JAX propagates them through operations, and error messages use the original dimension names directly. No two distinct named dims can ever be confused.</p>
+<h3 id="implementation">Implementation<a class="headerlink" href="#implementation" title="Permanent link">&para;</a></h3>
+<p><code>DimEnv</code> maintains a mapping from dimension names to symbolic <code>_DimExpr</code> objects, all sharing a single <code>SymbolicScope</code>:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>DimEnv._dims: {&quot;batch&quot;: &lt;batch&gt;, &quot;heads&quot;: &lt;heads&gt;, &quot;seq&quot;: &lt;seq&gt;, &quot;head_dim&quot;: &lt;head_dim&gt;}
+</span></code></pre></div>
+<p><strong>Reverse mapping</strong> is trivial: <code>str(dim)</code> returns the original name. <code>shape_to_names(shape)</code> maps a full shape tuple back to dimension names for diagnostics and LSP display.</p>
+<p><strong>Special dimension kinds:</strong></p>
+<ul>
+<li><strong>Fixed dims</strong> (e.g., <code>Float[Array, "batch 4 d_model"]</code>): the literal <code>4</code> is used directly as a plain int. Fixed dims represent known constants.</li>
+<li><strong>Variadic dims</strong> (<code>*batch</code>): expanded to 2 symbolic dims under internal names <code>_var_batch_0</code> and <code>_var_batch_1</code>. Two dims are needed because variadic dims represent an unknown number of leading dimensions (minimum 2 for shape distinguishability).</li>
+<li><strong>Ellipsis dims</strong> (<code>...</code>): expanded to 2 symbolic dims under <code>_ellipsis_0</code> and <code>_ellipsis_1</code>, same reasoning as variadic.</li>
+<li><strong>Anonymous dims</strong> (<code>_</code>): each gets a unique symbolic dim under <code>_anon_{counter}</code>.</li>
+</ul>
+<h3 id="concrete-fallback-for-modules">Concrete Fallback for Modules<a class="headerlink" href="#concrete-fallback-for-modules" title="Permanent link">&para;</a></h3>
+<p>NNX and equinox module constructors require plain <code>int</code> arguments (symbolic <code>_DimExpr</code> objects are not accepted). <code>DimEnv</code> provides a parallel <code>get_concrete_size(name)</code> method that assigns unique odd integers starting at 101. The pipeline uses <code>make_concrete_shape()</code> for module construction and <code>make_shape()</code> (symbolic) for standalone function tracing.</p>
+<h3 id="synthetic-name-cleanup">Synthetic Name Cleanup<a class="headerlink" href="#synthetic-name-cleanup" title="Permanent link">&para;</a></h3>
+<p>Internal names (<code>_ellipsis_0</code>, <code>_var_batch_1</code>, <code>_anon_3</code>) leak into tracer output. The <code>format_named_shape()</code> utility in <code>_util.py</code> collapses these for user-facing display:</p>
+<table>
+<thead>
+<tr>
+<th>Internal</th>
+<th>Display</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>_ellipsis_0, _ellipsis_1</code></td>
+<td><code>...(0, 1)</code></td>
+</tr>
+<tr>
+<td><code>_var_batch_0, _var_batch_1</code></td>
+<td><code>*batch</code></td>
+</tr>
+<tr>
+<td><code>_anon_N</code></td>
+<td><code>_</code></td>
+</tr>
+</tbody>
+</table>
+<p>A shared <code>DimEnv</code> is created per file, so the same dimension name always maps to the same symbolic dim across all functions in the file. This enables cross-function consistency checking -- if <code>encode</code> and <code>decode</code> both use a dimension named <code>hidden</code>, it maps to the same dim in both, so the checker can verify that outputs match across call boundaries.</p>
+<hr />
+<h2 id="jaxeval_shape-tracing">jax.eval_shape Tracing<a class="headerlink" href="#jaxeval_shape-tracing" title="Permanent link">&para;</a></h2>
+<h3 id="how-it-works">How It Works<a class="headerlink" href="#how-it-works" title="Permanent link">&para;</a></h3>
+<p><code>jax.eval_shape(fn, *args)</code> runs a function with abstract inputs (<code>ShapeDtypeStruct</code>) that carry only shape and dtype metadata -- no actual array data is allocated and no computation is performed. JAX propagates shapes through every operation in the function body and returns the output's shape/dtype.</p>
+<h3 id="input-construction">Input Construction<a class="headerlink" href="#input-construction" title="Permanent link">&para;</a></h3>
+<p>For each annotated parameter, a <code>ShapeDtypeStruct</code> is built from the <code>ShapeSpec</code>:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="c1"># Annotation: q: Float[Array, &quot;batch heads seq head_dim&quot;]</span>
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="c1"># DimEnv creates symbolic dims for each name</span>
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="n">ShapeDtypeStruct</span><span class="p">(</span><span class="n">shape</span><span class="o">=</span><span class="p">(</span><span class="n">batch</span><span class="p">,</span> <span class="n">heads</span><span class="p">,</span> <span class="n">seq</span><span class="p">,</span> <span class="n">head_dim</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">float32</span><span class="p">)</span>
+</span></code></pre></div>
+<p>When sharding annotations are present (e.g., <code>"batch|dp seq|None d_model|mp"</code>), <code>_build_sharded_abstract_input()</code> constructs inputs with <code>NamedSharding</code> and concrete sizes (divisible by the mesh partition) instead of symbolic dims. Logical axis names are resolved through <code>axis_rules</code> before building the <code>PartitionSpec</code>.</p>
+<p>The dtype is resolved from the jaxtyping class name (<code>Float</code> -&gt; <code>float32</code>, <code>BFloat16</code> -&gt; <code>bfloat16</code>, etc.) via <code>_DTYPE_MAP</code>.</p>
+<p>Parameters annotated with <code>Float[Array, ...]</code> (ellipsis literal, meaning "any shape") are skipped -- there is no shape to construct.</p>
+<h3 id="mesh-context">Mesh Context<a class="headerlink" href="#mesh-context" title="Permanent link">&para;</a></h3>
+<p>When any parameter has sharding annotations, <code>trace_function()</code> wraps the <code>eval_shape</code> call in a mesh context:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">abstract_mesh</span> <span class="o">=</span> <span class="n">_build_abstract_mesh</span><span class="p">(</span><span class="n">mesh_config</span><span class="p">)</span>  <span class="c1"># AxisType.Explicit</span>
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="k">with</span> <span class="n">jax</span><span class="o">.</span><span class="n">_src</span><span class="o">.</span><span class="n">mesh</span><span class="o">.</span><span class="n">use_abstract_mesh</span><span class="p">(</span><span class="n">abstract_mesh</span><span class="p">):</span>
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>    <span class="n">output_struct</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">eval_shape</span><span class="p">(</span><span class="n">wrapper</span><span class="p">,</span> <span class="o">**</span><span class="n">abstract_inputs</span><span class="p">)</span>
+</span></code></pre></div>
+<p>This enables JAX to propagate sharding through operations. The same mesh context wraps the <code>make_jaxpr</code> call for intermediate extraction.</p>
+<p>If sharded tracing fails (e.g., operations without explicit sharding rules like scatter or advanced indexing), the tracer retries without sharding via <code>_trace_fallback_unsharded()</code> and sets <code>TraceResult.sharding_fallback_reason</code> to indicate the fallback.</p>
+<h3 id="output-extraction">Output Extraction<a class="headerlink" href="#output-extraction" title="Permanent link">&para;</a></h3>
+<p>The return value of <code>eval_shape</code> may be:</p>
+<ul>
+<li>A single <code>ShapeDtypeStruct</code> -- shape and dtype are read directly.</li>
+<li>A PyTree of structs (tuple, dict, nested dataclass) -- <code>jax.tree.leaves()</code> extracts all leaves. For tuple return annotations (<code>tuple[Float[...], Float[...]]</code>), each leaf is checked element-by-element against its corresponding annotation. If the element count differs, a <code>return-count-mismatch</code> diagnostic is emitted.</li>
+</ul>
+<h3 id="error-handling">Error Handling<a class="headerlink" href="#error-handling" title="Permanent link">&para;</a></h3>
+<p>If <code>eval_shape</code> raises (e.g., incompatible matmul dimensions, unsupported Python control flow), the exception message is captured and emitted as a <code>trace-error</code> diagnostic. The function is not re-traced.</p>
+<h3 id="flax-nnx-and-equinox-support">Flax NNX and Equinox Support<a class="headerlink" href="#flax-nnx-and-equinox-support" title="Permanent link">&para;</a></h3>
+<p>For methods on NNX modules, the pipeline constructs a concrete module instance using <code>DimEnv.get_concrete_size()</code> for dimension-derived constructor args, then splits it via <code>nnx.split/merge</code> and traces the bound method with <code>jax.eval_shape</code>. When the function has sharding annotations and a mesh config, the <code>eval_shape</code> call is wrapped in a mesh context for sharding propagation.</p>
+<p>For Equinox modules, <code>jax.eval_shape</code> traces bound methods on concrete module instances similarly, also with optional mesh context for sharded tracing.</p>
+<h3 id="make_jaxpr-for-intermediates">make_jaxpr for Intermediates<a class="headerlink" href="#make_jaxpr-for-intermediates" title="Permanent link">&para;</a></h3>
+<p>After <code>eval_shape</code> succeeds, <code>jax.make_jaxpr</code> is run separately to produce a Jaxpr (JAX's intermediate representation). Each equation in the Jaxpr represents a single primitive operation and carries:</p>
+<ul>
+<li>Output variable(s) with abstract values (shape + dtype)</li>
+<li>A <code>source_info</code> with traceback frames</li>
+</ul>
+<p>The intermediates are extracted from equation output variables and stored as <code>IntermediateShape</code> objects for hover and the <code>trace</code> command.</p>
+<p>If <code>make_jaxpr</code> fails (which can happen for functions that use side effects or non-functionally-pure constructs), the failure is silently swallowed -- <code>eval_shape</code> results are still valid.</p>
+<hr />
+<h2 id="source-mapping">Source Mapping<a class="headerlink" href="#source-mapping" title="Permanent link">&para;</a></h2>
+<h3 id="the-problem_1">The Problem<a class="headerlink" href="#the-problem_1" title="Permanent link">&para;</a></h3>
+<p>Jaxpr equations correspond to low-level JAX primitives (<code>dot_general</code>, <code>transpose</code>, <code>broadcast_in_dim</code>), not user source lines. To show shapes at the right line in an editor, we need to map each equation back to the user's source code.</p>
+<h3 id="frame-filtering">Frame Filtering<a class="headerlink" href="#frame-filtering" title="Permanent link">&para;</a></h3>
+<p>Each jaxpr equation has a <code>source_info.traceback.frames</code> list -- a stack of <code>(file_name, line_num)</code> pairs captured during tracing. These frames include both user code and JAX internals:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>frame 0: jax/_src/lax/lax.py:1234        (JAX internal)
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>frame 1: jax/_src/numpy/linalg.py:567    (JAX internal)
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>frame 2: /home/user/model.py:42          (user code)
+</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>frame 3: /home/user/model.py:38          (user code - caller)
+</span></code></pre></div>
+<p>The source mapper walks frames in reverse order and returns the first frame whose path does <strong>not</strong> contain any of the JAX-internal markers:</p>
+<ul>
+<li><code>jax/_src/</code></li>
+<li><code>jaxlib/</code></li>
+<li><code>site-packages/jax</code></li>
+<li><code>site-packages/jaxlib</code></li>
+</ul>
+<p>The last non-internal frame (frame 2 above) gives the most specific user source location -- the line that directly caused the JAX operation.</p>
+<h3 id="lsp-integration">LSP Integration<a class="headerlink" href="#lsp-integration" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Hover</strong>: when the cursor is on a line, all <code>IntermediateShape</code> objects with a matching <code>source_line</code> are collected. The hover popup shows each operation's name, output shape (with named dimensions), and dtype. Hover also works on dimension names (showing symbolic size, all usages) and function names (showing full shape signature).</li>
+<li><strong>CodeLens</strong>: for each function with a successful trace, a virtual annotation is rendered above the function definition showing the traced input parameter shapes and output shape.</li>
+<li><strong>trace command</strong>: the CLI <code>jaxtyc trace file.py::function_name</code> prints all intermediates with their source lines, giving a step-by-step view of shape propagation through the function.</li>
+</ul>
+<div class="admonition note">
+<p class="admonition-title">Column limitation</p>
+<p>JAX's traceback frames do not expose column information. The <code>source_col</code> is always 0. This means hover activates for the entire line, not a specific expression within the line.</p>
+</div>
+<hr />
+<h2 id="cross-function-shape-propagation">Cross-Function Shape Propagation<a class="headerlink" href="#cross-function-shape-propagation" title="Permanent link">&para;</a></h2>
+<h3 id="how-it-works_1">How It Works<a class="headerlink" href="#how-it-works_1" title="Permanent link">&para;</a></h3>
+<p>After all functions in a file are individually traced and checked, the pipeline performs cross-function analysis:</p>
+<ol>
+<li>
+<p><strong>Call site extraction</strong>: <code>extract_call_sites(source, file_path, known_functions)</code> walks the AST looking for <code>ast.Call</code> nodes that reference known annotated functions. Each match produces a <code>CallSite</code> with the caller name, callee name, and source location.</p>
+</li>
+<li>
+<p><strong>Consistency checking</strong>: For each call site, <code>check_call_site()</code> compares the callee's annotated return shape against its traced output shape. If they differ, a <code>cross-function-mismatch</code> diagnostic is emitted at the call site location, showing both the annotated and actual return shapes.</p>
+</li>
+</ol>
+<p>This catches a common class of bugs where a function's annotation is wrong (the function works correctly but claims the wrong output shape), and downstream callers rely on the incorrect annotation.</p>
+<h3 id="shared-dimenv">Shared DimEnv<a class="headerlink" href="#shared-dimenv" title="Permanent link">&para;</a></h3>
+<p>Cross-function checking relies on the shared-per-file <code>DimEnv</code>. Because all functions in a file share the same symbolic dim assignments, dimension name <code>hidden</code> in function <code>encode</code> maps to the same symbolic object as <code>hidden</code> in function <code>decode</code>. This makes shape comparisons across function boundaries meaningful.</p>
+<hr />
+<h2 id="inline-suppressions">Inline Suppressions<a class="headerlink" href="#inline-suppressions" title="Permanent link">&para;</a></h2>
+<h3 id="syntax">Syntax<a class="headerlink" href="#syntax" title="Permanent link">&para;</a></h3>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">x</span> <span class="o">=</span> <span class="n">fn</span><span class="p">(</span><span class="n">y</span><span class="p">)</span>  <span class="c1"># jaxtyc: ignore              -- suppress all rules</span>
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="n">x</span> <span class="o">=</span> <span class="n">fn</span><span class="p">(</span><span class="n">y</span><span class="p">)</span>  <span class="c1"># jaxtyc: ignore[shape-mismatch]  -- suppress one rule</span>
+</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="n">x</span> <span class="o">=</span> <span class="n">fn</span><span class="p">(</span><span class="n">y</span><span class="p">)</span>  <span class="c1"># jaxtyc: ignore[rule1, rule2]    -- suppress multiple rules</span>
+</span></code></pre></div>
+<h3 id="matching-logic">Matching Logic<a class="headerlink" href="#matching-logic" title="Permanent link">&para;</a></h3>
+<p><code>extract_suppressions(source)</code> scans all comments in the source for the <code>jaxtyc: ignore</code> pattern and returns a list of <code>SuppressionComment</code> objects, each with a line number and a <code>frozenset</code> of rule names (empty means suppress all).</p>
+<p><code>filter_inline_suppressions(diagnostics, suppressions)</code> removes any diagnostic whose line matches a suppression comment on the same line or the line immediately before it. The "line before" allowance handles multi-line function signatures where the diagnostic appears on the <code>def</code> line but the suppression comment is placed above.</p>
+<p>If a suppression specifies rule names, only diagnostics with matching <code>rule</code> values are suppressed. An empty rule set suppresses all diagnostics on that line.</p>
+<hr />
+<h2 id="sharding-validation">Sharding Validation<a class="headerlink" href="#sharding-validation" title="Permanent link">&para;</a></h2>
+<h3 id="overview">Overview<a class="headerlink" href="#overview" title="Permanent link">&para;</a></h3>
+<p>jaxtyc validates sharding annotations at three levels:</p>
+<ol>
+<li><strong>Annotation-level</strong> (<code>check_annotation_sharding</code>): Static checks on the function signature</li>
+<li><strong>Trace-level</strong> (<code>check_sharding</code>, <code>check_sharding_propagation</code>): Checks using traced sharding info from jaxpr</li>
+<li><strong>Mesh-level</strong> (<code>check_mesh_axes</code>): Validates axis references against the mesh config</li>
+</ol>
+<h3 id="annotation-parsing">Annotation Parsing<a class="headerlink" href="#annotation-parsing" title="Permanent link">&para;</a></h3>
+<p>The pipe syntax (<code>dim|axis</code>) is parsed in <code>parse_shape_string()</code>. Each token is split on <code>|</code>, setting <code>DimSpec.mesh_axis</code> and <code>DimSpec.sharding_annotated</code>. The sentinel value <code>"None"</code> maps to <code>mesh_axis=None</code> (explicit replication).</p>
+<h3 id="mesh-resolution">Mesh Resolution<a class="headerlink" href="#mesh-resolution" title="Permanent link">&para;</a></h3>
+<p><code>mesh_resolver.py</code> performs AST-based inference to extract mesh configuration from source code without importing it:</p>
+<ul>
+<li><code>jax.make_mesh(shape, axis_names)</code> calls</li>
+<li><code>AbstractMesh(sizes, names)</code> constructors</li>
+<li><code>nnx.logical_axis_rules(...)</code> calls</li>
+</ul>
+<p>The resolver returns a <code>MeshInfo</code> dataclass with <code>mesh</code> (axis -&gt; size), <code>axis_rules</code> (logical -&gt; physical), and <code>source_line</code>.</p>
+<h3 id="sharding-diagnostic-rules">Sharding Diagnostic Rules<a class="headerlink" href="#sharding-diagnostic-rules" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Rule</th>
+<th>Check Function</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>sharding-rank-mismatch</code></td>
+<td><code>check_sharding</code></td>
+<td>PartitionSpec length differs from array rank</td>
+</tr>
+<tr>
+<td><code>sharding-axis-unknown</code></td>
+<td><code>check_sharding</code></td>
+<td>PartitionSpec references non-existent mesh axis</td>
+</tr>
+<tr>
+<td><code>sharding-conflict</code></td>
+<td><code>check_sharding</code></td>
+<td>Conflicting PartitionSpecs on same shape at same line</td>
+</tr>
+<tr>
+<td><code>sharding-io-mismatch</code></td>
+<td><code>check_sharding</code></td>
+<td>jit out_shardings contradict inner sharding constraint</td>
+</tr>
+<tr>
+<td><code>sharding-propagation-mismatch</code></td>
+<td><code>check_sharding_propagation</code></td>
+<td>JAX-propagated output sharding differs from return annotation</td>
+</tr>
+<tr>
+<td><code>sharding-annotation-incomplete</code></td>
+<td><code>check_annotation_sharding</code></td>
+<td>Piped shape with bare (unsharded) dims in strict mode</td>
+</tr>
+<tr>
+<td><code>sharding-dim-conflict</code></td>
+<td><code>check_annotation_sharding</code></td>
+<td>Same dim name sharded on different axes across params</td>
+</tr>
+<tr>
+<td><code>sharding-mesh-undefined</code></td>
+<td><code>check_mesh_axes</code></td>
+<td>mesh_axis references axis not in mesh or axis_rules</td>
+</tr>
+</tbody>
+</table>
+<h3 id="graceful-fallback">Graceful Fallback<a class="headerlink" href="#graceful-fallback" title="Permanent link">&para;</a></h3>
+<p>When sharded <code>eval_shape</code> raises (operations without explicit sharding rules), the tracer catches the exception and retries via <code>_trace_fallback_unsharded()</code>:</p>
+<ol>
+<li>Builds plain abstract inputs (no <code>NamedSharding</code>)</li>
+<li>Runs <code>eval_shape</code> without mesh context</li>
+<li>Returns a successful <code>TraceResult</code> with <code>sharding_fallback_reason</code> set</li>
+</ol>
+<p>The pipeline emits a <code>trace-error</code> warning when fallback is used, so users know that sharding propagation was not verified for that function.</p>
+<h3 id="sharding-in-lsp">Sharding in LSP<a class="headerlink" href="#sharding-in-lsp" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Inlay hints</strong>: Display <code>dim|axis</code> per dimension when sharding is active (controlled by <code>sharding.display</code>)</li>
+<li><strong>Error hints</strong>: All 8 sharding diagnostic rules are converted to <code>ErrorHintInfo</code> objects and displayed as error hints at the divergence line, not just as squiggly diagnostics</li>
+<li><strong>Completion</strong>: Mesh axis names are suggested when typing inside pipe-syntax annotations</li>
+<li><strong>Hover</strong>: Intermediate shapes show <code>P(...)</code> and mesh axis info inline</li>
+</ul>
+<hr />
+<h2 id="lsp-multiplexer">LSP Multiplexer<a class="headerlink" href="#lsp-multiplexer" title="Permanent link">&para;</a></h2>
+<h3 id="diagnostic-filtering">Diagnostic Filtering<a class="headerlink" href="#diagnostic-filtering" title="Permanent link">&para;</a></h3>
+<p>The <code>--solo</code> flag (or <code>JAXTYC_MUX_SOLO</code> env var) filters diagnostics by server source:</p>
+<ul>
+<li><code>jaxtyc</code>: Only jaxtyc shape-checking diagnostics</li>
+<li><code>ty</code> / <code>primary</code> / <code>pyright</code>: Only type-checking diagnostics from the primary server</li>
+</ul>
+<p>Filtering happens at the <code>publish_merged_diagnostics</code> level via <code>_filter_diag_sources()</code>, which filters the <code>diag_cache</code> dict by server key. The cache already separates diagnostics by source (<code>primary_name</code> vs <code>"jaxtyc"</code>).</p>
+<p>All other LSP features (hover, completion, code actions, etc.) continue to merge from both servers regardless of the solo setting.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Copyright &copy; 2025 Bryan Gass
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/BeeGass/jaxtyc" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.instant", "navigation.tracking", "navigation.sections", "navigation.top", "navigation.tabs", "navigation.tabs.sticky", "content.code.copy", "content.code.annotate", "content.tabs.link", "search.highlight", "search.suggest", "toc.follow"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

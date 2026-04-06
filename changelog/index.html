@@ -1,0 +1,2505 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Static array shape checking for JAX powered by eval_shape">
+      
+      
+        <meta name="author" content="Bryan Gass">
+      
+      
+        <link rel="canonical" href="https://beegass.github.io/jaxtyc/changelog/">
+      
+      
+        <link rel="prev" href="../contributing/">
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Changelog - jaxtyc</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,300i,400,400i,700,700i%7CJetBrains+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Inter";--md-code-font:"JetBrains Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/_mkdocstrings.css">
+    
+      <link rel="stylesheet" href="../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="deep-purple" data-md-color-accent="amber">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#changelog" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="jaxtyc" class="md-header__button md-logo" aria-label="jaxtyc" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            jaxtyc
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Changelog
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="deep-purple" data-md-color-accent="amber"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="deep-purple" data-md-color-accent="amber"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/BeeGass/jaxtyc" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    BeeGass/jaxtyc
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+    
+      
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../tutorial/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Tutorial
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../guide/annotations/" class="md-tabs__link">
+          
+  
+  
+  Guide
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../reference/api/" class="md-tabs__link">
+          
+  
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../editors/editors/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Editors
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../architecture/overview/" class="md-tabs__link">
+          
+  
+  
+  Architecture
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../contributing/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Contributing
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    <li class="md-tabs__item md-tabs__item--active">
+      <a href="./" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Changelog
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+    
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="jaxtyc" class="md-nav__button md-logo" aria-label="jaxtyc" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    jaxtyc
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/BeeGass/jaxtyc" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    BeeGass/jaxtyc
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tutorial
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guide/annotations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Annotations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guide/cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guide/configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guide/ci/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CI Integration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Python API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/diagnostics/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Diagnostic Rules
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../editors/editors/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Editors
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/internals/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Internals
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#v072-2026-04-05" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        [v0.7.2] -- 2026-04-05
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="[v0.7.2] -- 2026-04-05">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#fixed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fixed
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#v071-2026-04-05" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        [v0.7.1] -- 2026-04-05
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="[v0.7.1] -- 2026-04-05">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#added" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Added
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#changed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Changed
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#fixed_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fixed
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#v070-2026-04-04" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        [v0.7.0] — 2026-04-04
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="[v0.7.0] — 2026-04-04">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#added_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Added
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#changed_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Changed
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#v062-2026-03-19" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        v0.6.2 — 2026-03-19
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="v0.6.2 — 2026-03-19">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#changed_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Changed
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#added_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Added
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#fixed_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fixed
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#v061-2026-03-14" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        v0.6.1 — 2026-03-14
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="v0.6.1 — 2026-03-14">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#changed_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Changed
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#added_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Added
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#fixed_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fixed
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#v060-2026-03-12" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        v0.6.0 — 2026-03-12
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="v0.6.0 — 2026-03-12">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#changed_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Changed
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#added_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Added
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#fixed_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fixed
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#v050-2026-03-11" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        v0.5.0 — 2026-03-11
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="v0.5.0 — 2026-03-11">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#changed_5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Changed
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#added_5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Added
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#v040-2026-03-10" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        v0.4.0 — 2026-03-10
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="v0.4.0 — 2026-03-10">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#added_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Added
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#changed_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Changed
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#v031-2026-03-10" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        v0.3.1 — 2026-03-10
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="v0.3.1 — 2026-03-10">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#fixed_5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fixed
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#added_7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Added
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#changed_7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Changed
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#v030-2026-03-09" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        v0.3.0 — 2026-03-09
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="v0.3.0 — 2026-03-09">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#added_8" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Added
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#changed_8" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Changed
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#v020-2026-03-09" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        v0.2.0 — 2026-03-09
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="v0.2.0 — 2026-03-09">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#added_9" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Added
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#fixed_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fixed
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#changed_9" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Changed
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#v010-2026-02-23" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        v0.1.0 — 2026-02-23
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="v0.1.0 — 2026-02-23">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#added_10" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Added
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#v072-2026-04-05" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        [v0.7.2] -- 2026-04-05
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="[v0.7.2] -- 2026-04-05">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#fixed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fixed
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#v071-2026-04-05" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        [v0.7.1] -- 2026-04-05
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="[v0.7.1] -- 2026-04-05">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#added" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Added
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#changed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Changed
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#fixed_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fixed
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#v070-2026-04-04" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        [v0.7.0] — 2026-04-04
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="[v0.7.0] — 2026-04-04">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#added_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Added
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#changed_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Changed
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#v062-2026-03-19" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        v0.6.2 — 2026-03-19
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="v0.6.2 — 2026-03-19">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#changed_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Changed
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#added_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Added
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#fixed_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fixed
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#v061-2026-03-14" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        v0.6.1 — 2026-03-14
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="v0.6.1 — 2026-03-14">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#changed_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Changed
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#added_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Added
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#fixed_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fixed
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#v060-2026-03-12" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        v0.6.0 — 2026-03-12
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="v0.6.0 — 2026-03-12">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#changed_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Changed
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#added_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Added
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#fixed_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fixed
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#v050-2026-03-11" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        v0.5.0 — 2026-03-11
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="v0.5.0 — 2026-03-11">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#changed_5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Changed
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#added_5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Added
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#v040-2026-03-10" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        v0.4.0 — 2026-03-10
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="v0.4.0 — 2026-03-10">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#added_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Added
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#changed_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Changed
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#v031-2026-03-10" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        v0.3.1 — 2026-03-10
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="v0.3.1 — 2026-03-10">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#fixed_5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fixed
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#added_7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Added
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#changed_7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Changed
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#v030-2026-03-09" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        v0.3.0 — 2026-03-09
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="v0.3.0 — 2026-03-09">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#added_8" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Added
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#changed_8" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Changed
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#v020-2026-03-09" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        v0.2.0 — 2026-03-09
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="v0.2.0 — 2026-03-09">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#added_9" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Added
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#fixed_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fixed
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#changed_9" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Changed
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#v010-2026-02-23" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        v0.1.0 — 2026-02-23
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="v0.1.0 — 2026-02-23">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#added_10" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Added
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="changelog">Changelog<a class="headerlink" href="#changelog" title="Permanent link">&para;</a></h1>
+<p>All notable changes to jaxtyc are documented here.</p>
+<p>Format follows <a href="https://keepachangelog.com/en/1.1.0/">Keep a Changelog</a>.
+Versioning follows <a href="https://semver.org/spec/v2.0.0.html">Semantic Versioning</a>.</p>
+<h2 id="v072-2026-04-05">[v0.7.2] -- 2026-04-05<a class="headerlink" href="#v072-2026-04-05" title="Permanent link">&para;</a></h2>
+<h3 id="fixed">Fixed<a class="headerlink" href="#fixed" title="Permanent link">&para;</a></h3>
+<ul>
+<li>API docs build failure caused by lazy <code>analyze_file</code> import not being visible to mkdocstrings/griffe static analysis</li>
+<li>PyPI auto-publish not triggering because <code>GITHUB_TOKEN</code> events don't fire other workflows (moved publish into auto-release workflow)</li>
+<li>GitHub release template added for categorized release notes</li>
+</ul>
+<h2 id="v071-2026-04-05">[v0.7.1] -- 2026-04-05<a class="headerlink" href="#v071-2026-04-05" title="Permanent link">&para;</a></h2>
+<h3 id="added">Added<a class="headerlink" href="#added" title="Permanent link">&para;</a></h3>
+<ul>
+<li>GitHub issue templates (bug report, feature request) with structured YAML forms</li>
+<li>Pull request template with review checklist</li>
+<li>Security policy (SECURITY.md) with vulnerability reporting via GitHub private advisories</li>
+<li>CONTRIBUTING.md at repo root linking to full contributing guide</li>
+<li>CODEOWNERS file for automatic PR review assignment</li>
+<li>Dependabot configuration with native <code>uv</code> ecosystem, GitHub Actions, and npm updates</li>
+<li><code>.gitattributes</code> for line ending normalization, binary markers, and linguist overrides</li>
+<li>Commitlint pre-commit hook for conventional commit enforcement</li>
+<li>PyPI release workflow with OIDC trusted publisher via <code>uv publish</code> (no API tokens)</li>
+<li>VS Code Marketplace release workflow triggered by <code>vscode-v*</code> tags</li>
+<li>Auto-release workflow: patch/minor auto-publish, major creates draft for manual approval</li>
+<li>CI coverage enforcement (80% threshold on Python 3.13)</li>
+<li>Guard workflow blocking AI config files from main branch</li>
+<li>Auto-lint workflow for ruff fixes on PRs</li>
+<li><code>just pr-to-main</code> recipe for clean dev-to-main merges (strips AI config files)</li>
+<li>CI badge in README</li>
+<li><code>pip install jaxtyc</code> alongside <code>uv add</code> in README</li>
+<li>Contributing section in README</li>
+<li>66 new LSP tests (semantic tokens, linked editing, code actions, completion, signature help, folding, navigation, diagnostics, configuration)</li>
+</ul>
+<h3 id="changed">Changed<a class="headerlink" href="#changed" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Pinned Flax to <code>&gt;=0.10.0,&lt;0.10.3</code> for JAX 0.9.x compatibility</li>
+<li>Made <code>analyze_file</code> import lazy in <code>__init__.py</code> to fix CPU backend enforcement on Apple Silicon</li>
+<li>Fixed <code>site_url</code> in mkdocs.yml to point to deployed GitHub Pages site</li>
+<li>Fixed Documentation URL in pyproject.toml to point to deployed docs</li>
+<li>Bumped <code>setup-uv</code> from v4/v5 to v7 across all workflows</li>
+<li>Switched Dependabot from <code>pip</code> to native <code>uv</code> ecosystem</li>
+<li>Consolidated <code>setup-uv</code> <code>python-version</code> input (replaces separate <code>uv python install</code> steps)</li>
+<li>Updated contributing guide with branch workflow, commit conventions, and release process</li>
+<li>Replaced personal email with GitHub noreply address in pyproject.toml and SECURITY.md</li>
+</ul>
+<h3 id="fixed_1">Fixed<a class="headerlink" href="#fixed_1" title="Permanent link">&para;</a></h3>
+<ul>
+<li>5 <code>TestDetectProjectRoot</code> failures on macOS caused by <code>/var</code> -&gt; <code>/private/var</code> symlink resolution</li>
+<li>8 NNX test failures caused by Flax 0.11.2 / JAX 0.9.2 version incompatibility</li>
+<li>1 CPU backend test failure caused by eager JAX import in <code>__init__.py</code></li>
+<li>Flaky benchmark threshold (1ms -&gt; 3ms) for CI runner timing jitter</li>
+</ul>
+<h2 id="v070-2026-04-04">[v0.7.0] — 2026-04-04<a class="headerlink" href="#v070-2026-04-04" title="Permanent link">&para;</a></h2>
+<h3 id="added_1">Added<a class="headerlink" href="#added_1" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Einops inline hints</strong>: Inlay hints now display dimension names from einops pattern strings instead of raw symbolic sizes. When a function contains <code>einops.rearrange(x, 'b c h w -&gt; b (c h) w')</code>, the inlay hint shows <code>f32[b, c*h, w]</code> instead of anonymous primes. Supports <code>rearrange</code>, <code>reduce</code>, and <code>repeat</code> with both <code>import einops</code> and <code>from einops import rearrange</code> styles. Enabled by default; disable with <code>einops_hints = false</code> in <code>[tool.jaxtyc]</code> or <code>JAXTYC_EINOPS_HINTS=0</code></li>
+<li>New modules: <code>analyzer/einops_parser.py</code> (pattern string parsing), <code>analyzer/einops_detector.py</code> (AST-based call detection)</li>
+<li>New config: <code>einops_hints</code> (bool, default <code>true</code>) gates einops dimension name detection independently from <code>prefer_einops</code></li>
+<li>Einops frames added to <code>_INTERNAL_PATHS</code> in tracer so JAXPR tracebacks resolve to user call sites instead of einops internals</li>
+<li>New tests: <code>test_einops_parser.py</code> (16 tests), <code>test_einops_detector.py</code> (10 tests)</li>
+<li>New fixture: <code>tests/fixtures/einops_rearrange.py</code></li>
+</ul>
+<h3 id="changed_1">Changed<a class="headerlink" href="#changed_1" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>JAX backend extras overhaul</strong>: <code>mac</code> extra now uses <code>jax&gt;=0.4.34</code> floor and constrains <code>jax-mps</code> to <code>python_version == '3.13'</code> (only published wheel). <code>rocm</code> extra rewritten with direct GitHub wheel URLs for jaxlib, jax-rocm7-pjrt, and jax-rocm7-plugin since ROCm wheels are not on PyPI at 0.9.x. <code>cpu</code> extra adds explicit <code>jax[cpu]</code> dependency. New <code>rocm-jax</code> uv index for ROCm wheel source routing</li>
+<li><code>_INTERNAL_PATHS</code> in <code>tracer.py</code> expanded to include <code>einops/</code> and <code>site-packages/einops</code></li>
+<li><code>pipeline.py</code> post-processes trace results to apply einops dimension name overrides before cross-function propagation</li>
+</ul>
+<h2 id="v062-2026-03-19"><a href="https://github.com/BeeGass/jaxtyc/compare/v0.6.1...v0.6.2">v0.6.2</a> — 2026-03-19<a class="headerlink" href="#v062-2026-03-19" title="Permanent link">&para;</a></h2>
+<h3 id="changed_2">Changed<a class="headerlink" href="#changed_2" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Abstract-first NNX/equinox tracing</strong>: Model tracing now uses <code>nnx.eval_shape</code> and <code>eqx.filter_eval_shape</code> for zero-allocation abstract construction instead of creating concrete model instances with real weight tensors. Abstract state is passed as explicit arguments to <code>jax.eval_shape</code> and <code>jax.make_jaxpr</code> (not captured in closures), so <code>ShapeDtypeStruct</code> leaves become proper JAX tracers inside the trace context. Falls back to concrete construction on CPU if abstract tracing fails for a particular model</li>
+<li><strong>CPU-only backend</strong>: All CLI entry points (check, trace, watch, lsp, mux) now force <code>JAX_PLATFORMS=cpu</code> before any JAX import via <code>_enforce_cpu_backend()</code> in <code>cli/main.py</code>. This prevents JAX from pre-allocating 75% of GPU VRAM — <code>jax.eval_shape</code> and <code>jax.make_jaxpr</code> produce identical results on CPU. Override with <code>JAXTYC_BACKEND=gpu</code> env var or by setting <code>JAX_PLATFORMS</code> directly</li>
+<li><strong>NNX tracing refactor</strong>: <code>_trace_nnx_method</code> split into <code>_trace_nnx_abstract</code> (primary, zero-alloc) and <code>_trace_nnx_concrete</code> (fallback, CPU-only). Same for equinox with <code>_trace_eqx_abstract</code> and <code>_trace_eqx_concrete</code>. Shared helpers <code>_extract_output_shape</code>, <code>_eval_and_extract</code>, and <code>_build_mesh_context</code> eliminate duplicated logic</li>
+</ul>
+<h3 id="added_2">Added<a class="headerlink" href="#added_2" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong><code>backend</code> config option</strong>: <code>backend = "cpu"</code> (default) in <code>[tool.jaxtyc]</code> section of <code>pyproject.toml</code>. Documents the CPU-only behavior; set to <code>"gpu"</code> to allow GPU usage</li>
+<li><strong>Content-hash gating</strong>: LSP <code>_analyze_and_publish</code> now hashes source text (SHA-256) and skips re-analysis when content is unchanged, avoiding redundant module imports, tracing, and model instantiation on every didChange debounce and didSave event</li>
+<li><strong>JAX cache cleanup</strong>: <code>jax.clear_caches()</code> called after each LSP analysis cycle and after CLI check/watch to prevent unbounded growth of JAX's internal trace and compilation caches</li>
+<li><strong>VSCode extension CPU env vars</strong>: Server process spawned with <code>JAX_PLATFORMS=cpu</code> and <code>XLA_PYTHON_CLIENT_PREALLOCATE=false</code> as defense-in-depth. New <code>jaxtyc.backend</code> setting (cpu/gpu) controls this; server restarts when changed</li>
+<li><strong>Mux CPU env vars</strong>: jaxtyc subprocess in mux mode spawned with <code>JAX_PLATFORMS=cpu</code> and <code>XLA_PYTHON_CLIENT_PREALLOCATE=false</code></li>
+<li><strong>Import CPU guard</strong>: <code>exec_module</code> in <code>importer.py</code> wrapped with <code>jax.default_device(cpu)</code> to prevent user module-level code from allocating on GPU</li>
+<li>New test files: <code>test_cpu_backend.py</code> (5 tests), <code>test_content_hash.py</code> (5 tests), <code>test_cache_cleanup.py</code> (1 test)</li>
+<li>Extended tests: <code>test_pipeline.py</code> (+7 abstract tracing tests), <code>test_config.py</code> (+3 backend tests), <code>test_importer.py</code> (+2 sys.modules cleanup tests)</li>
+</ul>
+<h3 id="fixed_2">Fixed<a class="headerlink" href="#fixed_2" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>VRAM consumption in VSCode extension</strong>: The LSP server no longer consumes GPU VRAM. Previously, JAX auto-detected the GPU on import, NNX/equinox model constructors allocated real weight tensors on GPU, and JAX caches grew unboundedly. Now: abstract tracing eliminates weight allocation, CPU backend prevents GPU initialization, content-hash gating reduces re-analysis, and cache cleanup prevents leak</li>
+<li>
+<p><strong>sys.modules memory leak</strong>: <code>import_module_from_path()</code> now removes <code>_jaxtyc_user_*</code> modules from <code>sys.modules</code> after loading. Previously, modules were added but never removed on success, causing the LSP server to accumulate module objects over its lifetime</p>
+</li>
+<li>
+<p>Test count: 676 -&gt; 698</p>
+</li>
+</ul>
+<h2 id="v061-2026-03-14"><a href="https://github.com/BeeGass/jaxtyc/compare/v0.6.0...v0.6.1">v0.6.1</a> — 2026-03-14<a class="headerlink" href="#v061-2026-03-14" title="Permanent link">&para;</a></h2>
+<h3 id="changed_3">Changed<a class="headerlink" href="#changed_3" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Frozen <code>FileIndex</code></strong>: <code>FileIndex</code> is now <code>@dataclass(frozen=True)</code> with tuple fields (was mutable with list fields), consistent with the project convention for immutable value types</li>
+<li><strong>Dependency upper bounds</strong>: Added semver caps to all dependencies — <code>jax&gt;=0.9.0,&lt;0.10</code>, <code>jaxtyping&gt;=0.2.28,&lt;0.4</code>, <code>pygls&gt;=2.0,&lt;3</code>, and all optional deps (<code>watchfiles</code>, <code>flax</code>, <code>equinox</code>, <code>einops</code>) — to guard against breaking changes in private APIs like <code>jax._src.mesh.use_abstract_mesh</code></li>
+</ul>
+<h3 id="added_3">Added<a class="headerlink" href="#added_3" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Logging infrastructure</strong>: Added <code>logging.getLogger(__name__)</code> across analyzer modules (<code>tracer.py</code>, <code>source_map.py</code>, <code>pipeline.py</code>, <code>config.py</code>). Silent <code>except Exception: pass</code> blocks now log at <code>debug</code> or <code>warning</code> level with <code>exc_info=True</code></li>
+<li><strong>Error truncation</strong>: <code>truncate_error()</code> utility in new <code>analyzer/_errors.py</code> takes the first line and caps at 500 chars, applied to 10 <code>str(e)</code> sites in <code>pipeline.py</code>, <code>tracer.py</code>, and <code>cli/main.py</code></li>
+<li><strong>Config type validation</strong>: <code>_validate_field_types()</code> in <code>config.py</code> checks TOML values match expected types before constructing <code>JaxtycConfig</code>, logging warnings for rejected keys</li>
+<li>New test suites: <code>test_pipeline.py</code> (21 tests), <code>test_lsp_handlers.py</code> (26 tests)</li>
+<li>Extended tests: <code>test_config.py</code> (+7), <code>test_dim_env.py</code> (+6)</li>
+</ul>
+<h3 id="fixed_3">Fixed<a class="headerlink" href="#fixed_3" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Silent exception swallowing</strong>: 4 bare <code>except Exception: pass</code> blocks in <code>tracer.py</code>, <code>source_map.py</code>, and <code>config.py</code> now log diagnostics instead of silently discarding errors</li>
+<li><strong>Assertions removed from runtime guards</strong>: 9 <code>assert</code> statements in <code>dim_env.py</code> (6) and <code>tracer.py</code> (3) replaced with explicit <code>ValueError</code> raises with descriptive messages, surviving <code>python -O</code></li>
+<li>
+<p><strong>TOCTOU race in LSP diagnostic cache</strong>: <code>_analyze_and_publish</code> in <code>server.py</code> now performs cross-file checking before the cache write, then batch-writes all caches in a single lock acquisition</p>
+</li>
+<li>
+<p>Test count: 625 -&gt; 676</p>
+</li>
+</ul>
+<h2 id="v060-2026-03-12"><a href="https://github.com/BeeGass/jaxtyc/compare/v0.5.0...v0.6.0">v0.6.0</a> — 2026-03-12<a class="headerlink" href="#v060-2026-03-12" title="Permanent link">&para;</a></h2>
+<h3 id="changed_4">Changed<a class="headerlink" href="#changed_4" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>DimEnv rewrite</strong>: Replaced prime-based dimension sizing with symbolic dimensions via <code>jax.export.symbolic_shape</code>. Each named dimension now gets a distinct symbolic <code>_DimExpr</code> object instead of a prime number. This eliminates integer overflow for large models, makes JAX error messages use real dimension names, and removes the prime sieve entirely</li>
+<li><strong>Sharding display default</strong>: <code>ShardingConfig.display</code> now defaults to <code>"all"</code> (was <code>"append"</code>), showing <code>dim|axis</code> sharding annotations on every inlay hint line by default. Valid values: <code>"all"</code>, <code>"constrained_only"</code>, <code>"off"</code></li>
+<li><strong>Minimum JAX version</strong>: Raised to <code>&gt;= 0.9.0</code> for <code>jax.export.symbolic_shape</code> and <code>AbstractMesh</code> with <code>AxisType.Explicit</code></li>
+<li><strong>Concrete fallback for modules</strong>: NNX and equinox module tracing uses <code>DimEnv.get_concrete_size()</code> (unique odd ints &gt;= 101) instead of symbolic dims, since module constructors require plain int arguments</li>
+<li>Test count: 498 -&gt; 625</li>
+</ul>
+<h3 id="added_4">Added<a class="headerlink" href="#added_4" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Sharding-in-types (pipe syntax)</strong>: Annotations now support <code>dim|axis</code> syntax for per-dimension sharding: <code>Float[Array, "batch|dp seq|None d_model|mp"]</code>. The pipe separator sets <code>DimSpec.mesh_axis</code>, parsed by <code>parse_shape_string()</code> in <code>annotations.py</code></li>
+<li><strong>Mesh configuration</strong>: <code>[tool.jaxtyc.sharding]</code> supports <code>mesh</code> (physical axis name -&gt; device count) and <code>axis_rules</code> (logical -&gt; physical mapping) fields in <code>pyproject.toml</code></li>
+<li><strong>Mesh context for tracing</strong>: Sharded functions are traced inside <code>jax._src.mesh.use_abstract_mesh()</code> with an <code>AbstractMesh</code> built from <code>mesh_config</code>, enabling sharding propagation through <code>eval_shape</code></li>
+<li><strong>Axis rules resolution</strong>: Logical axis names (e.g. <code>dp</code>, <code>mp</code> from <code>nnx.logical_axis_rules</code>) are resolved to physical mesh axis names (e.g. <code>data</code>, <code>model</code>) before constructing <code>NamedSharding</code> inputs. Threaded from <code>MeshInfo</code> through pipeline to tracer via <code>axis_rules</code> parameter</li>
+<li><strong>Graceful sharding fallback</strong>: When sharded <code>eval_shape</code> fails (e.g. scatter, advanced indexing), the tracer retries without sharding and sets <code>TraceResult.sharding_fallback_reason</code>. Pipeline emits a <code>trace-error</code> warning when fallback is used</li>
+<li><strong><code>sharding-mesh-undefined</code> rule</strong>: Diagnostic error when a <code>mesh_axis</code> annotation references an axis not found in the mesh config or axis_rules</li>
+<li><strong><code>sharding-propagation-mismatch</code> rule</strong>: Detects when JAX-propagated output sharding differs from the return annotation's sharding</li>
+<li><strong><code>sharding-annotation-incomplete</code> rule</strong>: Warns when a piped shape has bare (unsharded) dims in strict mode</li>
+<li><strong><code>sharding-dim-conflict</code> rule</strong>: Detects when the same dim name is sharded on different axes across parameters</li>
+<li><strong><code>DimSize</code> type alias</strong>: <code>DimSize: TypeAlias = Any</code> in <code>types.py</code> for shape fields that hold either <code>int</code> or symbolic <code>_DimExpr</code> objects. All shape-typed fields (<code>DiagnosticData</code>, <code>IntermediateShape</code>, <code>TraceResult</code>) updated</li>
+<li><strong><code>TraceResult.sharding_fallback_reason</code></strong>: New optional field indicating why sharded tracing fell back to unsharded</li>
+<li><strong><code>_build_abstract_mesh()</code> helper</strong>: Reusable function in <code>tracer.py</code> for constructing <code>AbstractMesh</code> with <code>AxisType.Explicit</code></li>
+<li><strong><code>check_mesh_axes()</code></strong>: New function in <code>sharding_checker.py</code> validating mesh axis references against known physical and logical axes</li>
+<li><strong><code>check_annotation_sharding()</code></strong>: New function checking for <code>sharding-annotation-incomplete</code> and <code>sharding-dim-conflict</code> within function annotations</li>
+<li><strong><code>check_sharding_propagation()</code></strong>: Compares JAX-propagated output sharding against return annotation sharding</li>
+<li><strong><code>mesh_resolver.py</code></strong>: AST-based inference of <code>jax.make_mesh</code>, <code>AbstractMesh</code>, and <code>nnx.logical_axis_rules</code> from source code</li>
+<li><strong>Synthetic dim name cleanup</strong>: <code>format_named_shape()</code> in <code>_util.py</code> collapses internal names for user-facing display: <code>_ellipsis_0, _ellipsis_1</code> -&gt; <code>...(0, 1)</code>, <code>_var_batch_0, _var_batch_1</code> -&gt; <code>*batch</code>, <code>_anon_N</code> -&gt; <code>_</code></li>
+<li><strong>Sharding diagnostics as inlay hints</strong>: Sharding diagnostic rules (all 8 <code>sharding-*</code> rules) now appear as error hints at divergence points in inlay hints, not just as squiggly diagnostics. Added <code>_diagnostics_to_error_hints()</code> in <code>server.py</code></li>
+<li><strong>Mesh axis autocomplete</strong>: Dimension name completion now also suggests mesh axis names from the resolved <code>MeshInfo</code> when typing inside pipe-syntax annotations</li>
+<li><strong>NNX/equinox sharded tracing</strong>: Module method tracing wraps <code>jax.eval_shape</code> in mesh context when sharding annotations are present</li>
+<li><strong>Bool annotation support</strong>: <code>Bool[Array, "..."]</code> traces to <code>bool</code> dtype through the full pipeline (verified by integration test)</li>
+<li><strong>Mux diagnostic filtering</strong>: <code>--solo</code> flag on <code>jaxtyc mux</code> and <code>JAXTYC_MUX_SOLO</code> env var to show diagnostics from only one server. Valid values: <code>jaxtyc</code>, <code>ty</code>, <code>primary</code>, <code>pyright</code></li>
+<li><strong><code>_filter_diag_sources()</code></strong>: Filters mux diagnostic cache by server source for solo mode</li>
+<li>New test suites: <code>test_mesh_resolver.py</code> (14), <code>test_sharding_checker.py</code> (24)</li>
+<li>Extended tests: <code>test_dim_env.py</code> (+12), <code>test_tracer.py</code> (+9), <code>test_types.py</code> (+3), <code>test_config.py</code> (+3), <code>test_lsp.py</code> (+10), <code>test_mux.py</code> (+13), <code>test_integration.py</code> (+2)</li>
+</ul>
+<h3 id="fixed_4">Fixed<a class="headerlink" href="#fixed_4" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Ellipsis display in inlay hints</strong>: Synthetic dim names (<code>_ellipsis_0</code>) no longer leak into user-facing inlay hints and hover. Now shows <code>...(0, 1)</code> with indices instead of <code>...(_ellipsis_0, _ellipsis_1)</code></li>
+<li><strong>Variadic display in inlay hints</strong>: <code>_var_batch_0, _var_batch_1</code> collapses to <code>*batch</code> in inlay hints</li>
+<li><strong>Anonymous dim display</strong>: <code>_anon_N</code> shows as <code>_</code> in inlay hints</li>
+</ul>
+<h2 id="v050-2026-03-11"><a href="https://github.com/BeeGass/jaxtyc/compare/v0.4.0...v0.5.0">v0.5.0</a> — 2026-03-11<a class="headerlink" href="#v050-2026-03-11" title="Permanent link">&para;</a></h2>
+<h3 id="changed_5">Changed<a class="headerlink" href="#changed_5" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Navigation defaults</strong>: <code>references_scope</code> now defaults to <code>"workspace"</code> (was <code>"file"</code>) and <code>include_external_calls</code> now defaults to <code>true</code> (was <code>false</code>), giving cross-file references, workspace-wide incoming calls, and full call graphs out of the box</li>
+<li><strong>External call display</strong>: <code>outgoingCalls</code> and hover now show qualified names for library calls (e.g. <code>jnp.matmul</code> instead of <code>matmul</code>)</li>
+</ul>
+<h3 id="added_5">Added<a class="headerlink" href="#added_5" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong><code>CallSite.callee_qualified_name</code></strong>: Optional field storing the full dotted path for attribute calls (e.g. <code>jnp.lax.scan</code>), extracted from <code>ast.Attribute</code> chains via new <code>_dotted_name()</code> helper in <code>annotations.py</code></li>
+<li><strong>External call hover</strong>: Hovering on an external call site (e.g. <code>jnp.dot(x, y)</code>) now shows <code>**jnp.dot** (external)</code> instead of returning nothing</li>
+<li><strong>Trace error fallback hover</strong>: Hovering on an intermediate line inside a function whose tracing failed now shows the trace error message (e.g. <code>Trace error in encode: dot_general requires...</code>)</li>
+<li><strong>Navigation docs</strong>: <code>[tool.jaxtyc.navigation]</code> section documented in configuration guide with <code>references_scope</code> and <code>include_external_calls</code> options</li>
+<li>New tests: qualified name extraction, hover trace error fallback, external call hover, external qualified name in outgoing calls</li>
+<li>Test count: 447 -&gt; 498</li>
+</ul>
+<h2 id="v040-2026-03-10"><a href="https://github.com/BeeGass/jaxtyc/compare/v0.3.1...v0.4.0">v0.4.0</a> — 2026-03-10<a class="headerlink" href="#v040-2026-03-10" title="Permanent link">&para;</a></h2>
+<h3 id="added_6">Added<a class="headerlink" href="#added_6" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Multi-root workspace support</strong>: Per-folder LSP clients, each discovering its own Python environment independently</li>
+<li><strong>Status bar quick pick menu</strong>: Click the status bar for Restart Server, Check Current File, Trace Function, Show Output, Open Settings</li>
+<li><strong>Server version tooltip</strong>: Hover over the status bar to see the connected server version</li>
+<li><strong>Trace visualization</strong>: <code>jaxtyc: Trace Function</code> command with webview panel showing shape flow, intermediate operations, and match/mismatch status</li>
+<li><strong>jaxtyping snippets</strong>: <code>jfloat</code>, <code>jint</code>, <code>jbool</code>, <code>jshaped</code>, <code>jimport</code>, <code>jignore</code> for Python files</li>
+<li><strong>Problem matcher</strong>: Parses <code>jaxtyc check</code> output into VS Code's Problems panel</li>
+<li><strong>GitHub Actions CI</strong>: Python CI (ruff, ty, pytest 3.11/3.13 matrix) and VS Code extension CI (tsc, vitest, esbuild, vsce package)</li>
+<li><strong>Pre-commit hooks</strong>: <code>.pre-commit-config.yaml</code> with ruff + ty via prek</li>
+<li><strong>Justfile</strong>: Development task runner (<code>just vscode-update</code>, <code>just test-all</code>, etc.)</li>
+<li>VS Code extension test count: 30 -&gt; 51 (added trace-panel tests)</li>
+<li><strong>Error hints (divergence detection)</strong>: <code>ErrorHintInfo</code> type and <code>find_divergence_points()</code> in new <code>analyzer/divergence.py</code>; inline error display at the first operation whose shape deviates from the annotated return</li>
+<li><strong>Sharding checker</strong>: New <code>analyzer/sharding_checker.py</code> with 4 diagnostic rules: <code>sharding-rank-mismatch</code>, <code>sharding-axis-unknown</code>, <code>sharding-conflict</code>, <code>sharding-io-mismatch</code></li>
+<li><strong>Sharding extraction in tracer</strong>: <code>_extract_sharding_info()</code> reads <code>PartitionSpec</code> and mesh axes from <code>sharding_constraint</code> and <code>shard_map</code> jaxpr primitives; attached to <code>IntermediateShape</code> via new <code>ShardingInfo</code> dataclass</li>
+<li><strong>NNX/Equinox intermediate extraction</strong>: <code>_trace_nnx_method</code> and <code>_trace_eqx_method</code> now return populated <code>intermediates</code> via <code>_extract_intermediates</code> (previously returned <code>[]</code>)</li>
+<li><strong>Dimension-aware module construction</strong>: <code>_collect_dim_kwargs()</code> introspects constructor signatures and builds prime-based kwargs, replacing hardcoded <code>d_in=2, d_out=3</code></li>
+<li><strong>Compact inlay hint format</strong>: <code>dtype[dim1, dim2]</code> with 3 dtype styles (<code>numpy</code>/<code>jax</code>/<code>jaxtyping</code>), last-per-line deduplication, smart positioning after variable names</li>
+<li><strong>Sharding display in inlay hints</strong>: <code>P('data', None)</code> appended to shape when <code>ShardingInfo</code> present</li>
+<li><strong>Error display in inlay hints</strong>: Divergence error message appended after shape with configurable separator (<code>pipe</code> or <code>icon</code>)</li>
+<li><strong>Sharding in hover</strong>: Intermediates hover shows <code>P(...)</code> and mesh axis info inline</li>
+<li><strong><code>HintsConfig</code></strong>: <code>error_mode</code>, <code>error_location</code>, <code>error_style</code>, <code>dtype_style</code> config options under <code>[tool.jaxtyc.hints]</code></li>
+<li><strong><code>ShardingConfig</code></strong>: <code>display</code> and <code>rules</code> config options under <code>[tool.jaxtyc.sharding]</code></li>
+<li><strong><code>format_dtype()</code></strong>: Comprehensive dtype abbreviation utility (numpy, jax, jaxtyping styles) covering FP8, FP4/FP6, sub-byte ints</li>
+<li><strong>LSP caches</strong>: <code>error_hints_cache</code> and <code>source_cache</code> in <code>_state.py</code> for error hint and inlay hint positioning</li>
+<li>Test fixtures: <code>nnx_sharded.py</code>, <code>sharded_rank_mismatch.py</code></li>
+<li>New test suites: <code>test_divergence.py</code> (8 tests), <code>test_sharding.py</code> (4 tests), <code>test_sharding_checker.py</code> (8 tests)</li>
+<li>Extended tests: <code>test_types.py</code> (+5), <code>test_config.py</code> (+19), <code>test_lsp.py</code> (+20), <code>test_nnx.py</code> (+7), <code>test_integration.py</code> (+1)</li>
+</ul>
+<h3 id="changed_6">Changed<a class="headerlink" href="#changed_6" title="Permanent link">&para;</a></h3>
+<ul>
+<li>VS Code extension version: 0.1.4 -&gt; 0.2.0</li>
+<li>Config change handler now debounces (1 second) before restarting servers</li>
+<li>Extension documentation updated with multi-root, snippets, trace, all commands</li>
+<li><strong>NNX tracing</strong>: Switched from abstract <code>nnx.eval_shape</code> to concrete model construction with <code>nnx.split/merge</code> + <code>jax.eval_shape</code></li>
+<li><strong>Inlay hints</strong>: Rewritten with compact <code>dtype[dim1, dim2]</code> format, smart after-variable positioning, and error/sharding display</li>
+<li><strong>Hover intermediates</strong>: Structured display with <code>dtype[dim1, dim2]</code> format, "final" marker, inline sharding info</li>
+<li><strong><code>IntermediateShape</code></strong>: Extended with optional <code>sharding: ShardingInfo | None</code> field</li>
+<li><strong><code>JaxtycConfig</code></strong>: Extended with nested <code>hints: HintsConfig</code> and <code>sharding: ShardingConfig</code></li>
+<li><strong><code>filter_diagnostics</code></strong>: Now additionally filters sharding diagnostics against the <code>sharding.rules</code> allow-list</li>
+<li><strong><code>didClose</code> handler</strong>: Also clears <code>error_hints_cache</code> and <code>source_cache</code></li>
+</ul>
+<h2 id="v031-2026-03-10"><a href="https://github.com/BeeGass/jaxtyc/compare/v0.3.0...v0.3.1">v0.3.1</a> — 2026-03-10<a class="headerlink" href="#v031-2026-03-10" title="Permanent link">&para;</a></h2>
+<h3 id="fixed_5">Fixed<a class="headerlink" href="#fixed_5" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Prime collision with literal dimensions</strong>: <code>DimEnv</code> now skips primes below <code>MIN_PRIME</code> (101) and reserves literal dimension values, preventing ambiguous <code>resolve_name()</code> results for annotations like <code>Float[Array, "batch 2"]</code></li>
+<li><strong>Anonymous dimension collision</strong>: Each anonymous dim (<code>_</code>) now gets a globally unique counter instead of position-based naming, preventing cross-function prime sharing</li>
+<li><strong>Pipeline zip misalignment</strong>: Traced results are now indexed by function name instead of zipped with specs, preventing wrong spec/trace pairing when functions are skipped during tracing</li>
+<li><strong>sys.path pollution</strong>: <code>import_module_from_path()</code> now saves and restores <code>sys.path</code> after module loading, preventing monotonic growth in long-running LSP sessions</li>
+<li><strong>read_message crash on IncompleteReadError</strong>: Mux <code>read_message()</code> now catches <code>asyncio.IncompleteReadError</code> and <code>ConnectionResetError</code>, returning <code>None</code> instead of crashing the output handler</li>
+<li><strong>TextDocumentSyncKind defaulting to Incremental</strong>: LSP server now explicitly sets <code>TextDocumentSyncKind.Full</code>, fixing <code>didChange</code> content extraction when running <code>jaxtyc lsp</code> directly (without mux)</li>
+<li><strong>Mux URI percent-decoding</strong>: <code>_uri_to_path()</code> now uses <code>urllib.parse.unquote</code> + <code>urlparse</code> instead of naive string slicing, correctly handling paths with spaces and special characters</li>
+<li><strong>Mux hardcoded version</strong>: Synthetic initialize response now uses <code>importlib.metadata.version()</code> instead of a hardcoded string</li>
+<li><strong>Unsynchronized cache access</strong>: Added <code>cache_lock</code> to <code>_state.py</code> for atomic multi-cache reads and writes across threads</li>
+<li><strong><code>typing.Tuple</code> not recognized</strong>: Annotation parser now handles both <code>tuple</code> and <code>Tuple</code> (case-insensitive) for return type extraction</li>
+<li><strong>Missing posonly/kwonly arg parsing</strong>: Annotation extractor now iterates <code>posonlyargs + args + kwonlyargs</code>, catching all jaxtyping-annotated parameters</li>
+<li><strong><code>async def</code> name column offset</strong>: <code>FunctionShapeSpec.name_col_offset</code> now accounts for 10-char <code>async def</code> prefix instead of hardcoded 4-char <code>def</code> offset</li>
+<li><strong>Dual-request timeout tasks linger</strong>: <code>finalize_dual()</code> now cancels pending timeout tasks when both servers respond before the 3-second window</li>
+<li><strong><code>$/cancelRequest</code> ID remapping</strong>: Cancel requests now forward the remapped jaxtyc ID to the jaxtyc server instead of the client's original ID</li>
+</ul>
+<h3 id="added_7">Added<a class="headerlink" href="#added_7" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Code action resolve handler</strong>: Shape-fix quick actions now attach <code>WorkspaceEdit</code> via <code>codeAction/resolve</code> instead of being no-ops</li>
+<li><strong>Config-based diagnostic filtering in LSP</strong>: <code>filter_diagnostics()</code> now applied in <code>_analyze_and_publish</code>, respecting <code>severity</code> threshold and <code>ignore_rules</code> from <code>[tool.jaxtyc]</code></li>
+<li><strong>Mux synthetic capabilities</strong>: Added <code>signatureHelpProvider</code>, <code>semanticTokensProvider</code>, <code>linkedEditingRangeProvider</code>, <code>documentHighlightProvider</code>, <code>prepareRenameProvider</code> to the mux initialize response</li>
+<li><strong>CLI integration tests</strong>: 43 new tests covering config-based filtering (<code>severity</code>, <code>ignore_rules</code>, <code>exclude</code>), all output formats, <code>main()</code> direct invocation, helper functions, env var overrides, and end-to-end fixture checks</li>
+<li><strong>Mux integration tests</strong>: 54 new tests covering all helper functions (<code>_detect_project_root</code>, <code>_patch_root_uri</code>, <code>_extract_file_path_from_msg</code>, <code>_find_primary_server</code>, <code>_hover_compact_enabled</code>, <code>_clean_hover_text</code>), merge strategies, and full subprocess lifecycle (synthetic init, server startup, diagnostics, clean exit)</li>
+<li><strong>Expanded unit tests</strong>: <code>test_checker.py</code> (call-site checks, reserved dims), <code>test_dim_env.py</code> (literal collision, anonymous uniqueness), <code>test_annotations.py</code> (posonly/kwonly args, async def offset, <code>Tuple</code> return), <code>test_integration.py</code> (tuple return, cross-function mismatch), <code>test_self_analysis.py</code> (orphaned fixtures wired in)</li>
+</ul>
+<h3 id="changed_7">Changed<a class="headerlink" href="#changed_7" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>pyproject.toml</strong>: Fixed <code>target-version</code> from <code>py313</code> to <code>py311</code>; added ruff rules N, A, DTZ, T10, RET; added <code>[tool.coverage.run]</code> and <code>[tool.coverage.report]</code> sections; added Python 3.14 classifier; added <code>[tool.jaxtyc]</code> self-config section; added <code>required-version</code> and <code>environments</code> to <code>[tool.uv]</code>; added Changelog URL to <code>[project.urls]</code>; added <code>filterwarnings</code> to pytest config</li>
+<li>Test count: 273 -&gt; 368</li>
+</ul>
+<h2 id="v030-2026-03-09"><a href="https://github.com/BeeGass/jaxtyc/compare/v0.2.0...v0.3.0">v0.3.0</a> — 2026-03-09<a class="headerlink" href="#v030-2026-03-09" title="Permanent link">&para;</a></h2>
+<h3 id="added_8">Added<a class="headerlink" href="#added_8" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Code actions</strong>: Quick-fix suggestions for shape mismatches (transpose, expand_dims, squeeze, reshape) with einops support via <code>prefer_einops</code> config or <code>JAXTYC_PREFER_EINOPS</code> env var</li>
+<li><strong>Dimension name completion</strong>: Autocomplete dimension names inside jaxtyping shape strings</li>
+<li><strong>Inlay hints</strong>: Inline resolved shapes at end of lines with intermediate operations</li>
+<li><strong>Semantic tokens</strong>: Syntax highlighting for dimension names in jaxtyping annotations</li>
+<li><strong>Linked editing range</strong>: Simultaneous editing of dimension names within the same function</li>
+<li><strong>Signature help</strong>: Shape signatures shown when calling jaxtyping-annotated functions</li>
+<li><strong>Folding ranges</strong>: Collapsible ranges for functions with many shape-annotated parameters</li>
+<li><strong>Diagnostic pull model</strong>: <code>textDocument/diagnostic</code> support alongside existing push model</li>
+<li><strong>Configuration hot-reload</strong>: <code>workspace/didChangeConfiguration</code> and <code>pyproject.toml</code> file watching</li>
+<li><strong>Hover enhancement</strong>: Dimension names show prime size, usage count, and locations; parameter names show shape annotations (fills the gap where ty reports <code>Any</code> for jaxtyping types); function names show full shape signatures</li>
+<li><strong>LSP multiplexer</strong>: <code>jaxtyc mux</code> command runs both a primary type checker (ty/pyright, auto-discovered) and jaxtyc behind a single stdio pipe with dual-send merge strategy</li>
+<li><strong>Venv auto-discovery</strong>: Importer discovers project virtual environments following ty's resolution order (<code>VIRTUAL_ENV</code> env var, <code>.venv</code> at project root, walk-up), adds <code>site-packages</code> and project <code>src/</code> to <code>sys.path</code></li>
+<li><strong>Workspace root propagation</strong>: Mux extracts <code>rootUri</code> from LSP <code>initialize</code> request and passes it as <code>cwd</code> to both servers for correct environment discovery</li>
+<li><strong>Cross-function shape propagation</strong>: Detects shape mismatches across function call boundaries (<code>cross-function-mismatch</code> rule)</li>
+<li><strong>Parameter consistency checking</strong>: Verifies parameter annotations match resolved shapes (<code>param-inconsistency</code> rule)</li>
+<li><strong>Multi-output / PyTree return checking</strong>: Validates <code>tuple[Float[...], Float[...]]</code> return annotations (<code>return-count-mismatch</code> rule)</li>
+<li><strong>Inline suppression comments</strong>: <code># jaxtyc: ignore</code> and <code># jaxtyc: ignore[rule]</code> syntax</li>
+<li><strong>Cross-file dimension references</strong>: Find references and rename work across files</li>
+<li><strong>didClose handler</strong>: Clears caches and diagnostics when files are closed</li>
+<li><strong>Shared DimEnv per file</strong>: All functions in a file share one dimension environment for cross-function consistency</li>
+<li><strong>Structured diagnostic data</strong>: <code>DiagnosticData</code> with expected/actual shapes, dim names, and suggested fixes</li>
+<li><strong>Einops integration</strong>: <code>prefer_einops = true</code> in <code>[tool.jaxtyc]</code> or <code>JAXTYC_PREFER_EINOPS=1</code> env var switches suggestions to einops notation</li>
+<li><strong>Claude Code plugin</strong>: Pre-built <code>.claude-plugin/plugin.json</code> for editor integration</li>
+<li><strong>Project CLAUDE.md</strong>: Development guide with commands, structure, and conventions</li>
+<li><code>ShapeFix</code> suggestion type in <code>suggestions.py</code> for programmatic fix generation</li>
+<li><code>SuppressionComment</code> type for inline suppression tracking</li>
+<li><code>DiagnosticData</code> type for structured diagnostic metadata</li>
+<li>Test suites: <code>test_importer.py</code>, <code>test_formatters.py</code>, <code>test_suggestions.py</code></li>
+<li>Test fixtures: <code>cross_function_mismatch.py</code>, <code>tuple_return.py</code>, <code>tuple_return_mismatch.py</code>, <code>suppressed.py</code></li>
+</ul>
+<h3 id="changed_8">Changed<a class="headerlink" href="#changed_8" title="Permanent link">&para;</a></h3>
+<ul>
+<li>LSP server refactored from single <code>server.py</code> into focused modules (<code>_code_actions.py</code>, <code>_completion.py</code>, <code>_semantic_tokens.py</code>, <code>_signature_help.py</code>, <code>_inlay_hints.py</code>, <code>_linked_editing.py</code>, <code>_folding.py</code>, <code>_configuration.py</code>, <code>_diagnostics.py</code>, <code>_navigation.py</code>, <code>mux.py</code>)</li>
+<li>Version string now uses <code>importlib.metadata</code> instead of hardcoded value</li>
+<li>CI workflow adds <code>ty check</code> step and pytest coverage with 80% threshold</li>
+<li><code>TraceResult</code> extended with <code>input_shapes</code>, <code>output_shapes</code>, <code>output_dtypes</code></li>
+<li><code>FunctionShapeSpec</code> extended with <code>end_lineno</code>, <code>return_specs</code></li>
+<li><code>WorkspaceIndex</code> extended with <code>find_function_containing()</code> for multi-line signature lookup</li>
+<li>CLI extended with <code>mux</code> subcommand for multiplexer mode</li>
+<li><code>import_module_from_path</code> now auto-discovers project venvs and adds <code>site-packages</code>/<code>src/</code> to <code>sys.path</code></li>
+<li><code>Diagnostic</code> extended with optional <code>data: DiagnosticData</code></li>
+</ul>
+<h2 id="v020-2026-03-09"><a href="https://github.com/BeeGass/jaxtyc/compare/v0.1.0...v0.2.0">v0.2.0</a> — 2026-03-09<a class="headerlink" href="#v020-2026-03-09" title="Permanent link">&para;</a></h2>
+<h3 id="added_9">Added<a class="headerlink" href="#added_9" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>LSP navigation for dimension names</strong>: <code>textDocument/definition</code>, <code>textDocument/references</code>, <code>textDocument/documentHighlight</code>, <code>textDocument/prepareRename</code>, <code>textDocument/rename</code> — navigate and refactor dimension names (<code>batch</code>, <code>seq</code>, <code>d_model</code>) as first-class semantic entities</li>
+<li><strong>LSP document/workspace symbols</strong>: <code>textDocument/documentSymbol</code> and <code>workspace/symbol</code> with shape detail summaries</li>
+<li><strong>LSP call hierarchy</strong>: <code>prepareCallHierarchy</code>, <code>callHierarchy/incomingCalls</code>, <code>callHierarchy/outgoingCalls</code> for shape-annotated functions</li>
+<li><strong>LSP implementation</strong>: <code>textDocument/implementation</code> (delegates to definition logic)</li>
+<li><code>DimLocation</code> type for tracking exact source positions of dimension name tokens within annotation strings</li>
+<li><code>CallSite</code> type for tracking call relationships between shape-annotated functions</li>
+<li><code>FileIndex</code> / <code>WorkspaceIndex</code> thread-safe cross-file navigation index</li>
+<li><code>extract_dim_locations()</code> and <code>extract_call_sites()</code> AST parsers in <code>annotations.py</code></li>
+<li><code>build_file_index()</code> orchestrator for per-file index construction</li>
+<li><code>tests/fixtures/multi_function.py</code> fixture for call hierarchy testing</li>
+<li>21 new tests (9 unit, 12 LSP integration)</li>
+</ul>
+<h3 id="fixed_6">Fixed<a class="headerlink" href="#fixed_6" title="Permanent link">&para;</a></h3>
+<ul>
+<li><code>PrepareRenameResult_Type1</code> replaced with correct <code>PrepareRenamePlaceholder</code> lsprotocol type</li>
+</ul>
+<h3 id="changed_9">Changed<a class="headerlink" href="#changed_9" title="Permanent link">&para;</a></h3>
+<ul>
+<li><code>_analyze_and_publish</code> now extracts function specs once and reuses them for both CodeLens and navigation index (avoids double AST parse)</li>
+<li>Navigation index is built alongside diagnostics on every didOpen/didSave/didChange cycle</li>
+</ul>
+<h2 id="v010-2026-02-23"><a href="https://github.com/BeeGass/jaxtyc/releases/tag/v0.1.0">v0.1.0</a> — 2026-02-23<a class="headerlink" href="#v010-2026-02-23" title="Permanent link">&para;</a></h2>
+<h3 id="added_10">Added<a class="headerlink" href="#added_10" title="Permanent link">&para;</a></h3>
+<ul>
+<li>AST-based jaxtyping annotation parser supporting all dtype classes and shape patterns (named, fixed, variadic, anonymous, ellipsis, scalar)</li>
+<li><code>jax.eval_shape</code> tracing with prime-based symbolic dimension sizing via <code>DimEnv</code></li>
+<li>Shape checker producing <code>shape-mismatch</code>, <code>rank-mismatch</code>, and <code>trace-error</code> diagnostics</li>
+<li><code>jax.make_jaxpr</code> source mapping for per-line intermediate shape extraction</li>
+<li>CLI with 5 subcommands: <code>check</code>, <code>trace</code>, <code>watch</code>, <code>lsp</code>, <code>version</code></li>
+<li>4 output formats: <code>full</code>, <code>concise</code>, <code>json</code>, <code>github</code> (Actions annotations)</li>
+<li>pygls-based LSP server with diagnostics (didOpen/didSave/didChange), hover, and CodeLens</li>
+<li>Configuration via <code>[tool.jaxtyc]</code> in <code>pyproject.toml</code>: severity, ignore_rules, exclude, debounce_ms</li>
+<li>Flax NNX and Equinox module support (auto-skips <code>self</code>/<code>cls</code> parameters)</li>
+<li>CI workflow and mkdocs documentation site</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Copyright &copy; 2025 Bryan Gass
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/BeeGass/jaxtyc" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.instant", "navigation.tracking", "navigation.sections", "navigation.top", "navigation.tabs", "navigation.tabs.sticky", "content.code.copy", "content.code.annotate", "content.tabs.link", "search.highlight", "search.suggest", "toc.follow"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>
