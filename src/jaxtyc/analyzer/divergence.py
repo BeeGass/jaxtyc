@@ -114,12 +114,15 @@ def find_divergence_points(
         List with at most one ErrorHintInfo at the first divergence point,
         or empty list if all intermediates match.
     """
-    if func_spec.return_spec is None:
-        return []
-    if func_spec.return_spec.is_any_shape:
+    specs_to_check: list[ShapeSpec] = []
+    if func_spec.return_specs is not None:
+        specs_to_check = [s for s in func_spec.return_specs if not s.is_any_shape]
+    elif func_spec.return_spec is not None and not func_spec.return_spec.is_any_shape:
+        specs_to_check = [func_spec.return_spec]
+    if not specs_to_check:
         return []
 
-    expected_dims = _expand_expected_dims(func_spec.return_spec)
+    expected_dims = _expand_expected_dims(specs_to_check[0])
 
     # Filter out intermediates with no source info, sort by line
     valid: list[IntermediateShape] = [

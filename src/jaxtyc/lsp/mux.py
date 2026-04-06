@@ -24,6 +24,7 @@ from collections import defaultdict
 from importlib.metadata import version as _pkg_version
 from pathlib import Path
 from typing import Any  # noqa: F401 (used in annotations, invisible with __future__)
+from typing import cast
 from urllib.parse import unquote
 from urllib.parse import urlparse
 
@@ -181,16 +182,21 @@ def _location_key(item: object) -> tuple[str, int, int, int, int] | None:
     """Extract a dedup key from a Location-shaped dict: (uri, start_line, start_char, end_line, end_char)."""
     if not isinstance(item, dict):
         return None
-    uri = item.get("uri")
-    rng = item.get("range")
-    if uri is None or not isinstance(rng, dict):
+    d = cast("dict[str, object]", item)
+    uri_val = d.get("uri")
+    rng = d.get("range")
+    if not isinstance(uri_val, str) or not isinstance(rng, dict):
         return None
-    start = rng.get("start", {})
-    end = rng.get("end", {})
+    uri: str = uri_val
+    rng_d = cast("dict[str, object]", rng)
+    start = rng_d.get("start", {})
+    end = rng_d.get("end", {})
     if not isinstance(start, dict) or not isinstance(end, dict):
         return None
+    s = cast("dict[str, int]", start)
+    e = cast("dict[str, int]", end)
     try:
-        return (uri, start["line"], start["character"], end["line"], end["character"])
+        return (uri, s["line"], s["character"], e["line"], e["character"])
     except (KeyError, TypeError):
         return None
 

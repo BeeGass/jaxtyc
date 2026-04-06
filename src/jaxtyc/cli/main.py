@@ -218,7 +218,11 @@ def cmd_watch(args: argparse.Namespace) -> int:
         )
         return 1
 
+    config = load_config(Path.cwd())
+
     files = _collect_python_files(args.paths)
+    if config.exclude:
+        files = _apply_exclude(files, config.exclude)
     if not files:
         print("No Python files found.", file=sys.stderr)
         return 0
@@ -241,7 +245,16 @@ def cmd_watch(args: argparse.Namespace) -> int:
     start = time.monotonic()
     results: list[FileResult] = []
     for f in files:
-        results.append(analyze_file(f))
+        result = analyze_file(f)
+        filtered = filter_diagnostics(result.diagnostics, config)
+        results.append(
+            FileResult(
+                file_path=result.file_path,
+                functions_checked=result.functions_checked,
+                diagnostics=filtered,
+                trace_results=result.trace_results,
+            )
+        )
     elapsed = time.monotonic() - start
     output = formatter(results, elapsed)
     if output.strip():
@@ -253,11 +266,22 @@ def cmd_watch(args: argparse.Namespace) -> int:
         changed_py = [path for _, path in changes if path.endswith(".py")]
         if not changed_py:
             continue
+        if config.exclude:
+            changed_py = _apply_exclude(changed_py, config.exclude)
 
         start = time.monotonic()
         results = []
         for f in changed_py:
-            results.append(analyze_file(f))
+            result = analyze_file(f)
+            filtered = filter_diagnostics(result.diagnostics, config)
+            results.append(
+                FileResult(
+                    file_path=result.file_path,
+                    functions_checked=result.functions_checked,
+                    diagnostics=filtered,
+                    trace_results=result.trace_results,
+                )
+            )
         elapsed = time.monotonic() - start
         output = formatter(results, elapsed)
         if output.strip():

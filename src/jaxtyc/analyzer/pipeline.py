@@ -21,6 +21,7 @@ from jaxtyc.analyzer.annotations import extract_function_specs
 from jaxtyc.analyzer.checker import check_call_site
 from jaxtyc.analyzer.checker import check_function
 from jaxtyc.analyzer.dim_env import DimEnv
+from jaxtyc.analyzer.einops_detector import EinopsCallInfo
 from jaxtyc.analyzer.einops_detector import extract_einops_calls
 from jaxtyc.analyzer.importer import import_module_from_path
 from jaxtyc.analyzer.mesh_resolver import MeshInfo
@@ -117,7 +118,7 @@ def analyze_file(file_path: str) -> FileResult:
         )
 
     # Detect einops calls for dimension name hints
-    einops_by_line: dict[int, object] = {}
+    einops_by_line: dict[int, EinopsCallInfo] = {}
     einops_calls = extract_einops_calls(source)
     if einops_calls:
         einops_by_line = {call.line: call for call in einops_calls}
@@ -305,7 +306,7 @@ def analyze_file(file_path: str) -> FileResult:
 
 def _apply_einops_to_trace(
     trace: TraceResult,
-    einops_by_line: dict[int, object],
+    einops_by_line: dict[int, EinopsCallInfo],
 ) -> TraceResult:
     """Apply einops dimension names to a trace result's intermediates.
 
@@ -323,7 +324,7 @@ def _apply_einops_to_trace(
 
 def _apply_einops_names(
     intermediates: list[IntermediateShape],
-    einops_by_line: dict[int, object],
+    einops_by_line: dict[int, EinopsCallInfo],
 ) -> list[IntermediateShape]:
     """Override named_shape on the last intermediate at each einops call line."""
     if not einops_by_line:
@@ -342,7 +343,7 @@ def _apply_einops_names(
     for line, idx in last_at_line.items():
         info = einops_by_line[line]
         inter = result[idx]
-        output_names = info.output_names  # type: ignore[union-attr]
+        output_names = info.output_names
         if len(inter.shape) == len(output_names):
             result[idx] = dataclasses.replace(inter, named_shape=output_names)
     return result

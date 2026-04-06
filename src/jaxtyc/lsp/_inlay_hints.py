@@ -78,17 +78,17 @@ def _format_shape(inter: IntermediateShape, dtype_style: str) -> str:
                 if label.startswith("..."):
                     while (
                         orig_idx < len(inter.named_shape)
-                        and inter.named_shape[orig_idx] is not None
-                        and inter.named_shape[orig_idx].startswith("_ellipsis_")
-                    ):  # type: ignore[union-attr]
+                        and (elem := inter.named_shape[orig_idx]) is not None
+                        and elem.startswith("_ellipsis_")
+                    ):
                         orig_idx += 1
                 elif label.startswith("*"):
                     var_name = label[1:]
                     while (
                         orig_idx < len(inter.named_shape)
-                        and inter.named_shape[orig_idx] is not None
-                        and inter.named_shape[orig_idx].startswith(f"_var_{var_name}_")
-                    ):  # type: ignore[union-attr]
+                        and (elem := inter.named_shape[orig_idx]) is not None
+                        and elem.startswith(f"_var_{var_name}_")
+                    ):
                         orig_idx += 1
                 else:
                     orig_idx += 1

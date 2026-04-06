@@ -135,6 +135,21 @@ class TestMakeShape:
         assert not isinstance(shape[1], int)
         assert shape[0] != shape[1]
 
+    def test_anon_counter_independent_between_symbolic_and_concrete(self) -> None:
+        """make_shape and make_concrete_shape should use separate anon counters."""
+        env = DimEnv()
+        spec = ShapeSpec(
+            dims=(DimSpec(kind="anonymous"),),
+            dtype="float32",
+        )
+        # Call make_shape first — uses symbolic anon counter
+        env.make_shape(spec)
+        # Call make_concrete_shape — should use its own counter, not continue symbolic's
+        concrete = env.make_concrete_shape(spec)
+        concrete_name = env.resolve_concrete_name(concrete[0])
+        assert concrete_name is not None
+        assert concrete_name.startswith("_anon_c_")
+
     def test_mixed_dims(self) -> None:
         env = DimEnv()
         spec = ShapeSpec(
@@ -161,6 +176,13 @@ class TestNameSizeMapping:
         assert "batch" in mapping
         assert "seq" in mapping
         assert str(mapping["batch"]) == "batch"
+
+    def test_includes_concrete_dims(self) -> None:
+        env = DimEnv()
+        concrete_val = env.get_concrete_size("batch")
+        mapping = env.name_size_mapping()
+        assert "batch" in mapping
+        assert mapping["batch"] == concrete_val
 
 
 class TestReset:

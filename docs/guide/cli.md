@@ -250,5 +250,5 @@ Print the installed version and exit.
 
 ```
 $ jaxtyc version
-jaxtyc 0.6.0
+jaxtyc 0.7.2
 ```

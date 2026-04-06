@@ -21,9 +21,9 @@ class ShapeFix:
 
 
 def suggest_fixes(
-    expected: tuple[int, ...],
-    actual: tuple[int, ...],
-    dim_names: dict[int, str],
+    expected: tuple[str | int, ...],
+    actual: tuple[str | int, ...],
+    dim_names: dict[str | int, str],
     prefer_einops: bool = False,
 ) -> list[ShapeFix]:
     """Generate shape fix suggestions.
@@ -39,7 +39,7 @@ def suggest_fixes(
     """
     fixes: list[ShapeFix] = []
 
-    def _name(size: int) -> str:
+    def _name(size: str | int) -> str:
         return dim_names.get(size, str(size))
 
     expected_names = tuple(_name(s) for s in expected)
@@ -64,8 +64,8 @@ def suggest_fixes(
 
 
 def _suggest_transpose(
-    expected: tuple[int, ...],
-    actual: tuple[int, ...],
+    expected: tuple[str | int, ...],
+    actual: tuple[str | int, ...],
     expected_names: tuple[str, ...],
     actual_names: tuple[str, ...],
     prefer_einops: bool,
@@ -111,8 +111,8 @@ def _suggest_transpose(
 
 
 def _suggest_expand(
-    expected: tuple[int, ...],
-    actual: tuple[int, ...],
+    expected: tuple[str | int, ...],
+    actual: tuple[str | int, ...],
     expected_names: tuple[str, ...],
     actual_names: tuple[str, ...],
     prefer_einops: bool,
@@ -143,8 +143,8 @@ def _suggest_expand(
 
 
 def _suggest_squeeze(
-    expected: tuple[int, ...],
-    actual: tuple[int, ...],
+    expected: tuple[str | int, ...],
+    actual: tuple[str | int, ...],
     expected_names: tuple[str, ...],
     actual_names: tuple[str, ...],
     prefer_einops: bool,
@@ -175,8 +175,8 @@ def _suggest_squeeze(
 
 
 def _suggest_reshape(
-    expected: tuple[int, ...],
-    actual: tuple[int, ...],
+    expected: tuple[str | int, ...],
+    actual: tuple[str | int, ...],
     expected_names: tuple[str, ...],
     actual_names: tuple[str, ...],
     prefer_einops: bool,

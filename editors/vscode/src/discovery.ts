@@ -1,4 +1,11 @@
-import { join } from "path";
+import { join, sep } from "path";
+import { platform } from "os";
+
+function venvPython(venvDir: string): string {
+  return platform() === "win32"
+    ? join(venvDir, "Scripts", "python.exe")
+    : join(venvDir, "bin", "python3");
+}
 
 export type FolderStatus = "running" | "error" | "not-found";
 
@@ -25,7 +32,7 @@ export function folderForPath(
   let best: string | undefined;
   let bestLen = 0;
   for (const fp of folderPaths) {
-    if (filePath.startsWith(fp + "/") && fp.length > bestLen) {
+    if (filePath.startsWith(fp + sep) && fp.length > bestLen) {
       best = fp;
       bestLen = fp.length;
     }
@@ -69,7 +76,7 @@ export function buildCandidates(
 
   // 1. VIRTUAL_ENV env var
   if (ctx.virtualEnv) {
-    const bin = join(ctx.virtualEnv, "bin", "python3");
+    const bin = venvPython(ctx.virtualEnv);
     if (ctx.pathExists(bin)) {
       candidates.push({
         command: bin,
@@ -81,7 +88,7 @@ export function buildCandidates(
 
   // 2. .venv in workspace folders (direct + one-level subdir with pyproject.toml)
   for (const folder of ctx.workspaceFolders) {
-    const venvBin = join(folder, ".venv", "bin", "python3");
+    const venvBin = venvPython(join(folder, ".venv"));
     if (ctx.pathExists(venvBin)) {
       candidates.push({
         command: venvBin,
@@ -95,10 +102,10 @@ export function buildCandidates(
         if (
           ctx.isDirectory(sub) &&
           ctx.pathExists(join(sub, "pyproject.toml")) &&
-          ctx.pathExists(join(sub, ".venv", "bin", "python3"))
+          ctx.pathExists(venvPython(join(sub, ".venv")))
         ) {
           candidates.push({
-            command: join(sub, ".venv", "bin", "python3"),
+            command: venvPython(join(sub, ".venv")),
             testArgs: ["-c", "import jaxtyc"],
             serverArgs: pyServerArgs(mode, extraArgs),
           });

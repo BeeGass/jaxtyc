@@ -114,6 +114,71 @@ class TestFormatJson:
         assert diag["rule"] == "shape-mismatch"
 
 
+class TestFormatWarnings:
+    def test_format_full_includes_warnings(self) -> None:
+        results = [
+            FileResult(
+                file_path="test.py",
+                functions_checked=1,
+                diagnostics=[
+                    Diagnostic(
+                        file="test.py",
+                        line=5,
+                        col=0,
+                        severity="warning",
+                        message="Potential mismatch",
+                        rule="shape-mismatch",
+                    )
+                ],
+                trace_results=[],
+            )
+        ]
+        output = format_full(results, 0.1)
+        assert "warning[shape-mismatch]" in output
+
+    def test_format_concise_includes_warnings(self) -> None:
+        results = [
+            FileResult(
+                file_path="test.py",
+                functions_checked=1,
+                diagnostics=[
+                    Diagnostic(
+                        file="test.py",
+                        line=5,
+                        col=0,
+                        severity="warning",
+                        message="Potential mismatch",
+                        rule="shape-mismatch",
+                    )
+                ],
+                trace_results=[],
+            )
+        ]
+        output = format_concise(results, 0.1)
+        assert "warning[shape-mismatch]" in output
+
+    def test_format_github_includes_warnings(self) -> None:
+        results = [
+            FileResult(
+                file_path="test.py",
+                functions_checked=1,
+                diagnostics=[
+                    Diagnostic(
+                        file="test.py",
+                        line=5,
+                        col=0,
+                        severity="warning",
+                        message="Potential mismatch",
+                        rule="shape-mismatch",
+                    )
+                ],
+                trace_results=[],
+            )
+        ]
+        output = format_github(results, 0.1)
+        assert "::warning" in output
+
+
 class TestFormatGithub:
     def test_annotation_format(self) -> None:
         result = _make_result(errors=1)

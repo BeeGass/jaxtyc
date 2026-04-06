@@ -85,7 +85,7 @@ def layer_norm(
 
 ### Anonymous dimensions
 
-`_` is an unnamed placeholder. Each `_` gets its own unique prime, so two `_` tokens do not constrain each other.
+`_` is an unnamed placeholder. Each `_` gets its own unique symbolic dimension, so two `_` tokens do not constrain each other.
 
 ```python
 def pool(

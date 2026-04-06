@@ -55,7 +55,11 @@ _DTYPE_MAP: dict[str, DTypeLike] = {
 
 def _resolve_jax_dtype(dtype_str: str) -> DTypeLike:
     """Convert a jaxtyc dtype string to a JAX dtype."""
-    return _DTYPE_MAP.get(dtype_str, jax.numpy.float32)
+    dtype = _DTYPE_MAP.get(dtype_str)
+    if dtype is None:
+        logger.debug("Unknown dtype '%s', defaulting to float32", dtype_str)
+        return jax.numpy.float32
+    return dtype
 
 
 def _build_abstract_input(spec: ShapeSpec, env: DimEnv) -> jax.ShapeDtypeStruct:
@@ -378,18 +382,18 @@ def trace_function(
     has_sharding = bool(mesh_config and any(spec.has_sharding for spec in params.values()))
 
     # Build mesh once for reuse in both input construction and tracing context
-    abstract_mesh = _build_abstract_mesh(mesh_config) if has_sharding else None  # type: ignore[arg-type]
+    abstract_mesh = _build_abstract_mesh(mesh_config) if mesh_config and has_sharding else None
 
     # Build abstract inputs
     abstract_inputs: dict[str, jax.ShapeDtypeStruct] = {}
     for name, spec in params.items():
         if spec.is_any_shape:
             continue
-        if has_sharding:
+        if has_sharding and mesh_config is not None:
             abstract_inputs[name] = _build_sharded_abstract_input(
                 spec,
                 env,
-                mesh_config,  # type: ignore[arg-type]
+                mesh_config,
                 axis_rules,
             )
         else:

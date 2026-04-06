@@ -129,6 +129,9 @@ async function startClientForFolder(
     ],
     outputChannel,
     workspaceFolder: folder,
+    synchronize: {
+      fileEvents: vscode.workspace.createFileSystemWatcher("**/pyproject.toml"),
+    },
     middleware: {
       provideInlayHints: async (document, range, token, next) => {
         const hints = await next(document, range, token);

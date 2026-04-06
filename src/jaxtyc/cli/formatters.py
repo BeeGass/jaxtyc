@@ -20,8 +20,8 @@ def format_full(results: list[FileResult], elapsed: float) -> str:
         total_errors += len(errors)
 
         for diag in result.diagnostics:
-            if diag.severity == "error":
-                lines.append(f"{diag.file}:{diag.line}:{diag.col}: error[{diag.rule}]")
+            if diag.severity in ("error", "warning"):
+                lines.append(f"{diag.file}:{diag.line}:{diag.col}: {diag.severity}[{diag.rule}]")
                 for msg_line in diag.message.split("\n"):
                     lines.append(f"  {msg_line}")
                 lines.append("")
@@ -47,8 +47,11 @@ def format_concise(results: list[FileResult], elapsed: float) -> str:
         for diag in result.diagnostics:
             if diag.severity == "error":
                 total_errors += 1
+            if diag.severity in ("error", "warning"):
                 first_line = diag.message.split("\n")[0]
-                lines.append(f"{diag.file}:{diag.line}:{diag.col}: error[{diag.rule}] {first_line}")
+                lines.append(
+                    f"{diag.file}:{diag.line}:{diag.col}: {diag.severity}[{diag.rule}] {first_line}"
+                )
 
     if total_errors == 0:
         lines.append(f"All checks passed ({total_checked} checked, {elapsed:.2f}s)")
@@ -93,10 +96,11 @@ def format_github(results: list[FileResult], elapsed: float) -> str:
 
     for result in results:
         for diag in result.diagnostics:
-            if diag.severity == "error":
+            if diag.severity in ("error", "warning"):
                 first_line = diag.message.split("\n")[0]
+                annotation = "error" if diag.severity == "error" else "warning"
                 lines.append(
-                    f"::error file={diag.file},line={diag.line},col={diag.col}::{first_line}"
+                    f"::{annotation} file={diag.file},line={diag.line},col={diag.col}::{first_line}"
                 )
 
     return "\n".join(lines)
