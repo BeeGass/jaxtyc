@@ -33,7 +33,7 @@ def _find_user_frame(frames: Sequence[Any]) -> tuple[str, int, int]:
     Returns (file_name, line_num, col) where col is always 0
     since JAX frames don't expose column info.
     """
-    for frame in reversed(frames):
+    for frame in frames:
         if not _is_jax_internal(frame.file_name):
             return frame.file_name, frame.line_num, 0
     return "", 0, 0

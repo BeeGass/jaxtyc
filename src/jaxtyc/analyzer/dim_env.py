@@ -29,6 +29,7 @@ class DimEnv:
         self._scope = SymbolicScope()
         self._dims: dict[str, DimSize] = {}
         self._anon_counter: int = 0
+        self._anon_concrete_counter: int = 0
         self._concrete: dict[str, int] = {}
         self._next_concrete: int = self._MIN_CONCRETE
 
@@ -180,8 +181,8 @@ class DimEnv:
                         ]
                     )
                 case "anonymous":
-                    self._anon_counter += 1
-                    shape.append(self.get_concrete_size(f"_anon_{self._anon_counter}"))
+                    self._anon_concrete_counter += 1
+                    shape.append(self.get_concrete_size(f"_anon_c_{self._anon_concrete_counter}"))
         return tuple(shape)
 
     def resolve_concrete_name(self, size: int) -> str | None:
@@ -199,17 +200,20 @@ class DimEnv:
         return None
 
     def name_size_mapping(self) -> dict[str, DimSize]:
-        """Return a copy of the dimension name to size mapping.
+        """Return a copy of all name-to-size mappings (symbolic + concrete).
 
         Returns:
-            Dictionary mapping dimension names to their symbolic sizes.
+            Dictionary mapping dimension names to their symbolic or concrete sizes.
         """
-        return dict(self._dims)
+        result: dict[str, DimSize] = dict(self._dims)
+        result.update(self._concrete)
+        return result
 
     def reset(self) -> None:
         """Clear all name-to-size mappings and create a fresh scope."""
         self._dims.clear()
         self._scope = SymbolicScope()
         self._anon_counter = 0
+        self._anon_concrete_counter = 0
         self._concrete.clear()
         self._next_concrete = self._MIN_CONCRETE

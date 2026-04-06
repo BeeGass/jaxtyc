@@ -289,9 +289,41 @@ def check_call_site(
     diagnostics: list[Diagnostic] = []
 
     if not callee_trace.success or callee_trace.output_shape is None:
+        # Check multi-output case
+        if callee_trace.output_shapes is not None and callee_spec.return_specs is not None:
+            for i, (rspec, actual_shape) in enumerate(
+                zip(callee_spec.return_specs, callee_trace.output_shapes, strict=False)
+            ):
+                if rspec.is_any_shape:
+                    continue
+                if actual_shape and isinstance(actual_shape[0], int):
+                    expected_shape = env.make_concrete_shape(rspec)
+                else:
+                    expected_shape = env.make_shape(rspec)
+                if expected_shape != actual_shape:
+                    expected_named = _format_named_shape(expected_shape, env)
+                    actual_named = _format_named_shape(actual_shape, env)
+                    diagnostics.append(
+                        Diagnostic(
+                            file=call.file_path,
+                            line=call.lineno,
+                            col=call.col_offset,
+                            severity="error",
+                            message=(
+                                f"Cross-function shape mismatch: `{call.callee_name}` "
+                                f"return[{i}] called from `{call.caller_name}`\n"
+                                f"  Annotated return[{i}]: {expected_named}\n"
+                                f"  Actual return[{i}]:    {actual_named}"
+                            ),
+                            rule="cross-function-mismatch",
+                        )
+                    )
         return diagnostics
 
     if callee_spec.return_spec is None:
+        return diagnostics
+
+    if callee_spec.return_spec.is_any_shape:
         return diagnostics
 
     actual_shape = callee_trace.output_shape
