@@ -358,6 +358,89 @@ class TestCheckCallSite:
         assert len(diagnostics) == 1
         assert diagnostics[0].rule == "cross-function-mismatch"
 
+    def test_any_shape_return_no_diagnostic(self) -> None:
+        """Callee with is_any_shape return should produce no diagnostics."""
+        env = DimEnv()
+        any_spec = ShapeSpec(dims=(), dtype="float32", is_any_shape=True)
+        callee_spec = FunctionShapeSpec(
+            name="encode",
+            file_path="model.py",
+            lineno=5,
+            col_offset=0,
+            params={"x": _named("batch", "dim")},
+            return_spec=any_spec,
+        )
+        callee_trace = TraceResult(
+            function_name="encode",
+            output_shape=(env.get_size("batch"), env.get_size("hidden")),
+            output_dtype="float32",
+            intermediates=[],
+            error=None,
+        )
+        caller_spec = FunctionShapeSpec(
+            name="pipeline",
+            file_path="model.py",
+            lineno=15,
+            col_offset=0,
+            params={},
+            return_spec=None,
+        )
+        call = CallSite(
+            caller_name="pipeline",
+            callee_name="encode",
+            file_path="model.py",
+            lineno=16,
+            col_offset=4,
+            end_col_offset=10,
+        )
+        diagnostics = check_call_site(call, caller_spec, callee_spec, callee_trace, env)
+        assert len(diagnostics) == 0
+
+    def test_multi_output_callee_mismatch(self) -> None:
+        """Cross-function check should detect mismatches in multi-output callees."""
+        env = DimEnv()
+        spec_a = _named("batch", "dim")
+        spec_b = _named("batch", "hidden")
+        callee_spec = FunctionShapeSpec(
+            name="split",
+            file_path="model.py",
+            lineno=5,
+            col_offset=0,
+            name_col_offset=4,
+            params={"x": _named("batch", "dim")},
+            return_spec=spec_a,
+            return_specs=[spec_a, spec_b],
+        )
+        shape_a = env.make_shape(spec_a)
+        wrong_shape_b = env.make_shape(_named("batch", "dim"))  # wrong: dim instead of hidden
+        callee_trace = TraceResult(
+            function_name="split",
+            output_shape=None,
+            output_dtype="float32",
+            intermediates=[],
+            error=None,
+            output_shapes=[shape_a, wrong_shape_b],
+        )
+        caller_spec = FunctionShapeSpec(
+            name="pipeline",
+            file_path="model.py",
+            lineno=15,
+            col_offset=0,
+            params={},
+            return_spec=None,
+        )
+        call = CallSite(
+            caller_name="pipeline",
+            callee_name="split",
+            file_path="model.py",
+            lineno=16,
+            col_offset=4,
+            end_col_offset=9,
+        )
+        diagnostics = check_call_site(call, caller_spec, callee_spec, callee_trace, env)
+        assert len(diagnostics) >= 1
+        assert any(d.rule == "cross-function-mismatch" for d in diagnostics)
+
     def test_trace_error_skips_check(self) -> None:
         env = DimEnv()
         callee_spec = FunctionShapeSpec(
