@@ -1,4 +1,4 @@
-[![PyPI](https://img.shields.io/pypi/v/jaxtyc)](https://pypi.org/project/jaxtyc/) [![Python](https://img.shields.io/pypi/pyversions/jaxtyc)](https://pypi.org/project/jaxtyc/) [![CI](https://github.com/BeeGass/jaxtyc/actions/workflows/ci.yml/badge.svg)](https://github.com/BeeGass/jaxtyc/actions/workflows/ci.yml) [![License](https://img.shields.io/github/license/BeeGass/jaxtyc)](https://github.com/BeeGass/jaxtyc/blob/main/LICENSE)
+[![PyPI](https://img.shields.io/pypi/v/jaxtyc)](https://pypi.org/project/jaxtyc/) [![Python](https://img.shields.io/pypi/pyversions/jaxtyc)](https://pypi.org/project/jaxtyc/) [![CI](https://github.com/BeeGass/jaxtyc/actions/workflows/ci.yml/badge.svg)](https://github.com/BeeGass/jaxtyc/actions/workflows/ci.yml) [![VS Code](https://img.shields.io/visual-studio-marketplace/v/beegass.jaxtyc)](https://marketplace.visualstudio.com/items?itemName=beegass.jaxtyc) [![License](https://img.shields.io/github/license/BeeGass/jaxtyc)](https://github.com/BeeGass/jaxtyc/blob/main/LICENSE)
 
 # jaxtyc
 
@@ -20,12 +20,12 @@ Reads [jaxtyping](https://docs.kidger.site/jaxtyping/) annotations and verifies 
 
 ## How It Works
 
-jaxtyc traces your annotated functions with `jax.eval_shape`, which propagates shapes through JAX operations without allocating any arrays. Each named dimension (`batch`, `d_model`, etc.) is assigned a unique prime number (>= 101), so distinct dimension names always produce distinct sizes -- making shape mismatches unambiguous and impossible to mask by accident.
+jaxtyc traces your annotated functions with `jax.eval_shape`, which propagates shapes through JAX operations without allocating any arrays. Each named dimension (`batch`, `d_model`, etc.) gets a unique symbolic value via `jax.export.symbolic_shape`, so distinct dimension names always produce distinct sizes -- making shape mismatches unambiguous and impossible to mask by accident.
 
 ## Features
 
 - **Zero runtime cost** -- `jax.eval_shape` only; no arrays allocated, no computation executed
-- **Prime-based symbolic shapes** -- each dimension name maps to a unique prime (>= 101), so `d_in != d_out` is guaranteed
+- **Symbolic shape tracing** -- each dimension name maps to a unique symbolic value via `jax.export.symbolic_shape`, so `d_in != d_out` is guaranteed
 - **18 diagnostic rules** -- shape/rank mismatch, cross-function propagation, parameter consistency, sharding validation, tuple return checking, trace errors
 - **Sharding-in-types** -- annotate mesh axes inline with `|` syntax (`"batch|dp seq|None d_model|mp"`), validated against mesh topology with 8 dedicated sharding rules
 - **Einops integration** -- detects `einops.rearrange`/`reduce`/`repeat` calls, parses pattern strings for shape checking, and provides einops-aware fix suggestions
