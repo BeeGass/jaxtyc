@@ -213,6 +213,6 @@
     "@vscode/vsce": "^3.0.0",
     "esbuild": "^0.25.0",
     "typescript": "^5.4.0",
-    "vitest": "^4.1.2"
+    "vitest": "^4.1.4"
   }
 }
