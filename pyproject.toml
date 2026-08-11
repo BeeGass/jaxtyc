@@ -108,7 +108,7 @@ rocm = [
 ]
 # --- Library integration extras ---
 watch = ["watchfiles>=1.0,<2"]
-flax = ["flax>=0.10.0,<0.10.3"]
+flax = ["flax>=0.10.0,<0.12.8"]
 equinox = ["equinox>=0.11,<0.14"]
 einops = ["einops>=0.8,<0.9"]
 all = ["jaxtyc[watch,flax,equinox,einops]"]
