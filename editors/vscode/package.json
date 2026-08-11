@@ -31,7 +31,7 @@
     "url": "https://github.com/BeeGass/jaxtyc"
   },
   "engines": {
-    "vscode": "^1.85.0"
+    "vscode": "^1.116.0"
   },
   "categories": [
     "Programming Languages",
@@ -209,7 +209,7 @@
   },
   "devDependencies": {
     "@types/node": "^25.6.0",
-    "@types/vscode": "^1.85.0",
+    "@types/vscode": "^1.116.0",
     "@vscode/vsce": "^3.9.1",
     "esbuild": "^0.25.0",
     "typescript": "^5.4.0",
