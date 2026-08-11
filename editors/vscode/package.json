@@ -212,7 +212,7 @@
     "@types/vscode": "^1.116.0",
     "@vscode/vsce": "^3.9.1",
     "esbuild": "^0.25.0",
-    "typescript": "^5.4.0",
+    "typescript": "^6.0.3",
     "vitest": "^4.1.4"
   }
 }
